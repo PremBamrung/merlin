@@ -57,16 +57,6 @@ class CustomPyYouTube(pytube.YouTube):
 
 
 class YouTube:
-    TEMPLATE = """Given the subtitles of a Youtube video,
-    Write a short summary in bullet points, extracting the main key information. Format the summary using clean and concise bullet points, highlighting the main ideas. Write the summary in {lang}
-
-    # The subtitles :{subtitles}
-
-    # Answer: """
-    prompt_template = PromptTemplate(
-        template=TEMPLATE, input_variables=["subtitles", "lang"]
-    )
-
     def __init__(
         self,
         azure_model_deployment: str,
@@ -78,6 +68,16 @@ class YouTube:
         self.azure_endpoint = azure_endpoint
         self.azure_key = azure_key
         self.azure_api_version = azure_api_version
+        TEMPLATE = """Given the subtitles of a Youtube video,
+        Write a short summary in bullet points, extracting the main key information. Format the summary using clean and concise bullet points, highlighting the main ideas. Write the summary in {lang}
+        # Video  titled "{title}" from the channel "{channel}"
+
+        # The subtitles :{subtitles}
+
+        # Answer: """
+        self.prompt_template = PromptTemplate(
+            template=TEMPLATE, input_variables=["subtitles", "lang", "title", "channel"]
+        )
 
     @staticmethod
     def extract_video_id(url: str) -> Optional[str]:
@@ -163,9 +163,14 @@ class YouTube:
         return " ".join([sub["text"] for sub in subtitles])
 
     def summarize(
-        self, subtitles: str, lang: str = "english", streaming: bool = False
+        self,
+        subtitles: str,
+        title: str,
+        channel: str,
+        lang: str = "english",
+        streaming: bool = False,
     ) -> str:
-        """Generate a summary of the subtitles using Azure OpenAI model."""
+        """Generate a summary of the subtitles using Azure OpenAI model, incorporating video metadata."""
         llm = AzureChatOpenAI(
             azure_endpoint=self.azure_endpoint,
             api_key=self.azure_key,
@@ -178,11 +183,18 @@ class YouTube:
         llm_chain = self.prompt_template | llm
         summary = ""
 
+        prompt_input = {
+            "subtitles": subtitles,
+            "lang": lang,
+            "title": title,
+            "channel": channel,
+        }
+
         if streaming:
-            for chunk in llm_chain.stream({"subtitles": subtitles, "lang": lang}):
+            for chunk in llm_chain.stream(prompt_input):
                 yield chunk.content
         else:
-            summary = llm_chain.run({"subtitles": subtitles, "lang": lang})
+            summary = llm_chain.run(prompt_input)
             return summary
 
 
@@ -230,7 +242,12 @@ if __name__ == "__main__":
 
                 document = Document(page_content=text, metadata={"source": args.url})
 
-                summary = yt.summarize(subtitles=text, lang=args.lang)
+                summary = yt.summarize(
+                    subtitles=text,
+                    title=video_info["title"],
+                    channel=video_info["channel"],
+                    lang=args.lang,
+                )
 
                 print("Summary:")
                 print(summary)
