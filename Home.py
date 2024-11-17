@@ -22,9 +22,16 @@ llm = AzureChatOpenAI(
     max_tokens=None,
     streaming=True,
 )
-st.title("💬 Chatbot")
+st.title("🧙‍♂️ Merlin")
 st.caption("🚀 A Streamlit chatbot powered by OpenAI")
+
 if "messages" not in st.session_state:
+    st.session_state["messages"] = [
+        {"role": "assistant", "content": "How can I help you?"}
+    ]
+
+# Add a button in the sidebar to clear the conversation
+if st.sidebar.button("Clear Conversation"):
     st.session_state["messages"] = [
         {"role": "assistant", "content": "How can I help you?"}
     ]
