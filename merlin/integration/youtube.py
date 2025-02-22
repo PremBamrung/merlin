@@ -9,11 +9,14 @@ import requests
 from dotenv import load_dotenv
 from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
-from langchain_openai.chat_models import AzureChatOpenAI
+from langchain_openai.chat_models import AzureChatOpenAI, ChatOpenAI
 from PIL import Image
 from pytube import Channel
 from pytube.innertube import InnerTube
+from sqlalchemy.orm import Session
 from youtube_transcript_api import YouTubeTranscriptApi
+
+from merlin.llm.openrouter import llm
 
 
 class CustomPyYouTube(pytube.YouTube):
@@ -57,17 +60,8 @@ class CustomPyYouTube(pytube.YouTube):
 
 
 class YouTube:
-    def __init__(
-        self,
-        azure_model_deployment: str,
-        azure_endpoint: str,
-        azure_key: str,
-        azure_api_version: str,
-    ):
-        self.azure_model_deployment = azure_model_deployment
-        self.azure_endpoint = azure_endpoint
-        self.azure_key = azure_key
-        self.azure_api_version = azure_api_version
+    def __init__(self):
+        """Initialize YouTube class with prompt template for summarization."""
         TEMPLATE = """Given the subtitles of a Youtube video,
         Write a short summary in bullet points, extracting the main key information. Format the summary using clean and concise bullet points, highlighting the main ideas. Write the summary in {lang}
         # Video  titled "{title}" from the channel "{channel}"
@@ -113,6 +107,32 @@ class YouTube:
         except Exception as e:
             print("Error displaying thumbnail:", e)
             return None
+
+    def get_cached_video(
+        self, video_id: str, session: Session
+    ) -> Optional[Dict[str, Any]]:
+        """Retrieve cached video data from database if it exists."""
+        from merlin.database.models import YouTubeVideoSummary
+
+        cached_video = (
+            session.query(YouTubeVideoSummary).filter_by(video_id=video_id).first()
+        )
+        if cached_video:
+            return {
+                "title": cached_video.title,
+                "channel": cached_video.channel,
+                "date": cached_video.date.strftime("%d/%m/%Y"),
+                "views": f"{cached_video.views:,}",
+                "duration": cached_video.duration,
+                "subscribers": cached_video.subscribers,
+                "videos": cached_video.videos,
+                "summary": cached_video.summary,
+                "subtitles": cached_video.subtitles,
+                "words_count": cached_video.words_count,
+                "video_id": cached_video.video_id,
+                "cached": True,
+            }
+        return None
 
     @staticmethod
     def extract_video_info(video_url: str) -> Optional[Dict[str, Any]]:
@@ -171,15 +191,7 @@ class YouTube:
         streaming: bool = False,
     ) -> str:
         """Generate a summary of the subtitles using Azure OpenAI model, incorporating video metadata."""
-        llm = AzureChatOpenAI(
-            azure_endpoint=self.azure_endpoint,
-            api_key=self.azure_key,
-            temperature=0.01,
-            max_tokens=None,
-            openai_api_version=self.azure_api_version,
-            deployment_name=self.azure_model_deployment,
-            streaming=streaming,
-        )
+
         llm_chain = self.prompt_template | llm
         summary = ""
 

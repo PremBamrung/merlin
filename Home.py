@@ -1,27 +1,15 @@
-import os
-
 import streamlit as st
 from dotenv import load_dotenv
-from langchain_openai.chat_models import AzureChatOpenAI
 
-st.set_page_config(
-    page_title="Merlin",
-    page_icon="🧙‍♂️",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+from merlin.llm.openrouter import llm
+from merlin.utils import set_layout
+
+set_layout()
+
 
 load_dotenv("merlin/.env")
 
-llm = AzureChatOpenAI(
-    deployment_name=os.getenv("AZURE_MODEL_DEPLOYMENT"),
-    azure_endpoint=os.getenv("AZURE_ENDPOINT"),
-    api_key=os.getenv("AZURE_KEY"),
-    openai_api_version=os.getenv("AZURE_API_VERSION"),
-    temperature=0.01,
-    max_tokens=None,
-    streaming=True,
-)
+
 st.title("🧙‍♂️ Merlin")
 st.caption("🚀 A Streamlit chatbot powered by OpenAI")
 
