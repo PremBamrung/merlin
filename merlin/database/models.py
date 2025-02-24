@@ -1,7 +1,7 @@
 # models.py
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Integer, String, Text, create_engine
+from sqlalchemy import JSON, Column, DateTime, Integer, String, Text, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -27,6 +27,11 @@ class YouTubeVideoSummary(Base):
     date_added = Column(
         DateTime, default=datetime.utcnow
     )  # New column for storing the added date
+    tags = Column(String(500))  # Comma-separated tags
+    summary_length = Column(String(20))  # short, medium, or long
+    topics = Column(JSON)  # Extracted topics and key points
+    timestamps = Column(JSON)  # Important moments in the video
+    error_message = Column(Text)  # Store any processing errors
 
 
 engine = create_engine(DATABASE_URL)

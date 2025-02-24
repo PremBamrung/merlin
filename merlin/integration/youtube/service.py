@@ -40,7 +40,11 @@ class YouTubeService:
         return self.db.execute_with_session(VideoRepository.get_all_videos)
 
     def process_video(
-        self, url: str, lang: str = "english", streaming: bool = False
+        self,
+        url: str,
+        lang: str = "english",
+        summary_length: str = "medium",
+        streaming: bool = False,
     ) -> Optional[Dict]:
         """Process a YouTube video URL.
 
@@ -87,33 +91,67 @@ class YouTubeService:
             return None
 
         try:
-            # Generate summary
+            # Generate summary with new parameters
             if streaming:
-                summary_generator = self.summarizer.summarize(
-                    subtitles=text,
-                    title=video_info["title"],
-                    channel=video_info["channel"],
-                    lang=lang,
-                    streaming=True,
-                )
-                return {
-                    "video_info": video_info,
-                    "summary_generator": summary_generator,
-                    "text": text,
-                }
+                try:
+                    # First yield the metadata as a dict
+                    yield {"type": "metadata", "video_info": video_info, "text": text}
+
+                    # Then stream the summary chunks
+                    summary_text = ""
+                    for chunk in self.summarizer.summarize(
+                        subtitles=text,
+                        title=video_info["title"],
+                        channel=video_info["channel"],
+                        lang=lang,
+                        summary_length=summary_length,
+                        streaming=True,
+                    ):
+                        summary_text += chunk
+                        yield {"type": "chunk", "content": chunk}
+
+                    # Extract topics and timestamps after streaming
+                    try:
+                        topics, timestamps = (
+                            self.summarizer.extract_topics_and_timestamps(summary_text)
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to extract topics and timestamps: {str(e)}"
+                        )
+                        topics, timestamps = {}, {}
+
+                    # Finally yield the summary metadata
+                    yield {
+                        "type": "summary_metadata",
+                        "summary": summary_text,
+                        "topics": topics,
+                        "timestamps": timestamps,
+                    }
+                except Exception as e:
+                    logger.error(f"Error in streaming mode: {str(e)}")
+                    yield {"type": "error", "message": str(e)}
             else:
-                summary = self.summarizer.summarize(
+                summary, topics, timestamps = self.summarizer.summarize(
                     subtitles=text,
                     title=video_info["title"],
                     channel=video_info["channel"],
                     lang=lang,
+                    summary_length=summary_length,
                     streaming=False,
                 )
 
-                # Save to database
+                # Save to database with new fields
                 self.db.execute_with_session(
                     lambda session: VideoRepository.save_video_summary(
-                        session, video_info, text, summary, text
+                        session,
+                        video_info,
+                        text,
+                        summary,
+                        text,
+                        summary_length=summary_length,
+                        topics=topics,
+                        timestamps=timestamps,
                     )
                 )
 
@@ -121,6 +159,8 @@ class YouTubeService:
                     "video_info": video_info,
                     "summary": summary,
                     "text": text,
+                    "topics": topics,
+                    "timestamps": timestamps,
                 }
 
         except Exception as e:

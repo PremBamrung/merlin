@@ -17,8 +17,13 @@ class VideoRepository:
         text: str,
         summary_text: str,
         subtitles_text: str,
+        tags: str = None,
+        summary_length: str = None,
+        topics: Dict = None,
+        timestamps: Dict = None,
+        error_message: str = None,
     ) -> YouTubeVideoSummary:
-        """Save video summary to database."""
+        """Save video summary to database with additional metadata."""
         try:
             views = int(video_info["views"].replace(",", "").replace(" views", ""))
             date = datetime.strptime(video_info["date"], "%d/%m/%Y")
@@ -36,6 +41,11 @@ class VideoRepository:
                 summary=summary_text,
                 subtitles=subtitles_text,
                 date_added=datetime.utcnow(),
+                tags=tags,
+                summary_length=summary_length,
+                topics=topics,
+                timestamps=timestamps,
+                error_message=error_message,
             )
             session.add(video_summary)
             logger.info(f"Saved summary for video ID: {video_info['video_id']}")
