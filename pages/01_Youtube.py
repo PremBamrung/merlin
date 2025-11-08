@@ -32,15 +32,16 @@ def view_summarized_videos():
         for video in videos:
             data.append(
                 {
-                    "Title": video.title,
-                    "Video ID": video.video_id,
-                    "Channel": video.channel,
-                    "Date": video.date.strftime("%b %d, %Y"),
-                    "Views": f"{video.views:,}",
-                    "Duration": video.duration,
-                    "Words Count": f"{video.words_count:,}",
-                    "Summary": video.summary,
-                    "Date Added": video.date_added.strftime("%b %d, %Y %H:%M:%S"),
+                    "Title": video["title"],
+                    "Video ID": video["video_id"],
+                    "Channel": video["channel"],
+                    "Published Date": video["date"].strftime("%b %d, %Y"),
+                    "Date Added": video["date_added"].strftime("%b %d, %Y %H:%M:%S"),
+                    "Views": f"{video['views']:,}",
+                    "Duration": video["duration"],
+                    "Words Count": f"{video.get('words_count', 0):,}",
+                    "LLM Model": video.get("llm_model") or "N/A",
+                    "Summary": video.get("summary"),
                 }
             )
         df = pd.DataFrame(data)
@@ -81,17 +82,18 @@ def filter_videos(videos, search_query=None, selected_tags=None):
         filtered_videos = [
             v
             for v in filtered_videos
-            if search_query in v.title.lower()
-            or search_query in v.channel.lower()
-            or search_query in (v.summary or "").lower()
-            or search_query in (v.tags or "").lower()
+            if search_query in v["title"].lower()
+            or search_query in v["channel"].lower()
+            or search_query in (v.get("summary") or "").lower()
+            or search_query in (v.get("tags") or "").lower()
         ]
 
     if selected_tags:
         filtered_videos = [
             v
             for v in filtered_videos
-            if v.tags and any(tag in v.tags.split(",") for tag in selected_tags)
+            if v.get("tags")
+            and any(tag in v["tags"].split(",") for tag in selected_tags)
         ]
 
     return filtered_videos
@@ -223,6 +225,7 @@ def main():
                                     summary_text = response["summary"]
                                     topics = response.get("topics", {})
                                     timestamps = response.get("timestamps", {})
+                                    llm_model = response.get("llm_model", "unknown")
 
                                     with right_column:
                                         if topics:
@@ -240,6 +243,7 @@ def main():
                                                 text,
                                                 tags=tags,
                                                 summary_length=summary_length,
+                                                llm_model=llm_model,
                                                 topics=topics,
                                                 timestamps=timestamps,
                                             )
@@ -279,8 +283,8 @@ def main():
             all_tags = set()
             videos = yt.get_all_videos()
             for video in videos:
-                if video.tags:
-                    all_tags.update(tag.strip() for tag in video.tags.split(","))
+                if video.get("tags"):
+                    all_tags.update(tag.strip() for tag in video["tags"].split(","))
 
             selected_tags = st.multiselect(
                 "Filter by tags:", sorted(list(all_tags)) if all_tags else []
@@ -294,14 +298,18 @@ def main():
             for video in filtered_videos:
                 data.append(
                     {
-                        "Title": video.title,
-                        "Channel": video.channel,
-                        "Date": video.date.strftime("%b %d, %Y"),
-                        "Views": f"{video.views:,}",
-                        "Duration": video.duration,
-                        "Length": video.summary_length or "N/A",
-                        "Tags": video.tags or "N/A",
-                        "Summary": video.summary,
+                        "Title": video["title"],
+                        "Channel": video["channel"],
+                        "Published Date": video["date"].strftime("%b %d, %Y"),
+                        "Date Added": video["date_added"].strftime(
+                            "%b %d, %Y %H:%M:%S"
+                        ),
+                        "Views": f"{video['views']:,}",
+                        "Duration": video["duration"],
+                        "Length": video.get("summary_length") or "N/A",
+                        "LLM Model": video.get("llm_model") or "N/A",
+                        "Tags": video.get("tags") or "N/A",
+                        "Summary": video.get("summary"),
                     }
                 )
             df = pd.DataFrame(data)
