@@ -10,6 +10,7 @@ from merlin.integration.youtube.extractors import (
     VideoExtractor,
 )
 from merlin.integration.youtube.summarizer import VideoSummarizer
+from merlin.llm.azureopenai import llm
 from merlin.utils import logger
 
 
@@ -121,12 +122,16 @@ class YouTubeService:
                         )
                         topics, timestamps = {}, {}
 
+                    # Get LLM model name
+                    llm_model = getattr(llm, "deployment_name", None) or "unknown"
+
                     # Finally yield the summary metadata
                     yield {
                         "type": "summary_metadata",
                         "summary": summary_text,
                         "topics": topics,
                         "timestamps": timestamps,
+                        "llm_model": llm_model,
                     }
                 except Exception as e:
                     logger.error(f"Error in streaming mode: {str(e)}")
@@ -141,6 +146,9 @@ class YouTubeService:
                     streaming=False,
                 )
 
+                # Get LLM model name
+                llm_model = getattr(llm, "deployment_name", None) or "unknown"
+
                 # Save to database with new fields
                 self.db.execute_with_session(
                     lambda session: VideoRepository.save_video_summary(
@@ -150,6 +158,7 @@ class YouTubeService:
                         summary,
                         text,
                         summary_length=summary_length,
+                        llm_model=llm_model,
                         topics=topics,
                         timestamps=timestamps,
                     )

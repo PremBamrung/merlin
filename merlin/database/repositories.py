@@ -19,6 +19,7 @@ class VideoRepository:
         subtitles_text: str,
         tags: str = None,
         summary_length: str = None,
+        llm_model: str = None,
         topics: Dict = None,
         timestamps: Dict = None,
         error_message: str = None,
@@ -43,6 +44,7 @@ class VideoRepository:
                 date_added=datetime.utcnow(),
                 tags=tags,
                 summary_length=summary_length,
+                llm_model=llm_model,
                 topics=topics,
                 timestamps=timestamps,
                 error_message=error_message,
@@ -84,12 +86,36 @@ class VideoRepository:
             raise
 
     @staticmethod
-    def get_all_videos(session: Session) -> List[YouTubeVideoSummary]:
+    def get_all_videos(session: Session) -> List[Dict]:
         """Retrieve all video summaries."""
         try:
             videos = session.query(YouTubeVideoSummary).all()
             logger.info(f"Retrieved {len(videos)} video summaries")
-            return videos
+            # Convert ORM objects to dictionaries while session is still open
+            return [
+                {
+                    "id": video.id,
+                    "video_id": video.video_id,
+                    "title": video.title,
+                    "channel": video.channel,
+                    "date": video.date,
+                    "views": video.views,
+                    "duration": video.duration,
+                    "words_count": video.words_count,
+                    "subscribers": video.subscribers,
+                    "videos": video.videos,
+                    "summary": video.summary,
+                    "subtitles": video.subtitles,
+                    "date_added": video.date_added,
+                    "tags": video.tags,
+                    "summary_length": video.summary_length,
+                    "llm_model": video.llm_model,
+                    "topics": video.topics,
+                    "timestamps": video.timestamps,
+                    "error_message": video.error_message,
+                }
+                for video in videos
+            ]
         except Exception as e:
             logger.error(f"Error retrieving videos: {str(e)}")
             raise

@@ -32,7 +32,7 @@ class LoggedChatOpenAI(ChatOpenAI):
 llm = LoggedChatOpenAI(
     model=model_name,
     base_url=os.getenv("OPENROUTER_ENDPOINT"),
-    api_key=os.getenv("OPENROUTER_KEY"),
+    api_key=os.getenv("OPENROUTER_API_KEY"),
     temperature=0.01,
     max_tokens=None,
     streaming=True,
