@@ -3,7 +3,7 @@ from typing import Generator
 
 from langchain_core.prompts import PromptTemplate
 
-from merlin.llm.openrouter import llm
+from merlin.llm.azureopenai import llm
 from merlin.utils import logger
 
 
@@ -125,7 +125,6 @@ Subtitles: {subtitles}
         try:
             if streaming:
                 logger.debug("Using streaming mode for summarization")
-                summary_text = ""
                 for chunk in llm_chain.stream(
                     {
                         **prompt_input,
@@ -135,14 +134,20 @@ Subtitles: {subtitles}
                         ],
                     }
                 ):
-                    summary_text += chunk.content
-                    yield chunk.content
+                    # Handle different chunk types from langchain
+                    if hasattr(chunk, "content"):
+                        content = chunk.content
+                    elif isinstance(chunk, str):
+                        content = chunk
+                    else:
+                        # Try to get content from AIMessage or similar
+                        content = str(chunk) if chunk else ""
 
-                # Extract topics and timestamps after streaming
-                topics, timestamps = self.extract_topics_and_timestamps(summary_text)
-                return summary_text, topics, timestamps
+                    if content:
+                        yield content
             else:
-                summary = llm_chain.run(
+                # Use invoke() instead of deprecated run()
+                response = llm_chain.invoke(
                     {
                         **prompt_input,
                         "length": summary_length,
@@ -151,6 +156,14 @@ Subtitles: {subtitles}
                         ],
                     }
                 )
+                # Extract content from response
+                if hasattr(response, "content"):
+                    summary = response.content
+                elif isinstance(response, str):
+                    summary = response
+                else:
+                    summary = str(response)
+
                 duration = (datetime.now() - start_time).total_seconds()
                 logger.info(f"Summarization completed in {duration:.2f}s")
 

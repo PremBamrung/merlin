@@ -121,15 +121,141 @@ class SubtitleExtractor:
         logger.debug(f"Attempting languages: {languages}")
 
         try:
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            ytt_api = YouTubeTranscriptApi()
+            transcript_list = ytt_api.list(video_id)
+            transcript = None
+
+            # First, try to find manually created transcript in specified languages
             try:
                 transcript = transcript_list.find_manually_created_transcript(languages)
                 logger.info("Found manually created transcript")
             except:
-                transcript = transcript_list.find_generated_transcript(languages)
-                logger.info("Found auto-generated transcript")
+                # If no manual transcript, try auto-generated in specified languages
+                try:
+                    transcript = transcript_list.find_generated_transcript(languages)
+                    logger.info(
+                        "Found auto-generated transcript in requested languages"
+                    )
+                except:
+                    # If no transcript in specified languages, try any auto-generated transcript
+                    try:
+                        # Get all available transcripts and find the first auto-generated one
+                        for transcript_item in transcript_list:
+                            if transcript_item.is_generated:
+                                transcript = transcript_item
+                                logger.info(
+                                    f"Found auto-generated transcript in language: {transcript.language_code}"
+                                )
+                                break
+                    except Exception as e:
+                        logger.warning(
+                            f"Could not find any auto-generated transcript: {str(e)}"
+                        )
 
-            result = transcript.fetch()
+            if transcript is None:
+                logger.error("No subtitles found (neither manual nor auto-generated)")
+                return None
+
+            # For auto-generated transcripts, try to fetch directly in whatever language they're in
+            # Only translate if direct fetch fails (some auto-generated transcripts require translation)
+            if transcript.is_generated:
+                transcript_lang = transcript.language_code
+                logger.info(
+                    f"Found auto-generated transcript in language: {transcript_lang}"
+                )
+
+                # Always try direct fetch first, regardless of language
+                try:
+                    result = transcript.fetch()
+                    logger.info(
+                        f"Successfully fetched auto-generated transcript in {transcript_lang}"
+                    )
+                except Exception as fetch_error:
+                    # If direct fetch fails, try translation (some auto-generated transcripts must be translated)
+                    logger.info(
+                        f"Direct fetch failed for {transcript_lang}, attempting translation"
+                    )
+                    target_lang = (
+                        "en"
+                        if "en" in languages
+                        else (languages[0] if languages else "en")
+                    )
+
+                    try:
+                        translated_transcript = transcript.translate(target_lang)
+                        result = translated_transcript.fetch()
+                        logger.info(
+                            f"Successfully fetched translated transcript in {target_lang}"
+                        )
+                    except Exception as translate_error:
+                        error_msg = str(translate_error).lower()
+                        # If rate limited or translation fails, try English as fallback
+                        if target_lang != "en":
+                            try:
+                                logger.info("Trying translation to English as fallback")
+                                translated_transcript = transcript.translate("en")
+                                result = translated_transcript.fetch()
+                                logger.info(
+                                    "Successfully fetched transcript translated to English"
+                                )
+                            except Exception as en_error:
+                                # If all translation attempts fail, try other available auto-generated transcripts
+                                if (
+                                    "429" in error_msg
+                                    or "too many requests" in error_msg
+                                ):
+                                    logger.warning(
+                                        "Rate limited, trying alternative auto-generated transcripts"
+                                    )
+                                    try:
+                                        for alt_transcript in transcript_list:
+                                            if (
+                                                alt_transcript.is_generated
+                                                and alt_transcript.language_code
+                                                != transcript_lang
+                                            ):
+                                                try:
+                                                    result = alt_transcript.fetch()
+                                                    logger.info(
+                                                        f"Successfully fetched alternative transcript in {alt_transcript.language_code}"
+                                                    )
+                                                    break
+                                                except:
+                                                    continue
+                                        else:
+                                            logger.error(
+                                                f"All attempts failed. Last error: {str(en_error)}"
+                                            )
+                                            raise fetch_error
+                                    except Exception as alt_error:
+                                        logger.error(
+                                            f"Failed to find alternative transcript: {str(alt_error)}"
+                                        )
+                                        raise fetch_error
+                                else:
+                                    logger.error(
+                                        f"All translation attempts failed. Last error: {str(en_error)}"
+                                    )
+                                    raise fetch_error
+                        else:
+                            logger.error(f"Translation failed: {str(translate_error)}")
+                            raise fetch_error
+            else:
+                # Manual transcript - fetch directly
+                result = transcript.fetch()
+                logger.info("Successfully fetched manual transcript")
+
+            # Convert FetchedTranscriptSnippet objects to dictionaries
+            if result and hasattr(result[0], "start"):
+                result = [
+                    {
+                        "start": snippet.start,
+                        "duration": snippet.duration,
+                        "text": snippet.text,
+                    }
+                    for snippet in result
+                ]
+
             duration = (datetime.now() - start_time).total_seconds()
             logger.info(f"Successfully extracted subtitles in {duration:.2f}s")
             return result
