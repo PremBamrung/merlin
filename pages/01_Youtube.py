@@ -54,20 +54,25 @@ def display_video_info(video_info: dict, cached: bool = False):
     """Display video information in the UI."""
     st.write(f"### Video Information{'(Cached)' if cached else ''}:")
 
-    # Display thumbnail
-    thumbnail_img = yt.extract_thumbnail(video_info["video_id"])
-    if thumbnail_img:
-        st.image(thumbnail_img, caption="Video Thumbnail")
+    # Create 2-column layout: thumbnail on left, info on right
+    col_thumb, col_info = st.columns([1, 2])
 
-    # Display metadata
-    st.write(f"**Title:** {video_info['title']}")
-    st.write(f"**Channel:** {video_info['channel']}")
-    st.write(f"**Date:** {video_info['date']}")
-    st.write(f"**Views:** {video_info['views']}")
-    st.write(f"**Duration:** {video_info['duration']}")
-    st.write(f"**Words count:** {video_info.get('words_count', 'N/A')}")
-    st.write(f"**Subscribers:** {video_info['subscribers']}")
-    st.write(f"**Videos:** {video_info['videos']}")
+    with col_thumb:
+        # Display thumbnail
+        thumbnail_img = yt.extract_thumbnail(video_info["video_id"])
+        if thumbnail_img:
+            st.image(thumbnail_img, caption="Video Thumbnail")
+
+    with col_info:
+        # Display metadata
+        st.write(f"**Title:** {video_info['title']}")
+        st.write(f"**Channel:** {video_info['channel']}")
+        st.write(f"**Date:** {video_info['date']}")
+        st.write(f"**Views:** {video_info['views']}")
+        st.write(f"**Duration:** {video_info['duration']}")
+        st.write(f"**Words count:** {video_info.get('words_count', 'N/A')}")
+        st.write(f"**Subscribers:** {video_info['subscribers']}")
+        st.write(f"**Videos:** {video_info['videos']}")
 
 
 def filter_videos(videos, search_query=None, selected_tags=None):
@@ -119,43 +124,36 @@ def main():
         # Input YouTube video URL
         url = st.text_input("Enter YouTube video URL:", st.session_state.get("url", ""))
 
-        # Add configuration options in columns
-        col1, col2 = st.columns(2)
+        # Add configuration options
+        # Select preferred language for the summary
+        lang = st.selectbox(
+            "Preferred language:",
+            ["english", "french", "german"],
+            index=(
+                ["english", "french", "german"].index(
+                    st.session_state.get("lang", "english")
+                )
+                if "lang" in st.session_state
+                else 0
+            ),
+        )
 
-        with col1:
-            # Select preferred language for the summary
-            lang = st.selectbox(
-                "Preferred language:",
-                ["english", "french", "german"],
-                index=(
-                    ["english", "french", "german"].index(
-                        st.session_state.get("lang", "english")
-                    )
-                    if "lang" in st.session_state
-                    else 0
-                ),
-            )
+        # Add summary length option
+        summary_length = st.selectbox(
+            "Summary length:",
+            ["short", "medium", "long"],
+            index=(
+                ["short", "medium", "long"].index(
+                    st.session_state.get("summary_length", "short")
+                )
+                if "summary_length" in st.session_state
+                else 0
+            ),
+            help="Short: key points only, Medium: balanced, Long: detailed analysis",
+        )
 
-            # Add summary length option
-            summary_length = st.selectbox(
-                "Summary length:",
-                ["short", "medium", "long"],
-                index=(
-                    ["short", "medium", "long"].index(
-                        st.session_state.get("summary_length", "short")
-                    )
-                    if "summary_length" in st.session_state
-                    else 0
-                ),
-                help="Short: key points only, Medium: balanced, Long: detailed analysis",
-            )
-
-        with col2:
-            # Add tags input
-            tags = st.text_input(
-                "Tags (comma-separated):",
-                help="Add tags to organize your summaries (e.g., tech, news, tutorial)",
-            )
+        # Set tags to empty string (tags input removed)
+        tags = ""
 
         # Check if URL has a cached summary and show redo option
         cached_video_info = None
@@ -202,29 +200,26 @@ def main():
             view_video_id = st.session_state.pop("view_cached")
             cached_video = yt.get_cached_video(view_video_id)
             if cached_video:
-                left_column, right_column = st.columns(2)
-                with left_column:
-                    display_video_info(cached_video, cached=True)
-                with right_column:
-                    st.write("### Summary (Cached):")
-                    st.write(cached_video["summary"])
-                    if cached_video.get("topics"):
-                        st.write("### Topics and Timestamps:")
-                        for topic, timestamp in cached_video["topics"].items():
-                            st.write(f"- {topic} [{timestamp}]")
-                    if st.button(
-                        "🔄 Redo Summary",
-                        key=f"redo_view_{view_video_id}",
-                        help="Regenerate the summary with updated prompts or settings",
-                    ):
-                        if yt.delete_cached_video(view_video_id):
-                            st.session_state["url"] = url
-                            st.session_state["lang"] = lang
-                            st.session_state["summary_length"] = summary_length
-                            st.session_state["tags"] = tags
-                            st.session_state["auto_summarize"] = True
-                            st.success("Cache cleared. Regenerating summary...")
-                            st.rerun()
+                display_video_info(cached_video, cached=True)
+                st.write("### Summary (Cached):")
+                st.write(cached_video["summary"])
+                if cached_video.get("topics"):
+                    st.write("### Topics and Timestamps:")
+                    for topic, timestamp in cached_video["topics"].items():
+                        st.write(f"- {topic} [{timestamp}]")
+                if st.button(
+                    "🔄 Redo Summary",
+                    key=f"redo_view_{view_video_id}",
+                    help="Regenerate the summary with updated prompts or settings",
+                ):
+                    if yt.delete_cached_video(view_video_id):
+                        st.session_state["url"] = url
+                        st.session_state["lang"] = lang
+                        st.session_state["summary_length"] = summary_length
+                        st.session_state["tags"] = tags
+                        st.session_state["auto_summarize"] = True
+                        st.success("Cache cleared. Regenerating summary...")
+                        st.rerun()
 
         if st.button("Summarize") or auto_summarize:
             if not url:
@@ -242,38 +237,33 @@ def main():
 
                     if cached_video:
                         # Use cached data
-                        left_column, right_column = st.columns(2)
+                        display_video_info(cached_video, cached=True)
+                        st.write("### Summary (Cached):")
+                        st.write(cached_video["summary"])
 
-                        with left_column:
-                            display_video_info(cached_video, cached=True)
+                        # Display topics if available
+                        if cached_video.get("topics"):
+                            st.write("### Topics and Timestamps:")
+                            for topic, timestamp in cached_video["topics"].items():
+                                st.write(f"- {topic} [{timestamp}]")
 
-                        with right_column:
-                            st.write("### Summary (Cached):")
-                            st.write(cached_video["summary"])
-
-                            # Display topics if available
-                            if cached_video.get("topics"):
-                                st.write("### Topics and Timestamps:")
-                                for topic, timestamp in cached_video["topics"].items():
-                                    st.write(f"- {topic} [{timestamp}]")
-
-                            # Add redo summary button
-                            if st.button(
-                                "🔄 Redo Summary",
-                                key=f"redo_cached_{video_id}",
-                                help="Regenerate the summary with updated prompts or settings",
-                            ):
-                                if yt.delete_cached_video(video_id):
-                                    # Store URL and parameters in session state
-                                    st.session_state["url"] = url
-                                    st.session_state["lang"] = lang
-                                    st.session_state["summary_length"] = summary_length
-                                    st.session_state["tags"] = tags
-                                    st.session_state["redo_summary"] = True
-                                    st.success(
-                                        "Cache cleared. Regenerating summary with current settings..."
-                                    )
-                                    st.rerun()
+                        # Add redo summary button
+                        if st.button(
+                            "🔄 Redo Summary",
+                            key=f"redo_cached_{video_id}",
+                            help="Regenerate the summary with updated prompts or settings",
+                        ):
+                            if yt.delete_cached_video(video_id):
+                                # Store URL and parameters in session state
+                                st.session_state["url"] = url
+                                st.session_state["lang"] = lang
+                                st.session_state["summary_length"] = summary_length
+                                st.session_state["tags"] = tags
+                                st.session_state["redo_summary"] = True
+                                st.success(
+                                    "Cache cleared. Regenerating summary with current settings..."
+                                )
+                                st.rerun()
                     else:
                         try:
                             # Process video with new parameters
@@ -282,9 +272,6 @@ def main():
                             text = None
                             topics = {}
                             timestamps = {}
-
-                            # Create columns for layout
-                            left_column, right_column = st.columns(2)
 
                             # Process the video and stream the summary
                             for response in yt.process_video(
@@ -298,12 +285,9 @@ def main():
                                     video_info = response["video_info"]
                                     text = response["text"]
 
-                                    with left_column:
-                                        display_video_info(video_info)
-
-                                    with right_column:
-                                        st.write("### Summary:")
-                                        summary_placeholder = st.empty()
+                                    display_video_info(video_info)
+                                    st.write("### Summary:")
+                                    summary_placeholder = st.empty()
 
                                 elif response.get("type") == "chunk":
                                     # Summary chunk received
@@ -317,49 +301,48 @@ def main():
                                     timestamps = response.get("timestamps", {})
                                     llm_model = response.get("llm_model", "unknown")
 
-                                    with right_column:
-                                        if topics:
-                                            st.write("### Topics and Timestamps:")
-                                            for topic, timestamp in topics.items():
-                                                st.write(f"- {topic} [{timestamp}]")
+                                    if topics:
+                                        st.write("### Topics and Timestamps:")
+                                        for topic, timestamp in topics.items():
+                                            st.write(f"- {topic} [{timestamp}]")
 
-                                        # Save to database with new fields
-                                        yt.db.execute_with_session(
-                                            lambda session: VideoRepository.save_video_summary(
-                                                session,
-                                                video_info,
-                                                text,
-                                                summary_text,
-                                                text,
-                                                tags=tags,
-                                                summary_length=summary_length,
-                                                llm_model=llm_model,
-                                                topics=topics,
-                                                timestamps=timestamps,
-                                            )
+                                    # Save to database with new fields
+                                    yt.db.execute_with_session(
+                                        lambda session: VideoRepository.save_video_summary(
+                                            session,
+                                            video_info,
+                                            text,
+                                            summary_text,
+                                            text,
+                                            tags=tags,
+                                            summary_length=summary_length,
+                                            llm_model=llm_model,
+                                            topics=topics,
+                                            timestamps=timestamps,
                                         )
+                                    )
 
-                                        st.success("Video processed successfully!")
+                                    st.success("Video processed successfully!")
 
-                                        # Add redo summary button
-                                        if st.button(
-                                            "🔄 Redo Summary",
-                                            key=f"redo_summary_{video_id}",
-                                            help="Regenerate the summary with updated prompts or settings",
-                                        ):
-                                            if yt.delete_cached_video(video_id):
-                                                # Store URL and parameters in session state
-                                                st.session_state["url"] = url
-                                                st.session_state["lang"] = lang
-                                                st.session_state["summary_length"] = (
-                                                    summary_length
-                                                )
-                                                st.session_state["tags"] = tags
-                                                st.session_state["redo_summary"] = True
-                                                st.success(
-                                                    "Summary cleared. Regenerating with current settings..."
-                                                )
-                                                st.rerun()
+                                    # Add redo summary button
+                                    if st.button(
+                                        "🔄 Redo Summary",
+                                        key=f"redo_summary_{video_id}",
+                                        help="Regenerate the summary with updated prompts or settings",
+                                    ):
+                                        if yt.delete_cached_video(video_id):
+                                            # Store URL and parameters in session state
+                                            st.session_state["url"] = url
+                                            st.session_state["lang"] = lang
+                                            st.session_state["summary_length"] = (
+                                                summary_length
+                                            )
+                                            st.session_state["tags"] = tags
+                                            st.session_state["redo_summary"] = True
+                                            st.success(
+                                                "Summary cleared. Regenerating with current settings..."
+                                            )
+                                            st.rerun()
 
                                 elif response.get("type") == "error":
                                     st.error(
