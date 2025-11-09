@@ -14,16 +14,27 @@ class VideoSummarizer:
         """Initialize summarizer with prompt templates."""
         TEMPLATE_SHORT = """Given the subtitles of a Youtube video, create a short summary that includes:
 
-1. Overview (2-3 sentences)
-   - Brief summary of what the video covers
-   - Main purpose or theme
+1. Overview (2 sentences max)
+   - First sentence: Summary of what is discussed in the video
+   - Second sentence: Must answer the key questions raised in the video - mention specific causes, parties, entities, outcomes, or conclusions discussed (e.g., "The decline is attributed to **policy failures** and voter migration to the **PQ and Liberals**, with recovery unlikely before 2026")
+   - Use **markdown bold formatting** to highlight important keywords, themes, parties, entities, or concepts
 
 2. Main Key Points:
-   - List up to 10 most important points from the video
-   - Each point should be concise but informative
-   - Include timestamps where relevant
-   - Focus on the most crucial information
+   - List up to 10 most important points from the video (this is the highest limit; use fewer points if the content can be adequately summarized with less)
+   - Order points by importance, not chronologically
+   - Each point should be brief (1-2 lines max) and provide insight, knowledge, or useful information gained from watching the video
+   - Focus on actionable insights and key takeaways, not just an enumeration of topics discussed
    - Use **markdown bold formatting** to highlight important keywords, themes, or concepts in each point
+   - Avoid verbose explanations; be direct and concise
+
+Examples of good key points:
+- "**CAQ projected to lose all seats** due to policy failures and voter migration to PQ and Liberals"
+- "**First-past-the-post system** may distort seat allocation, with PQ potentially winning majority with <40% vote"
+- "**Legault's leadership** is central to CAQ identity, making leadership change difficult"
+
+Examples of bad key points (too verbose):
+- "The CAQ is facing an unprecedented political crisis, with polls suggesting it could lose every seat in the provincial legislature, a stark reversal from its previous landslide victory"
+- "Recent by-elections have confirmed the CAQ's decline, with the party suffering major vote losses and finishing far behind rivals, even in former strongholds"
 
 Write the summary in {lang}. Keep it concise and focused on the essentials. Use markdown formatting for emphasis.
 
@@ -36,27 +47,35 @@ Subtitles: {subtitles}
         TEMPLATE_MEDIUM = """Given the subtitles of a Youtube video, create a medium-length summary that includes:
 
 1. Overview (2-3 sentences)
+   - First sentence: Summary of what is discussed in the video
+   - Second sentence: Must answer the key questions raised in the video - mention specific causes, parties, entities, outcomes, or conclusions discussed
+   - Use **markdown bold formatting** to highlight important keywords, themes, parties, entities, or concepts
+
 2. Main Topics:
    - Extract and list key topics discussed
    - Include timestamps where each topic starts
    - Organize topics hierarchically if possible
 
 3. Key Points:
-   - Bullet points of main arguments/ideas
-   - Include relevant timestamps
-   - Include 5-8 key points with brief explanations
+   - Include 5-8 key points with brief explanations (2-3 lines each)
+   - Include relevant timestamps where applicable
+   - Each point should provide insight, knowledge, or useful information gained from watching the video
+   - Focus on actionable insights and key takeaways, not just an enumeration of topics discussed
    - Use **markdown bold formatting** to highlight important keywords, themes, or concepts in each point
+   - Balance conciseness with sufficient context for understanding
 
 4. Important Quotes:
    - Notable statements with timestamps
    - Include speaker attribution if available
+   - Use **markdown bold formatting** for emphasis on key quotes
 
 5. Technical Details (if applicable):
    - Specific technical information
    - Definitions or explanations
    - Code examples or technical concepts
+   - Use **markdown bold formatting** to highlight technical terms and concepts
 
-Write the summary in {lang}. Focus on clarity and structure. Use markdown formatting for emphasis.
+Write the summary in {lang}. Focus on clarity and structure. Use markdown formatting for emphasis throughout.
 
 Video titled "{title}" from the channel "{channel}"
 
@@ -67,9 +86,10 @@ Subtitles: {subtitles}
         TEMPLATE_LONG = """Given the subtitles of a Youtube video, create a comprehensive, in-depth summary that includes:
 
 1. Overview (3-5 sentences)
-   - Detailed summary of what the video covers
-   - Main purpose, theme, and context
-   - Overall significance or impact
+   - First sentence: Summary of what is discussed in the video
+   - Second sentence: Must answer the key questions raised in the video - mention specific causes, parties, entities, outcomes, or conclusions discussed
+   - Additional sentences: Main purpose, theme, context, and overall significance or impact
+   - Use **markdown bold formatting** to highlight important keywords, themes, parties, entities, or concepts
 
 2. Main Topics:
    - Extract and list all key topics discussed in detail
@@ -78,9 +98,10 @@ Subtitles: {subtitles}
    - Explain the relationship between topics
 
 3. Key Points:
-   - Detailed bullet points of main arguments/ideas
-   - Include relevant timestamps
-   - Provide 10-15 comprehensive points with supporting context, examples, and explanations
+   - Provide 10-15 comprehensive points with supporting context, examples, and explanations (3-5 lines each)
+   - Include relevant timestamps where applicable
+   - Each point should provide deep insight, knowledge, or useful information gained from watching the video
+   - Focus on actionable insights and key takeaways, not just an enumeration of topics discussed
    - Explain the reasoning behind key arguments
    - Use **markdown bold formatting** to highlight important keywords, themes, or concepts in each point
 
@@ -88,25 +109,28 @@ Subtitles: {subtitles}
    - Notable statements with timestamps
    - Include speaker attribution if available
    - Explain the context and significance of each quote
+   - Use **markdown bold formatting** for emphasis on key quotes
 
 5. Technical Details (if applicable):
    - Comprehensive technical information
    - Detailed definitions or explanations
    - Code examples or technical concepts with context
    - Step-by-step explanations where relevant
+   - Use **markdown bold formatting** to highlight technical terms and concepts
 
 6. Analysis and Insights:
-   - Deeper analysis of the content
+   - Deeper analysis of the content with focus on insights and knowledge gained
    - Connections between different points
    - Implications and applications
    - Critical evaluation where appropriate
+   - Use **markdown bold formatting** to highlight key insights
 
 7. Additional Context:
    - Background information relevant to understanding the video
    - Related concepts or prerequisites
    - Further reading or resources mentioned
 
-Write the summary in {lang}. Provide comprehensive detail, context, and analysis. Use markdown formatting for emphasis.
+Write the summary in {lang}. Provide comprehensive detail, context, and analysis. Use markdown formatting for emphasis throughout.
 
 Video titled "{title}" from the channel "{channel}"
 
