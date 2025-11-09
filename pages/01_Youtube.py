@@ -272,6 +272,7 @@ def main():
                             text = None
                             topics = {}
                             timestamps = {}
+                            processing_successful = False
 
                             # Process the video and stream the summary
                             for response in yt.process_video(
@@ -300,6 +301,7 @@ def main():
                                     topics = response.get("topics", {})
                                     timestamps = response.get("timestamps", {})
                                     llm_model = response.get("llm_model", "unknown")
+                                    processing_successful = True
 
                                     if topics:
                                         st.write("### Topics and Timestamps:")
@@ -349,7 +351,9 @@ def main():
                                         f"An error occurred: {response['message']}"
                                     )
                                     break
-                            else:
+
+                            # Only show error if processing was not successful
+                            if not processing_successful:
                                 st.error(
                                     "Failed to process video. The video might be unavailable or have no subtitles."
                                 )

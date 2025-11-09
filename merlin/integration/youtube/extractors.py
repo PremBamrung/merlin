@@ -284,16 +284,39 @@ class ChannelExtractor:
 
         try:
             channel = Channel(channel_url)
-            result = {
-                "videos": f"{len(channel.videos):,}",
-                "total_views": f"{channel.views:,}",
-            }
+            # Try to get channel info, but handle cases where YouTube API structure has changed
+            try:
+                videos_count = len(channel.videos) if hasattr(channel, "videos") else 0
+                views = channel.views if hasattr(channel, "views") else 0
+                result = {
+                    "videos": f"{videos_count:,}",
+                    "subscribers": (
+                        f"{channel.subscriber_count:,}"
+                        if hasattr(channel, "subscriber_count")
+                        else "N/A"
+                    ),
+                    "total_views": f"{views:,}",
+                }
+            except (KeyError, AttributeError) as e:
+                # Handle cases where pytube can't access certain fields due to YouTube API changes
+                logger.warning(f"Could not access some channel fields: {str(e)}")
+                result = {
+                    "videos": "N/A",
+                    "subscribers": "N/A",
+                    "total_views": "N/A",
+                }
+
             duration = (datetime.now() - start_time).total_seconds()
             logger.info(f"Successfully extracted channel info in {duration:.2f}s")
             return result
         except Exception as e:
             duration = (datetime.now() - start_time).total_seconds()
-            logger.error(
-                f"Failed to extract channel info after {duration:.2f}s: {str(e)}"
+            logger.warning(
+                f"Failed to extract channel info after {duration:.2f}s: {str(e)}. Continuing with default values."
             )
-            return {}
+            # Return default values instead of empty dict to ensure video processing continues
+            return {
+                "videos": "N/A",
+                "subscribers": "N/A",
+                "total_views": "N/A",
+            }
