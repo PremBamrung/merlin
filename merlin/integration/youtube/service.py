@@ -4,6 +4,7 @@ from PIL import Image
 
 from merlin.database.manager import DatabaseManager
 from merlin.database.repositories import VideoRepository
+from merlin.integration.youtube.audio_transcriber import AudioTranscriber
 from merlin.integration.youtube.extractors import (
     ChannelExtractor,
     SubtitleExtractor,
@@ -65,30 +66,80 @@ class YouTubeService:
             or None if processing fails
         """
         # Extract video ID
+        if streaming:
+            yield {"type": "status", "message": "Extracting video ID..."}
         video_id = self.video_extractor.extract_video_id(url)
         if not video_id:
             logger.error("Failed to extract video ID")
+            if streaming:
+                yield {"type": "error", "message": "Failed to extract video ID"}
             return None
 
         # Extract video info
+        if streaming:
+            yield {"type": "status", "message": "Extracting video information..."}
         video_info = self.video_extractor.extract_video_info(url)
         if not video_info:
             logger.error("Failed to extract video info")
+            if streaming:
+                yield {
+                    "type": "error",
+                    "message": "Failed to extract video information",
+                }
             return None
         video_info["video_id"] = video_id
 
         # Extract subtitles
+        if streaming:
+            yield {"type": "status", "message": "Extracting subtitles..."}
         subtitles = self.subtitle_extractor.extract_subtitles(
             video_id, ["en", "fr", "de"]
         )
         if not subtitles:
-            logger.error("Failed to extract subtitles")
-            return None
+            logger.warning(
+                "No subtitles found, attempting audio download and transcription fallback"
+            )
+            if streaming:
+                yield {
+                    "type": "status",
+                    "message": "No subtitles found. Downloading audio...",
+                }
+            # Fallback: download audio and transcribe using Groq Whisper
+            success, fallback_subtitles, error_msg = AudioTranscriber.transcribe_video(
+                url
+            )
+            if success and fallback_subtitles:
+                if streaming:
+                    yield {
+                        "type": "status",
+                        "message": f"Transcribing audio... ({len(fallback_subtitles)} segments found)",
+                    }
+                logger.info(
+                    f"Successfully transcribed audio with {len(fallback_subtitles)} segments"
+                )
+                subtitles = fallback_subtitles
+            else:
+                logger.error(
+                    f"Failed to extract subtitles and audio transcription fallback failed: {error_msg}"
+                )
+                if streaming:
+                    yield {
+                        "type": "error",
+                        "message": f"Failed to extract subtitles and audio transcription failed: {error_msg}",
+                    }
+                return None
 
         # Convert subtitles to text
+        if streaming:
+            yield {"type": "status", "message": "Processing transcript..."}
         text = self.subtitle_extractor.extract_text(subtitles)
         if not text:
             logger.error("Failed to extract text from subtitles")
+            if streaming:
+                yield {
+                    "type": "error",
+                    "message": "Failed to extract text from subtitles",
+                }
             return None
 
         try:
@@ -99,6 +150,7 @@ class YouTubeService:
                     yield {"type": "metadata", "video_info": video_info, "text": text}
 
                     # Then stream the summary chunks
+                    yield {"type": "status", "message": "Generating summary..."}
                     summary_text = ""
                     for chunk in self.summarizer.summarize(
                         subtitles=text,
