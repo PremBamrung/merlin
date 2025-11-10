@@ -244,143 +244,153 @@ def main():
                 st.error("Please enter a valid YouTube URL.")
                 return
 
-            # Show loading spinner during processing
-            with st.spinner("Processing video... This may take a few minutes."):
-                video_id = yt.video_extractor.extract_video_id(url)
-                if video_id:
-                    # Check for cached video first (unless we're auto-summarizing after clearing cache)
-                    cached_video = (
-                        None if auto_summarize else yt.get_cached_video(video_id)
-                    )
+            # Create status container for progress updates
+            status_container = st.empty()
 
-                    if cached_video:
-                        # Use cached data
-                        display_video_info(cached_video, cached=True)
-                        st.write("### Summary (Cached):")
-                        st.write(cached_video["summary"])
+            video_id = yt.video_extractor.extract_video_id(url)
+            if video_id:
+                # Check for cached video first (unless we're auto-summarizing after clearing cache)
+                cached_video = None if auto_summarize else yt.get_cached_video(video_id)
 
-                        # Display topics if available
-                        if cached_video.get("topics"):
-                            st.write("### Topics and Timestamps:")
-                            for topic, timestamp in cached_video["topics"].items():
-                                st.write(f"- {topic} [{timestamp}]")
+                if cached_video:
+                    # Use cached data
+                    display_video_info(cached_video, cached=True)
+                    st.write("### Summary (Cached):")
+                    st.write(cached_video["summary"])
 
-                        # Add redo summary button
-                        if st.button(
-                            "🔄 Redo Summary",
-                            key=f"redo_cached_{video_id}",
-                            help="Regenerate the summary with updated prompts or settings",
-                        ):
-                            if yt.delete_cached_video(video_id):
-                                # Store URL and parameters in session state
-                                st.session_state["url"] = url
-                                st.session_state["lang"] = lang
-                                st.session_state["summary_length"] = summary_length
-                                st.session_state["tags"] = tags
-                                st.session_state["redo_summary"] = True
-                                st.success(
-                                    "Cache cleared. Regenerating summary with current settings..."
-                                )
-                                st.rerun()
-                    else:
-                        try:
-                            # Process video with new parameters
-                            summary_text = ""
-                            video_info = None
-                            text = None
-                            topics = {}
-                            timestamps = {}
-                            processing_successful = False
+                    # Display topics if available
+                    if cached_video.get("topics"):
+                        st.write("### Topics and Timestamps:")
+                        for topic, timestamp in cached_video["topics"].items():
+                            st.write(f"- {topic} [{timestamp}]")
 
-                            # Process the video and stream the summary
-                            for response in yt.process_video(
-                                url,
-                                lang=lang,
-                                summary_length=summary_length,
-                                streaming=True,
-                            ):
-                                if response.get("type") == "metadata":
-                                    # Initial metadata received
-                                    video_info = response["video_info"]
-                                    text = response["text"]
-
-                                    display_video_info(video_info)
-                                    st.write("### Summary:")
-                                    summary_placeholder = st.empty()
-
-                                elif response.get("type") == "chunk":
-                                    # Summary chunk received
-                                    summary_text += response["content"]
-                                    summary_placeholder.write(summary_text)
-
-                                elif response.get("type") == "summary_metadata":
-                                    # Final metadata received
-                                    summary_text = response["summary"]
-                                    topics = response.get("topics", {})
-                                    timestamps = response.get("timestamps", {})
-                                    llm_model = response.get("llm_model", "unknown")
-                                    processing_successful = True
-
-                                    if topics:
-                                        st.write("### Topics and Timestamps:")
-                                        for topic, timestamp in topics.items():
-                                            st.write(f"- {topic} [{timestamp}]")
-
-                                    # Save to database with new fields
-                                    yt.db.execute_with_session(
-                                        lambda session: VideoRepository.save_video_summary(
-                                            session,
-                                            video_info,
-                                            text,
-                                            summary_text,
-                                            text,
-                                            tags=tags,
-                                            summary_length=summary_length,
-                                            llm_model=llm_model,
-                                            topics=topics,
-                                            timestamps=timestamps,
-                                        )
-                                    )
-
-                                    st.success("Video processed successfully!")
-
-                                    # Add redo summary button
-                                    if st.button(
-                                        "🔄 Redo Summary",
-                                        key=f"redo_summary_{video_id}",
-                                        help="Regenerate the summary with updated prompts or settings",
-                                    ):
-                                        if yt.delete_cached_video(video_id):
-                                            # Store URL and parameters in session state
-                                            st.session_state["url"] = url
-                                            st.session_state["lang"] = lang
-                                            st.session_state["summary_length"] = (
-                                                summary_length
-                                            )
-                                            st.session_state["tags"] = tags
-                                            st.session_state["redo_summary"] = True
-                                            st.success(
-                                                "Summary cleared. Regenerating with current settings..."
-                                            )
-                                            st.rerun()
-
-                                elif response.get("type") == "error":
-                                    st.error(
-                                        f"An error occurred: {response['message']}"
-                                    )
-                                    break
-
-                            # Only show error if processing was not successful
-                            if not processing_successful:
-                                st.error(
-                                    "Failed to process video. The video might be unavailable or have no subtitles."
-                                )
-                        except Exception as e:
-                            st.error(f"An error occurred: {str(e)}")
-                            # Log the error for debugging
-                            logger.error(f"Error processing video: {str(e)}")
+                    # Add redo summary button
+                    if st.button(
+                        "🔄 Redo Summary",
+                        key=f"redo_cached_{video_id}",
+                        help="Regenerate the summary with updated prompts or settings",
+                    ):
+                        if yt.delete_cached_video(video_id):
+                            # Store URL and parameters in session state
+                            st.session_state["url"] = url
+                            st.session_state["lang"] = lang
+                            st.session_state["summary_length"] = summary_length
+                            st.session_state["tags"] = tags
+                            st.session_state["redo_summary"] = True
+                            st.success(
+                                "Cache cleared. Regenerating summary with current settings..."
+                            )
+                            st.rerun()
                 else:
-                    st.error("Invalid YouTube video URL. Please try again.")
+                    try:
+                        # Process video with new parameters
+                        summary_text = ""
+                        video_info = None
+                        text = None
+                        topics = {}
+                        timestamps = {}
+                        processing_successful = False
+
+                        # Process the video and stream the summary
+                        for response in yt.process_video(
+                            url,
+                            lang=lang,
+                            summary_length=summary_length,
+                            streaming=True,
+                        ):
+                            # Handle status updates
+                            if response.get("type") == "status":
+                                status_container.info(
+                                    f"⏳ {response.get('message', 'Processing...')}"
+                                )
+
+                            elif response.get("type") == "metadata":
+                                # Clear status and show metadata
+                                status_container.empty()
+                                # Initial metadata received
+                                video_info = response["video_info"]
+                                text = response["text"]
+
+                                display_video_info(video_info)
+                                st.write("### Summary:")
+                                summary_placeholder = st.empty()
+
+                            elif response.get("type") == "chunk":
+                                # Summary chunk received
+                                summary_text += response["content"]
+                                summary_placeholder.write(summary_text)
+
+                            elif response.get("type") == "summary_metadata":
+                                # Clear status container
+                                status_container.empty()
+                                # Final metadata received
+                                summary_text = response["summary"]
+                                topics = response.get("topics", {})
+                                timestamps = response.get("timestamps", {})
+                                llm_model = response.get("llm_model", "unknown")
+                                processing_successful = True
+
+                                if topics:
+                                    st.write("### Topics and Timestamps:")
+                                    for topic, timestamp in topics.items():
+                                        st.write(f"- {topic} [{timestamp}]")
+
+                                # Save to database with new fields
+                                yt.db.execute_with_session(
+                                    lambda session: VideoRepository.save_video_summary(
+                                        session,
+                                        video_info,
+                                        text,
+                                        summary_text,
+                                        text,
+                                        tags=tags,
+                                        summary_length=summary_length,
+                                        llm_model=llm_model,
+                                        topics=topics,
+                                        timestamps=timestamps,
+                                    )
+                                )
+
+                                st.success("✅ Video processed successfully!")
+
+                                # Add redo summary button
+                                if st.button(
+                                    "🔄 Redo Summary",
+                                    key=f"redo_summary_{video_id}",
+                                    help="Regenerate the summary with updated prompts or settings",
+                                ):
+                                    if yt.delete_cached_video(video_id):
+                                        # Store URL and parameters in session state
+                                        st.session_state["url"] = url
+                                        st.session_state["lang"] = lang
+                                        st.session_state["summary_length"] = (
+                                            summary_length
+                                        )
+                                        st.session_state["tags"] = tags
+                                        st.session_state["redo_summary"] = True
+                                        st.success(
+                                            "Summary cleared. Regenerating with current settings..."
+                                        )
+                                        st.rerun()
+
+                            elif response.get("type") == "error":
+                                status_container.empty()
+                                st.error(f"❌ An error occurred: {response['message']}")
+                                break
+
+                        # Only show error if processing was not successful
+                        if not processing_successful:
+                            status_container.empty()
+                            st.error(
+                                "Failed to process video. The video might be unavailable or have no subtitles."
+                            )
+                    except Exception as e:
+                        status_container.empty()
+                        st.error(f"❌ An error occurred: {str(e)}")
+                        # Log the error for debugging
+                        logger.error(f"Error processing video: {str(e)}")
+            else:
+                st.error("Invalid YouTube video URL. Please try again.")
 
     elif choice == "View Summarized Videos":
         st.title("Summarized YouTube Videos")
