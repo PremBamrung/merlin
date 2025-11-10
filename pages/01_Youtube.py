@@ -70,9 +70,27 @@ def display_video_info(video_info: dict, cached: bool = False):
         st.write(f"**Date:** {video_info['date']}")
         st.write(f"**Views:** {video_info['views']}")
         st.write(f"**Duration:** {video_info['duration']}")
-        st.write(f"**Words count:** {video_info.get('words_count', 'N/A')}")
-        st.write(f"**Subscribers:** {video_info['subscribers']}")
-        st.write(f"**Videos:** {video_info['videos']}")
+
+        # Format words count
+        words_count = video_info.get("words_count")
+        if words_count is not None:
+            st.write(f"**Words count:** {words_count:,}")
+        else:
+            st.write(f"**Words count:** N/A")
+
+        # Format subscribers
+        subscribers = video_info.get("subscribers")
+        if subscribers and subscribers != "N/A":
+            st.write(f"**Subscribers:** {subscribers}")
+        else:
+            st.write(f"**Subscribers:** N/A")
+
+        # Format videos
+        videos = video_info.get("videos")
+        if videos and videos != "N/A":
+            st.write(f"**Videos:** {videos}")
+        else:
+            st.write(f"**Videos:** N/A")
 
 
 def filter_videos(videos, search_query=None, selected_tags=None):
