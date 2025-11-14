@@ -1,6 +1,7 @@
 import os
 import re
 import tempfile
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import requests
@@ -9,8 +10,15 @@ from dotenv import load_dotenv
 
 from merlin.utils import logger
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from project root
+project_root = Path(__file__).parent.parent.parent
+env_path = project_root / ".env"
+load_dotenv(env_path)
+
+# Also try merlin/.env for backwards compatibility
+merlin_env_path = project_root / "merlin" / ".env"
+if merlin_env_path.exists():
+    load_dotenv(merlin_env_path, override=False)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 

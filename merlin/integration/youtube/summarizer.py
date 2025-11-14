@@ -210,32 +210,23 @@ Subtitles: {subtitles}
 
         return topics, timestamps
 
-    def summarize(
+    def _summarize_non_streaming(
         self,
         subtitles: str,
         title: str,
         channel: str,
-        lang: str = "english",
-        summary_length: str = "medium",
-        streaming: bool = False,
-    ) -> Generator[str, None, None] | tuple[str, dict, dict]:
-        """Generate a summary of the video content.
+        lang: str,
+        summary_length: str,
+    ) -> tuple[str, dict, dict]:
+        """Generate a non-streaming summary of the video content.
 
-        Args:
-            subtitles: The video subtitles text
-            title: The video title
-            channel: The channel name
-            lang: Target language for the summary
-            streaming: Whether to stream the response
-
-        Returns:
-            Either a generator yielding summary chunks (if streaming=True)
-            or the complete summary text
+        This is a separate method to avoid yield statements, which would
+        make the function a generator even when streaming=False.
         """
         start_time = datetime.now()
         logger.info(f"Starting summarization for video: {title}")
         logger.debug(
-            f"Summarization parameters - Language: {lang}, Length: {summary_length}, Streaming: {streaming}"
+            f"Summarization parameters - Language: {lang}, Length: {summary_length}, Streaming: False"
         )
 
         # Get the appropriate template based on summary length
@@ -256,39 +247,106 @@ Subtitles: {subtitles}
         }
 
         try:
-            if streaming:
-                logger.debug("Using streaming mode for summarization")
-                for chunk in llm_chain.stream(prompt_input):
-                    # Handle different chunk types from langchain
-                    if hasattr(chunk, "content"):
-                        content = chunk.content
-                    elif isinstance(chunk, str):
-                        content = chunk
-                    else:
-                        # Try to get content from AIMessage or similar
-                        content = str(chunk) if chunk else ""
-
-                    if content:
-                        yield content
+            # Use invoke() instead of deprecated run()
+            response = llm_chain.invoke(prompt_input)
+            # Extract content from response
+            if hasattr(response, "content"):
+                summary = response.content
+            elif isinstance(response, str):
+                summary = response
             else:
-                # Use invoke() instead of deprecated run()
-                response = llm_chain.invoke(prompt_input)
-                # Extract content from response
-                if hasattr(response, "content"):
-                    summary = response.content
-                elif isinstance(response, str):
-                    summary = response
+                summary = str(response)
+
+            duration = (datetime.now() - start_time).total_seconds()
+            logger.info(f"Summarization completed in {duration:.2f}s")
+
+            # Extract topics and timestamps
+            topics, timestamps = self.extract_topics_and_timestamps(
+                summary, normalized_length
+            )
+            return summary, topics, timestamps
+        except Exception as e:
+            duration = (datetime.now() - start_time).total_seconds()
+            logger.error(f"Summarization failed after {duration:.2f}s: {str(e)}")
+            raise
+
+    def summarize(
+        self,
+        subtitles: str,
+        title: str,
+        channel: str,
+        lang: str = "english",
+        summary_length: str = "medium",
+        streaming: bool = False,
+    ) -> Generator[str, None, None] | tuple[str, dict, dict]:
+        """Generate a summary of the video content.
+
+        Args:
+            subtitles: The video subtitles text
+            title: The video title
+            channel: The channel name
+            lang: Target language for the summary
+            streaming: Whether to stream the response
+
+        Returns:
+            Either a generator yielding summary chunks (if streaming=True)
+            or a tuple of (summary, topics, timestamps) (if streaming=False)
+        """
+        if streaming:
+            return self._summarize_streaming(
+                subtitles, title, channel, lang, summary_length
+            )
+        else:
+            return self._summarize_non_streaming(
+                subtitles, title, channel, lang, summary_length
+            )
+
+    def _summarize_streaming(
+        self,
+        subtitles: str,
+        title: str,
+        channel: str,
+        lang: str,
+        summary_length: str,
+    ) -> Generator[str, None, None]:
+        """Generate a streaming summary of the video content."""
+        start_time = datetime.now()
+        logger.info(f"Starting summarization for video: {title}")
+        logger.debug(
+            f"Summarization parameters - Language: {lang}, Length: {summary_length}, Streaming: True"
+        )
+
+        # Get the appropriate template based on summary length
+        normalized_length = summary_length.lower()
+        if normalized_length not in self.templates:
+            logger.warning(
+                f"Unknown summary length '{summary_length}', defaulting to 'medium'"
+            )
+            normalized_length = "medium"
+
+        prompt_template = self.templates[normalized_length]
+        llm_chain = prompt_template | llm
+        prompt_input = {
+            "subtitles": subtitles,
+            "lang": lang,
+            "title": title,
+            "channel": channel,
+        }
+
+        try:
+            logger.debug("Using streaming mode for summarization")
+            for chunk in llm_chain.stream(prompt_input):
+                # Handle different chunk types from langchain
+                if hasattr(chunk, "content"):
+                    content = chunk.content
+                elif isinstance(chunk, str):
+                    content = chunk
                 else:
-                    summary = str(response)
+                    # Try to get content from AIMessage or similar
+                    content = str(chunk) if chunk else ""
 
-                duration = (datetime.now() - start_time).total_seconds()
-                logger.info(f"Summarization completed in {duration:.2f}s")
-
-                # Extract topics and timestamps
-                topics, timestamps = self.extract_topics_and_timestamps(
-                    summary, normalized_length
-                )
-                return summary, topics, timestamps
+                if content:
+                    yield content
         except Exception as e:
             duration = (datetime.now() - start_time).total_seconds()
             logger.error(f"Summarization failed after {duration:.2f}s: {str(e)}")

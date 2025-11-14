@@ -54,7 +54,17 @@ init_db()
 session = scoped_session(SessionLocal)
 yt = YouTube()
 
-load_dotenv("merlin/.env")
+# Load environment variables from project root first, then merlin/.env for backwards compatibility
+from pathlib import Path
+
+project_root = Path(__file__).parent
+root_env_path = project_root / ".env"
+merlin_env_path = project_root / "merlin" / ".env"
+
+if root_env_path.exists():
+    load_dotenv(root_env_path)
+if merlin_env_path.exists():
+    load_dotenv(merlin_env_path, override=False)
 
 
 st.title("🧙‍♂️ Merlin")
