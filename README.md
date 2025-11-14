@@ -124,9 +124,15 @@ merlin/
 │   │   └── repositories.py # Data access layer
 │   └── utils.py           # Utility functions
 ├── merlin.db              # SQLite database file
-├── requirements.txt       # Python dependencies
-├── LICENSE                # Apache License 2.0
-└── README.md              # This file
+├── tests/                 # Test suite
+│   ├── __init__.py        # Test package initialization
+│   ├── conftest.py        # Shared fixtures
+│   ├── test_azure_openai.py  # Azure OpenAI tests
+│   └── test_yt_subtitles.py  # YouTube subtitle tests
+├── pytest.ini             # Pytest configuration
+├── requirements.txt        # Python dependencies
+├── LICENSE                 # Apache License 2.0
+└── README.md               # This file
 ```
 
 ## 🛠️ Dependencies
@@ -139,6 +145,8 @@ merlin/
 - **sqlalchemy**: Database ORM
 - **python-dotenv**: Environment variable management
 - **Pillow**: Image processing
+- **pytest**: Testing framework
+- **pytest-xdist**: Parallel test execution
 
 See `requirements.txt` for complete dependency list with versions.
 
@@ -157,6 +165,82 @@ from merlin.llm.azureopenai import llm
 
 ### Database
 The application uses SQLite by default (`merlin.db`). The database is automatically initialized on first run. To reset the database, simply delete the `merlin.db` file.
+
+## 🧪 Testing
+
+The project uses [pytest](https://docs.pytest.org/) for testing with parallel execution support via [pytest-xdist](https://pytest-xdist.readthedocs.io/).
+
+### Running Tests
+
+**Run all tests:**
+```bash
+pytest tests/
+```
+
+**Run tests in parallel (faster):**
+```bash
+pytest tests/ -n auto
+```
+The `-n auto` flag automatically uses all available CPU cores for parallel execution.
+
+**Run specific test files:**
+```bash
+# Run only YouTube subtitle tests
+pytest tests/test_yt_subtitles.py
+
+# Run only Azure OpenAI tests
+pytest tests/test_azure_openai.py
+```
+
+**Run specific tests:**
+```bash
+# Run a specific test function
+pytest tests/test_yt_subtitles.py::test_video_id_extraction
+
+# Run tests matching a pattern
+pytest tests/ -k "subtitle"
+```
+
+**Skip tests that require Azure OpenAI:**
+```bash
+# Skip Azure OpenAI tests if not configured
+pytest tests/ -m "not requires_azure"
+```
+
+### Test Structure
+
+```
+tests/
+├── __init__.py              # Test package initialization
+├── conftest.py              # Shared fixtures and configuration
+├── test_azure_openai.py     # Azure OpenAI LLM tests
+└── test_yt_subtitles.py     # YouTube subtitle extraction tests
+```
+
+### Test Markers
+
+Tests are organized using pytest markers:
+- `@pytest.mark.requires_azure` - Tests that require Azure OpenAI configuration
+- `@pytest.mark.integration` - Integration tests
+- `@pytest.mark.slow` - Tests that take longer to run
+
+**Run tests by marker:**
+```bash
+# Run only Azure OpenAI tests
+pytest tests/ -m "requires_azure"
+
+# Run only non-Azure tests
+pytest tests/ -m "not requires_azure"
+```
+
+### Verbose Output
+
+For more detailed test output:
+```bash
+pytest tests/ -v              # Verbose output
+pytest tests/ -vv             # Very verbose output
+pytest tests/ -s              # Show print statements
+```
 
 ## 📝 License
 
