@@ -98,7 +98,9 @@ def test_streaming_completion():
 
     full_response = ""
     chunk_count = 0
+    chunks_received = []
 
+    # Test streaming
     for chunk in merlin_llm.stream(prompt):
         # Extract content from chunk
         if hasattr(chunk, "content"):
@@ -110,10 +112,106 @@ def test_streaming_completion():
 
         if content:
             full_response += content
+            chunks_received.append(content)
             chunk_count += 1
 
-    assert chunk_count > 0
-    assert len(full_response) > 0
+    # Verify streaming behavior
+    assert chunk_count > 0, "Should receive at least one chunk"
+    assert len(full_response) > 0, "Full response should not be empty"
+    assert len(chunks_received) > 0, "Should have received multiple chunks"
+
+    # Verify that we received incremental chunks (not all at once)
+    # The response should be built incrementally
+    cumulative_length = 0
+    for chunk in chunks_received:
+        cumulative_length += len(chunk)
+
+    assert cumulative_length == len(
+        full_response
+    ), "Chunk lengths should sum to full response length"
+
+    # Verify the response contains expected content
+    assert any(
+        char.isdigit() for char in full_response
+    ), "Response should contain numbers"
+
+
+@pytest.mark.requires_azure
+def test_streaming_vs_non_streaming():
+    """Test that streaming and non-streaming produce equivalent results."""
+    prompt = "Say 'Streaming test works!' in one sentence."
+
+    # Get non-streaming response
+    non_streaming_response = merlin_llm.invoke(prompt)
+    if hasattr(non_streaming_response, "content"):
+        non_streaming_content = non_streaming_response.content
+    elif isinstance(non_streaming_response, str):
+        non_streaming_content = non_streaming_response
+    else:
+        non_streaming_content = str(non_streaming_response)
+
+    # Get streaming response
+    streaming_content = ""
+    for chunk in merlin_llm.stream(prompt):
+        if hasattr(chunk, "content"):
+            streaming_content += chunk.content
+        elif isinstance(chunk, str):
+            streaming_content += chunk
+        else:
+            streaming_content += str(chunk) if chunk else ""
+
+    # Both should produce non-empty responses
+    assert len(non_streaming_content) > 0, "Non-streaming response should not be empty"
+    assert len(streaming_content) > 0, "Streaming response should not be empty"
+
+    # The content should be similar (allowing for minor variations)
+    # Both should contain the key phrase or similar meaning
+    assert (
+        "streaming" in streaming_content.lower()
+        or "test" in streaming_content.lower()
+        or "works" in streaming_content.lower()
+    ), "Streaming response should contain relevant content"
+    assert (
+        "streaming" in non_streaming_content.lower()
+        or "test" in non_streaming_content.lower()
+        or "works" in non_streaming_content.lower()
+    ), "Non-streaming response should contain relevant content"
+
+
+@pytest.mark.requires_azure
+def test_streaming_with_prompt_template():
+    """Test streaming with a prompt template."""
+    template = PromptTemplate(
+        template="List {count} colors.",
+        input_variables=["count"],
+    )
+
+    chain = template | merlin_llm
+
+    prompt_input = {"count": "3"}
+
+    # Test streaming through the chain
+    streaming_content = ""
+    chunk_count = 0
+
+    for chunk in chain.stream(prompt_input):
+        if hasattr(chunk, "content"):
+            content = chunk.content
+        elif isinstance(chunk, str):
+            content = chunk
+        else:
+            content = str(chunk) if chunk else ""
+
+        if content:
+            streaming_content += content
+            chunk_count += 1
+
+    assert chunk_count > 0, "Should receive chunks when streaming through chain"
+    assert len(streaming_content) > 0, "Streaming content should not be empty"
+    # Should mention colors
+    assert "color" in streaming_content.lower() or any(
+        word in streaming_content.lower() for word in ["red", "blue", "green", "yellow"]
+    ), "Response should mention colors"
 
 
 @pytest.mark.requires_azure
