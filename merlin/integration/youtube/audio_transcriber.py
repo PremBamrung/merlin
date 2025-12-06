@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from merlin.utils import logger
 
 # Load environment variables from project root
-project_root = Path(__file__).parent.parent.parent
+project_root = Path(__file__).parent.parent.parent.parent
 env_path = project_root / ".env"
 load_dotenv(env_path)
 
