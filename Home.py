@@ -7,7 +7,10 @@ from sqlalchemy.orm import scoped_session
 
 from merlin.database.models import SessionLocal, YouTubeVideoSummary, init_db
 from merlin.integration.youtube import YouTube
-from merlin.llm.openrouter import llm
+from merlin.integration.youtube.extractors import SubtitleExtractor, VideoExtractor
+from merlin.integration.youtube.summarizer import VideoSummarizer
+# from merlin.llm.openrouter import llm
+from merlin.llm.azureopenai import llm 
 from merlin.utils import logger, set_layout
 
 
@@ -53,6 +56,9 @@ init_db()
 # Initialize session and YouTube
 session = scoped_session(SessionLocal)
 yt = YouTube()
+video_extractor = VideoExtractor()
+subtitle_extractor = SubtitleExtractor()
+summarizer = VideoSummarizer()
 
 # Load environment variables from project root first, then merlin/.env for backwards compatibility
 from pathlib import Path
@@ -87,12 +93,12 @@ for msg in st.session_state.messages:
 
 def process_youtube_url(url: str) -> str:
     """Process YouTube URL and return formatted summary with metadata."""
-    video_id = yt.extract_video_id(url)
+    video_id = video_extractor.extract_video_id(url)
     if not video_id:
         return "Invalid YouTube URL. Please provide a valid YouTube video link."
 
     # Check cache first
-    cached_video = yt.get_cached_video(video_id, session)
+    cached_video = yt.get_cached_video(video_id)
     if cached_video:
         logger.info(f"Using cached summary for video ID: {video_id}")
         return f"""📺 Video Information:
@@ -107,21 +113,22 @@ def process_youtube_url(url: str) -> str:
 
     # Process new video
     try:
-        video_info = yt.extract_video_info(url)
+        video_info = video_extractor.extract_video_info(url)
         if not video_info:
             return "Failed to extract video information. Please try again."
 
-        subtitles = yt.extract_subtitles(video_id, ["en", "fr", "de"])
-        if not subtitles:
+        subtitle_result = subtitle_extractor.extract_subtitles(video_id, ["en", "fr", "de"])
+        if not subtitle_result:
             return "No subtitles found for this video."
 
-        text = yt.extract_text(subtitles)
+        subtitles = subtitle_result["subtitles"]
+        text = subtitle_extractor.extract_text(subtitles)
         if not text:
             return "Failed to extract text from subtitles."
 
         # Generate summary
         summary_text = ""
-        for chunk in yt.summarize(
+        for chunk in summarizer.summarize(
             subtitles=text,
             title=video_info["title"],
             channel=video_info["channel"],
