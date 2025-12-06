@@ -1,6 +1,6 @@
 import os
-import time
 from pathlib import Path
+import time
 
 from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI

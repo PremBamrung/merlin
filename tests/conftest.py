@@ -3,8 +3,8 @@
 import os
 from pathlib import Path
 
-import pytest
 from dotenv import load_dotenv
+import pytest
 
 # Load environment variables from project root
 project_root = Path(__file__).parent.parent

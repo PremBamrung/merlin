@@ -2,11 +2,11 @@ from datetime import datetime
 from io import BytesIO
 from typing import Dict, List, Optional
 
-import pytube
-import requests
 from PIL import Image
+import pytube
 from pytube import Channel
 from pytube.innertube import InnerTube
+import requests
 from youtube_transcript_api import YouTubeTranscriptApi
 
 from merlin.utils import logger

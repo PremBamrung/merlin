@@ -28,8 +28,11 @@ select = [
 ignore = []
 
 [tool.ruff.lint.isort]
-# Match isort configuration with black profile
-profile = "black"
+# Configure isort to match Black's style
+# Black-compatible settings (no profile field in newer Ruff versions)
+combine-as-imports = true
+force-sort-within-sections = true
+split-on-trailing-comma = true
 
 [tool.ruff.format]
 # Use double quotes for strings (Black's default)

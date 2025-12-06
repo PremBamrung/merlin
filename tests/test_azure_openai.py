@@ -1,8 +1,8 @@
 """Tests for Azure OpenAI connection and functionality."""
 
-import pytest
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import AzureChatOpenAI
+import pytest
 
 from merlin.llm.azureopenai import llm as merlin_llm
 from merlin.utils import logger

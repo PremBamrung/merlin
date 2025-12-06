@@ -1,12 +1,12 @@
 import os
+from pathlib import Path
 import re
 import tempfile
-from pathlib import Path
 from typing import Dict, List, Optional
 
+from dotenv import load_dotenv
 import requests
 import yt_dlp
-from dotenv import load_dotenv
 
 from merlin.utils import logger
 

@@ -14,7 +14,6 @@ from merlin.integration.youtube.summarizer import VideoSummarizer
 from merlin.llm.azureopenai import llm
 from merlin.utils import logger
 
-
 # Language code to summary language name mapping
 LANGUAGE_MAP = {
     "en": "english",
@@ -62,10 +61,10 @@ LANGUAGE_MAP = {
 
 def map_language_code_to_summary_lang(language_code: str) -> str:
     """Map language code to summary language name.
-    
+
     Args:
         language_code: Two-letter language code (e.g., "fr", "en")
-        
+
     Returns:
         Summary language name (e.g., "french", "english"), defaults to "english"
     """
@@ -78,18 +77,18 @@ def match_video_language_to_user_languages(
     video_language_code: str, user_languages: List[str]
 ) -> str:
     """Match video language to user's understood languages.
-    
+
     Args:
         video_language_code: Detected language code from video subtitles
         user_languages: List of language codes the user understands (e.g., ["fr", "en"])
-        
+
     Returns:
         Summary language name to use (e.g., "french" if video is in French and user understands French,
         otherwise "english")
     """
     # Normalize video language code (handle variants like "en-US")
     video_base_code = video_language_code.split("-")[0].split("_")[0].lower()
-    
+
     # Check if video language is in user's understood languages
     if video_base_code in [lang.lower() for lang in user_languages]:
         return map_language_code_to_summary_lang(video_base_code)
@@ -116,13 +115,13 @@ class YouTubeService:
 
     def delete_cached_video(self, video_id: str) -> bool:
         """Clear cached video summary, but keep video info and subtitles.
-        
+
         This allows redoing the summary without re-extracting video info and subtitles.
         """
         return self.db.execute_with_session(
             lambda session: VideoRepository.clear_video_summary_only(session, video_id)
         )
-    
+
     def get_cached_video_info_and_subtitles(self, video_id: str) -> Optional[Dict]:
         """Retrieve cached video info and subtitles, even if summary doesn't exist."""
         cached = self.get_cached_video(video_id)
@@ -189,7 +188,10 @@ class YouTubeService:
             # For now, we'll use the text directly
             use_cached = True
             if streaming:
-                yield {"type": "status", "message": "Using cached video info and subtitles..."}
+                yield {
+                    "type": "status",
+                    "message": "Using cached video info and subtitles...",
+                }
         else:
             # Extract video info
             if streaming:
@@ -209,20 +211,24 @@ class YouTubeService:
         # Default user languages to English if not provided
         if user_languages is None:
             user_languages = ["en"]
-        
+
         if use_cached:
             # Use cached subtitles and text
             # Note: We default to "en" for language detection when using cached data
             # This could be improved by storing detected_language_code in the database
             detected_language_code = "en"  # Default, could be improved by storing this
             subtitles = None  # We have text but not subtitle list, which is fine for summarization
-            logger.info(f"Using cached video info and subtitles for video ID: {video_id}")
+            logger.info(
+                f"Using cached video info and subtitles for video ID: {video_id}"
+            )
         else:
             # Extract subtitles
             if streaming:
                 yield {"type": "status", "message": "Extracting subtitles..."}
             subtitle_result = self.subtitle_extractor.extract_subtitles(
-                video_id, user_languages + ["en", "fr", "de"]  # Include common languages as fallback
+                video_id,
+                user_languages
+                + ["en", "fr", "de"],  # Include common languages as fallback
             )
             if not subtitle_result:
                 logger.warning(
@@ -234,8 +240,8 @@ class YouTubeService:
                         "message": "No subtitles found. Downloading audio...",
                     }
                 # Fallback: download audio and transcribe using Groq Whisper
-                success, fallback_subtitles, error_msg = AudioTranscriber.transcribe_video(
-                    url
+                success, fallback_subtitles, error_msg = (
+                    AudioTranscriber.transcribe_video(url)
                 )
                 if success and fallback_subtitles:
                     if streaming:
@@ -249,7 +255,7 @@ class YouTubeService:
                     # For audio transcription, we don't have language detection, default to English
                     subtitle_result = {
                         "subtitles": fallback_subtitles,
-                        "language_code": "en"  # Default for audio transcription
+                        "language_code": "en",  # Default for audio transcription
                     }
                 else:
                     logger.error(
@@ -265,7 +271,7 @@ class YouTubeService:
             # Extract subtitles list and detected language
             subtitles = subtitle_result["subtitles"]
             detected_language_code = subtitle_result["language_code"]
-            
+
             # Convert subtitles to text
             if streaming:
                 yield {"type": "status", "message": "Processing transcript..."}
@@ -278,7 +284,7 @@ class YouTubeService:
                         "message": "Failed to extract text from subtitles",
                     }
                 return None
-            
+
             # Save video info and subtitles immediately (before summary generation)
             # This ensures they're cached even if summary generation fails
             try:
@@ -291,7 +297,7 @@ class YouTubeService:
             except Exception as e:
                 logger.warning(f"Failed to cache video info and subtitles: {str(e)}")
                 # Continue anyway, as this is not critical
-        
+
         # Match video language to user's understood languages
         summary_lang = match_video_language_to_user_languages(
             detected_language_code, user_languages

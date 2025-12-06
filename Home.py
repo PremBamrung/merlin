@@ -1,16 +1,17 @@
-import re
 from datetime import datetime
+import re
 
-import streamlit as st
 from dotenv import load_dotenv
 from sqlalchemy.orm import scoped_session
+import streamlit as st
 
 from merlin.database.models import SessionLocal, YouTubeVideoSummary, init_db
 from merlin.integration.youtube import YouTube
 from merlin.integration.youtube.extractors import SubtitleExtractor, VideoExtractor
 from merlin.integration.youtube.summarizer import VideoSummarizer
+
 # from merlin.llm.openrouter import llm
-from merlin.llm.azureopenai import llm 
+from merlin.llm.azureopenai import llm
 from merlin.utils import logger, set_layout
 
 
@@ -117,7 +118,9 @@ def process_youtube_url(url: str) -> str:
         if not video_info:
             return "Failed to extract video information. Please try again."
 
-        subtitle_result = subtitle_extractor.extract_subtitles(video_id, ["en", "fr", "de"])
+        subtitle_result = subtitle_extractor.extract_subtitles(
+            video_id, ["en", "fr", "de"]
+        )
         if not subtitle_result:
             return "No subtitles found for this video."
 

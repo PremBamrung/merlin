@@ -1,8 +1,8 @@
 """YouTube video summarization page."""
 
+from dotenv import load_dotenv
 import pandas as pd
 import streamlit as st
-from dotenv import load_dotenv
 
 from merlin.database.models import init_db
 from merlin.database.repositories import VideoRepository
@@ -176,12 +176,12 @@ def main():
             "uk": "Ukrainian",
             "ca": "Catalan",
         }
-        
+
         # Get default user languages from session state or default to English
         default_user_languages = st.session_state.get("user_languages", ["en"])
         if not isinstance(default_user_languages, list):
             default_user_languages = ["en"]
-        
+
         user_languages = st.multiselect(
             "Languages I understand:",
             options=list(available_languages.keys()),
@@ -189,11 +189,11 @@ def main():
             format_func=lambda x: f"{x.upper()} - {available_languages[x]}",
             help="Select all languages you understand. The summary will be generated in the video's language if you understand it, otherwise in English.",
         )
-        
+
         # Ensure at least one language is selected (default to English)
         if not user_languages:
             user_languages = ["en"]
-        
+
         # Store in session state
         st.session_state["user_languages"] = user_languages
 
@@ -266,7 +266,7 @@ def main():
                     st.write("### Topics and Timestamps:")
                     for topic, timestamp in cached_video["topics"].items():
                         st.write(f"- {topic} [{timestamp}]")
-                
+
                 if st.button(
                     "🔄 Redo Summary",
                     key=f"redo_view_{view_video_id}",
@@ -354,18 +354,26 @@ def main():
                                 # Initial metadata received
                                 video_info = response["video_info"]
                                 text = response["text"]
-                                detected_language = response.get("detected_language", "unknown")
-                                summary_language = response.get("summary_language", "english")
+                                detected_language = response.get(
+                                    "detected_language", "unknown"
+                                )
+                                summary_language = response.get(
+                                    "summary_language", "english"
+                                )
 
                                 display_video_info(video_info)
-                                
+
                                 # Display language information
                                 lang_info_col1, lang_info_col2 = st.columns(2)
                                 with lang_info_col1:
-                                    st.info(f"🌐 **Video Language:** {detected_language.upper()}")
+                                    st.info(
+                                        f"🌐 **Video Language:** {detected_language.upper()}"
+                                    )
                                 with lang_info_col2:
-                                    st.info(f"📝 **Summary Language:** {summary_language.capitalize()}")
-                                
+                                    st.info(
+                                        f"📝 **Summary Language:** {summary_language.capitalize()}"
+                                    )
+
                                 st.write("### Summary:")
                                 summary_placeholder = st.empty()
 
@@ -416,7 +424,9 @@ def main():
                                     if yt.delete_cached_video(video_id):
                                         # Store URL and parameters in session state
                                         st.session_state["url"] = url
-                                        st.session_state["user_languages"] = user_languages
+                                        st.session_state["user_languages"] = (
+                                            user_languages
+                                        )
                                         st.session_state["summary_length"] = (
                                             summary_length
                                         )
