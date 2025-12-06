@@ -143,18 +143,59 @@ def main():
         url = st.text_input("Enter YouTube video URL:", st.session_state.get("url", ""))
 
         # Add configuration options
-        # Select preferred language for the summary
-        lang = st.selectbox(
-            "Preferred language:",
-            ["english", "french", "german"],
-            index=(
-                ["english", "french", "german"].index(
-                    st.session_state.get("lang", "english")
-                )
-                if "lang" in st.session_state
-                else 0
-            ),
+        # Select languages the user understands
+        available_languages = {
+            "en": "English",
+            "fr": "French",
+            "de": "German",
+            "es": "Spanish",
+            "it": "Italian",
+            "pt": "Portuguese",
+            "ru": "Russian",
+            "ja": "Japanese",
+            "ko": "Korean",
+            "zh": "Chinese",
+            "ar": "Arabic",
+            "hi": "Hindi",
+            "nl": "Dutch",
+            "pl": "Polish",
+            "tr": "Turkish",
+            "sv": "Swedish",
+            "da": "Danish",
+            "no": "Norwegian",
+            "fi": "Finnish",
+            "cs": "Czech",
+            "hu": "Hungarian",
+            "ro": "Romanian",
+            "el": "Greek",
+            "he": "Hebrew",
+            "th": "Thai",
+            "vi": "Vietnamese",
+            "id": "Indonesian",
+            "ms": "Malay",
+            "uk": "Ukrainian",
+            "ca": "Catalan",
+        }
+        
+        # Get default user languages from session state or default to English
+        default_user_languages = st.session_state.get("user_languages", ["en"])
+        if not isinstance(default_user_languages, list):
+            default_user_languages = ["en"]
+        
+        user_languages = st.multiselect(
+            "Languages I understand:",
+            options=list(available_languages.keys()),
+            default=default_user_languages,
+            format_func=lambda x: f"{x.upper()} - {available_languages[x]}",
+            help="Select all languages you understand. The summary will be generated in the video's language if you understand it, otherwise in English.",
         )
+        
+        # Ensure at least one language is selected (default to English)
+        if not user_languages:
+            user_languages = ["en"]
+        
+        # Store in session state
+        st.session_state["user_languages"] = user_languages
 
         # Add summary length option
         summary_length = st.selectbox(
@@ -193,7 +234,7 @@ def main():
                         ):
                             if yt.delete_cached_video(video_id):
                                 st.session_state["url"] = url
-                                st.session_state["lang"] = lang
+                                st.session_state["user_languages"] = user_languages
                                 st.session_state["summary_length"] = summary_length
                                 st.session_state["tags"] = tags
                                 st.session_state["auto_summarize"] = True
@@ -225,6 +266,7 @@ def main():
                     st.write("### Topics and Timestamps:")
                     for topic, timestamp in cached_video["topics"].items():
                         st.write(f"- {topic} [{timestamp}]")
+                
                 if st.button(
                     "🔄 Redo Summary",
                     key=f"redo_view_{view_video_id}",
@@ -232,7 +274,7 @@ def main():
                 ):
                     if yt.delete_cached_video(view_video_id):
                         st.session_state["url"] = url
-                        st.session_state["lang"] = lang
+                        st.session_state["user_languages"] = user_languages
                         st.session_state["summary_length"] = summary_length
                         st.session_state["tags"] = tags
                         st.session_state["auto_summarize"] = True
@@ -273,7 +315,7 @@ def main():
                         if yt.delete_cached_video(video_id):
                             # Store URL and parameters in session state
                             st.session_state["url"] = url
-                            st.session_state["lang"] = lang
+                            st.session_state["user_languages"] = user_languages
                             st.session_state["summary_length"] = summary_length
                             st.session_state["tags"] = tags
                             st.session_state["redo_summary"] = True
@@ -289,12 +331,14 @@ def main():
                         text = None
                         topics = {}
                         timestamps = {}
+                        detected_language = None
+                        summary_language = None
                         processing_successful = False
 
                         # Process the video and stream the summary
                         for response in yt.process_video(
                             url,
-                            lang=lang,
+                            user_languages=user_languages,
                             summary_length=summary_length,
                             streaming=True,
                         ):
@@ -310,8 +354,18 @@ def main():
                                 # Initial metadata received
                                 video_info = response["video_info"]
                                 text = response["text"]
+                                detected_language = response.get("detected_language", "unknown")
+                                summary_language = response.get("summary_language", "english")
 
                                 display_video_info(video_info)
+                                
+                                # Display language information
+                                lang_info_col1, lang_info_col2 = st.columns(2)
+                                with lang_info_col1:
+                                    st.info(f"🌐 **Video Language:** {detected_language.upper()}")
+                                with lang_info_col2:
+                                    st.info(f"📝 **Summary Language:** {summary_language.capitalize()}")
+                                
                                 st.write("### Summary:")
                                 summary_placeholder = st.empty()
 
@@ -362,7 +416,7 @@ def main():
                                     if yt.delete_cached_video(video_id):
                                         # Store URL and parameters in session state
                                         st.session_state["url"] = url
-                                        st.session_state["lang"] = lang
+                                        st.session_state["user_languages"] = user_languages
                                         st.session_state["summary_length"] = (
                                             summary_length
                                         )
@@ -485,7 +539,8 @@ def main():
                         )
                         # Store in session state and switch to summarize page
                         st.session_state["url"] = youtube_url
-                        st.session_state["lang"] = selected_video.get("lang", "english")
+                        # Default to English for user languages (old videos may not have this info)
+                        st.session_state["user_languages"] = ["en"]
                         st.session_state["summary_length"] = selected_video.get(
                             "summary_length", "medium"
                         )
