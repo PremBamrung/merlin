@@ -114,8 +114,12 @@ class SubtitleExtractor:
     """Handles extraction and processing of video subtitles."""
 
     @staticmethod
-    def extract_subtitles(video_id: str, languages: List[str]) -> Optional[List[Dict]]:
-        """Extract subtitles in specified languages."""
+    def extract_subtitles(video_id: str, languages: List[str]) -> Optional[Dict]:
+        """Extract subtitles in specified languages.
+
+        Returns:
+            Dict with keys 'subtitles' (List[Dict]) and 'language_code' (str), or None if extraction fails.
+        """
         start_time = datetime.now()
         logger.info(f"Extracting subtitles for video ID: {video_id}")
         logger.debug(f"Attempting languages: {languages}")
@@ -124,17 +128,22 @@ class SubtitleExtractor:
             ytt_api = YouTubeTranscriptApi()
             transcript_list = ytt_api.list(video_id)
             transcript = None
+            detected_language = None
 
             # First, try to find manually created transcript in specified languages
             try:
                 transcript = transcript_list.find_manually_created_transcript(languages)
-                logger.info("Found manually created transcript")
+                detected_language = transcript.language_code
+                logger.info(
+                    f"Found manually created transcript in language: {detected_language}"
+                )
             except:
                 # If no manual transcript, try auto-generated in specified languages
                 try:
                     transcript = transcript_list.find_generated_transcript(languages)
+                    detected_language = transcript.language_code
                     logger.info(
-                        "Found auto-generated transcript in requested languages"
+                        f"Found auto-generated transcript in requested languages: {detected_language}"
                     )
                 except:
                     # If no transcript in specified languages, try any auto-generated transcript
@@ -143,8 +152,9 @@ class SubtitleExtractor:
                         for transcript_item in transcript_list:
                             if transcript_item.is_generated:
                                 transcript = transcript_item
+                                detected_language = transcript.language_code
                                 logger.info(
-                                    f"Found auto-generated transcript in language: {transcript.language_code}"
+                                    f"Found auto-generated transcript in language: {detected_language}"
                                 )
                                 break
                     except Exception as e:
@@ -160,6 +170,9 @@ class SubtitleExtractor:
             # Only translate if direct fetch fails (some auto-generated transcripts require translation)
             if transcript.is_generated:
                 transcript_lang = transcript.language_code
+                # Ensure we have the detected language (should already be set above)
+                if detected_language is None:
+                    detected_language = transcript_lang
                 logger.info(
                     f"Found auto-generated transcript in language: {transcript_lang}"
                 )
@@ -187,6 +200,7 @@ class SubtitleExtractor:
                         logger.info(
                             f"Successfully fetched translated transcript in {target_lang}"
                         )
+                        # Note: We keep the original detected_language, not the translation target
                     except Exception as translate_error:
                         error_msg = str(translate_error).lower()
                         # If rate limited or translation fails, try English as fallback
@@ -198,6 +212,7 @@ class SubtitleExtractor:
                                 logger.info(
                                     "Successfully fetched transcript translated to English"
                                 )
+                                # Note: We keep the original detected_language, not "en"
                             except Exception as en_error:
                                 # If all translation attempts fail, try other available auto-generated transcripts
                                 if (
@@ -216,6 +231,9 @@ class SubtitleExtractor:
                                             ):
                                                 try:
                                                     result = alt_transcript.fetch()
+                                                    detected_language = (
+                                                        alt_transcript.language_code
+                                                    )
                                                     logger.info(
                                                         f"Successfully fetched alternative transcript in {alt_transcript.language_code}"
                                                     )
@@ -242,8 +260,12 @@ class SubtitleExtractor:
                             raise fetch_error
             else:
                 # Manual transcript - fetch directly
+                if detected_language is None:
+                    detected_language = transcript.language_code
                 result = transcript.fetch()
-                logger.info("Successfully fetched manual transcript")
+                logger.info(
+                    f"Successfully fetched manual transcript in language: {detected_language}"
+                )
 
             # Convert FetchedTranscriptSnippet objects to dictionaries
             if result and hasattr(result[0], "start"):
@@ -257,8 +279,16 @@ class SubtitleExtractor:
                 ]
 
             duration = (datetime.now() - start_time).total_seconds()
-            logger.info(f"Successfully extracted subtitles in {duration:.2f}s")
-            return result
+            logger.info(
+                f"Successfully extracted subtitles in {duration:.2f}s (language: {detected_language})"
+            )
+
+            # Return both subtitles and detected language code
+            return {
+                "subtitles": result,
+                "language_code": detected_language
+                or "en",  # Default to "en" if somehow None
+            }
         except Exception as e:
             duration = (datetime.now() - start_time).total_seconds()
             logger.error(f"Failed to extract subtitles after {duration:.2f}s: {str(e)}")

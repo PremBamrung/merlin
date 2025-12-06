@@ -27,9 +27,13 @@ def test_subtitle_extraction(test_video_url):
 
     # Extract subtitles
     languages = ["en"]  # English
-    subtitles = SubtitleExtractor.extract_subtitles(video_id, languages)
+    subtitle_result = SubtitleExtractor.extract_subtitles(video_id, languages)
 
-    assert subtitles is not None
+    assert subtitle_result is not None
+    assert "subtitles" in subtitle_result
+    assert "language_code" in subtitle_result
+
+    subtitles = subtitle_result["subtitles"]
     assert len(subtitles) > 0
 
     # Check subtitle structure
@@ -47,9 +51,10 @@ def test_subtitle_text_extraction(test_video_url):
     """Test extracting text from subtitle entries."""
     video_id = VideoExtractor.extract_video_id(test_video_url)
     languages = ["en"]
-    subtitles = SubtitleExtractor.extract_subtitles(video_id, languages)
+    subtitle_result = SubtitleExtractor.extract_subtitles(video_id, languages)
 
-    assert subtitles is not None
+    assert subtitle_result is not None
+    subtitles = subtitle_result["subtitles"]
     assert len(subtitles) > 0
 
     # Extract text
@@ -68,9 +73,10 @@ def test_subtitle_statistics(test_video_url):
     """Test subtitle statistics calculation."""
     video_id = VideoExtractor.extract_video_id(test_video_url)
     languages = ["en"]
-    subtitles = SubtitleExtractor.extract_subtitles(video_id, languages)
+    subtitle_result = SubtitleExtractor.extract_subtitles(video_id, languages)
 
-    assert subtitles is not None
+    assert subtitle_result is not None
+    subtitles = subtitle_result["subtitles"]
     assert len(subtitles) > 0
 
     # Calculate total duration

@@ -107,9 +107,11 @@ def process_youtube(
         # Extract subtitles
         print("🔄 Extracting subtitles...", file=sys.stderr)
         subtitle_extractor = SubtitleExtractor()
-        subtitles = subtitle_extractor.extract_subtitles(video_id, ["en", "fr", "de"])
+        subtitle_result = subtitle_extractor.extract_subtitles(
+            video_id, ["en", "fr", "de"]
+        )
 
-        if not subtitles:
+        if not subtitle_result:
             print(
                 "⚠️  No subtitles found, attempting audio transcription...",
                 file=sys.stderr,
@@ -123,7 +125,11 @@ def process_youtube(
                     f"✅ Transcribed audio ({len(fallback_subtitles)} segments)",
                     file=sys.stderr,
                 )
-                subtitles = fallback_subtitles
+                # For audio transcription, create dict format
+                subtitle_result = {
+                    "subtitles": fallback_subtitles,
+                    "language_code": "en",  # Default for audio transcription
+                }
             else:
                 print("❌ Error: Failed to extract subtitles", file=sys.stderr)
                 if error_msg:
@@ -144,6 +150,9 @@ def process_youtube(
                         file=sys.stderr,
                     )
                 return 1
+
+        # Extract subtitles list from result
+        subtitles = subtitle_result["subtitles"]
 
         # Convert subtitles to text
         print("🔄 Processing transcript...", file=sys.stderr)
