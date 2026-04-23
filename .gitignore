@@ -119,8 +119,12 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
-# Environments
+# Environments & local secrets
 .env
+.env.*
+.env_*
+!.env.example
+!.env.sample
 .venv
 env/
 venv/
@@ -154,6 +158,11 @@ cython_debug/
 notebooks/
 .vscode
 *.db
+*.db-wal
+*.db-shm
+
+# Node.js (frontend)
+node_modules/
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
