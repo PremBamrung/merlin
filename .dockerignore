@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+
+# Database backups (keep merlin.db mounted via volume)
+merlin_old.db
+merlin.db-shm
+merlin.db-wal
+
+# Frontend (handled by Dockerfile.frontend separately)
+frontend/node_modules/
+frontend/dist/
+
+# Logs
+logs/
+*.log
+
+# Tests
+.pytest_cache/
+tests/
+.coverage
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Streamlit (old UI - not needed in backend container)
+pages/
+Home.py
+.streamlit/
+
+# Old merlin package (optional - keep for now as some imports may still reference it)
+# merlin/
