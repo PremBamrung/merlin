@@ -5,6 +5,8 @@ WORKDIR /app
 # Install system dependencies (ffmpeg for audio transcription fallback)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    gcc \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy pre-generated requirements and install

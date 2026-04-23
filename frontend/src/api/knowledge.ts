@@ -12,27 +12,20 @@ export interface FetchKnowledgeParams {
 export async function fetchKnowledge(
   params: FetchKnowledgeParams = {}
 ): Promise<PaginatedResponse<KnowledgeItem>> {
-  const cleanParams: Record<string, string | number> = {}
+  const p: Record<string, string | number> = {}
+  if (params.page !== undefined) p.page = params.page
+  if (params.per_page !== undefined) p.per_page = params.per_page
+  if (params.search?.trim()) p.search = params.search.trim()
+  if (params.source_type && params.source_type !== 'all') p.source_type = params.source_type
+  if (params.status && params.status !== 'all') p.status = params.status
 
-  if (params.page !== undefined) cleanParams.page = params.page
-  if (params.per_page !== undefined) cleanParams.per_page = params.per_page
-  if (params.search && params.search.trim()) cleanParams.search = params.search.trim()
-  if (params.source_type && params.source_type !== 'all') {
-    cleanParams.source_type = params.source_type
-  }
-  if (params.status && params.status !== 'all') {
-    cleanParams.status = params.status
-  }
-
-  const response = await client.get<PaginatedResponse<KnowledgeItem>>('/api/knowledge', {
-    params: cleanParams,
-  })
-  return response.data
+  const res = await client.get<PaginatedResponse<KnowledgeItem>>('/api/knowledge', { params: p })
+  return res.data
 }
 
 export async function fetchKnowledgeItem(id: string): Promise<KnowledgeItem> {
-  const response = await client.get<KnowledgeItem>(`/api/knowledge/${id}`)
-  return response.data
+  const res = await client.get<KnowledgeItem>(`/api/knowledge/${id}`)
+  return res.data
 }
 
 export async function deleteKnowledgeItem(id: string): Promise<void> {

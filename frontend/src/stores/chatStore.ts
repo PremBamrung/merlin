@@ -14,17 +14,13 @@ export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   isStreaming: false,
 
-  addMessage: (msg) =>
-    set((state) => ({
-      messages: [...state.messages, msg],
-    })),
+  addMessage: (msg) => set((state) => ({ messages: [...state.messages, msg] })),
 
   updateLastMessage: (content, citations) =>
     set((state) => {
       const messages = [...state.messages]
       const lastIndex = messages.length - 1
       if (lastIndex < 0) return state
-
       messages[lastIndex] = {
         ...messages[lastIndex],
         content,
@@ -34,7 +30,6 @@ export const useChatStore = create<ChatState>((set) => ({
     }),
 
   setStreaming: (v) => set({ isStreaming: v }),
-
   clearMessages: () => set({ messages: [], isStreaming: false }),
 }))
 

@@ -14,7 +14,6 @@ export interface KnowledgeItem {
   word_count: number | null;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   error_message: string | null;
-  // YouTube specific
   thumbnail_url?: string | null;
   views?: number | null;
   duration?: string | null;
