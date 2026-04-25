@@ -37,11 +37,21 @@ export interface Citation {
 
 export interface Task {
   task_id: string;
+  task_type: string;
   status: 'queued' | 'processing' | 'completed' | 'failed';
   progress: number;
   message: string | null;
-  result?: { knowledge_item_id?: string };
+  result?: { knowledge_item_id?: string } | null;
   error?: string | null;
+  knowledge_item_id?: string | null;
+  created_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface Tag {
+  name: string;
+  count: number;
 }
 
 export interface PaginatedResponse<T> {

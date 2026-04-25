@@ -1,27 +1,32 @@
 import { NavLink } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import Icons from './Icons'
-import { TAGS } from '@/data/mockData'
+import { fetchTags } from '@/api/knowledge'
 
 interface SidebarProps {
   active?: string
 }
 
 export default function Sidebar({ active }: SidebarProps) {
+  const { data: tags = [] } = useQuery({
+    queryKey: ['tags'],
+    queryFn: fetchTags,
+    staleTime: 60000,
+  })
+
   const items = [
     { id: 'today', label: 'Today', icon: Icons.sparkle, to: '/today' },
-    { id: 'digest', label: 'Digest', icon: Icons.clock, count: 12, to: '/digest' },
-    { id: 'inbox', label: 'Inbox', icon: Icons.inbox, count: 3, to: '/inbox' },
-    { id: 'library', label: 'Library', icon: Icons.library, count: 248, to: '/library' },
+    { id: 'digest', label: 'Digest', icon: Icons.clock, to: '/digest' },
+    { id: 'inbox', label: 'Inbox', icon: Icons.inbox, to: '/inbox' },
+    { id: 'library', label: 'Library', icon: Icons.library, to: '/library' },
     { id: 'chat', label: 'Chat', icon: Icons.chat, to: '/chat' },
     { id: 'graph', label: 'Graph', icon: Icons.graph, to: '/graph' },
-    { id: 'follows', label: 'Voices', icon: Icons.tag, to: '/digest' },
   ]
 
   const sources = [
-    { id: 'youtube', label: 'YouTube', icon: Icons.yt, count: 142, to: '/youtube' },
-    { id: 'reddit', label: 'Reddit', icon: Icons.reddit, count: 28, to: '/reddit' },
-    { id: 'blogs', label: 'Blogs', icon: Icons.blog, count: 67, to: '/share' },
-    { id: 'web', label: 'Web clips', icon: Icons.web, count: 11, to: '/today' },
+    { id: 'youtube', label: 'YouTube', icon: Icons.yt, to: '/youtube' },
+    { id: 'reddit', label: 'Reddit', icon: Icons.reddit, to: '/reddit' },
+    { id: 'blogs', label: 'Blogs', icon: Icons.blog, to: '/share' },
   ]
 
   return (
@@ -42,7 +47,6 @@ export default function Sidebar({ active }: SidebarProps) {
             className={`side-item${isActive ? ' is-active' : ''}`}
           >
             <Icon /> <span>{it.label}</span>
-            {it.count != null && <span className="count">{it.count}</span>}
           </NavLink>
         )
       })}
@@ -58,19 +62,22 @@ export default function Sidebar({ active }: SidebarProps) {
             className={`side-item${isActive ? ' is-active' : ''}`}
           >
             <Icon /> <span>{s.label}</span>
-            <span className="count">{s.count}</span>
           </NavLink>
         )
       })}
 
-      <div className="side-section">Tags</div>
-      {TAGS.slice(0, 5).map((t) => (
-        <div key={t.name} className="side-tag">
-          <span className="swatch" style={{ background: t.color }} />
-          <span>{t.name}</span>
-          <span className="count">{t.count}</span>
-        </div>
-      ))}
+      {tags.length > 0 && (
+        <>
+          <div className="side-section">Tags</div>
+          {tags.slice(0, 8).map((t) => (
+            <div key={t.name} className="side-tag">
+              <span className="swatch" />
+              <span>{t.name}</span>
+              <span className="count">{t.count}</span>
+            </div>
+          ))}
+        </>
+      )}
 
       <div className="side-foot">
         <div className="avatar">P</div>

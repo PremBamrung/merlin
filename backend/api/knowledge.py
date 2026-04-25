@@ -25,29 +25,29 @@ class KnowledgeItemUpdate(BaseModel):
 
 @router.get("")
 def list_knowledge(
-    source: Optional[str] = None,
+    source_type: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None,
     tags: Optional[str] = None,   # comma-separated
     page: int = 1,
-    page_size: int = 20,
+    per_page: int = 20,
     db: Session = Depends(get_db_session),
 ):
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
     items, total = KnowledgeItemRepository.list_all(
         db,
-        source_type=source,
+        source_type=source_type,
         status=status,
         search=search,
         tags=tag_list,
         page=page,
-        page_size=page_size,
+        page_size=per_page,
     )
     return {
         "items": [_serialize(item) for item in items],
         "total": total,
         "page": page,
-        "page_size": page_size,
+        "per_page": per_page,
     }
 
 

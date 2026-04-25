@@ -1,17 +1,48 @@
+import { useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Sidebar from '@/components/shared/Sidebar'
 import Topbar from '@/components/shared/Topbar'
 import Icons from '@/components/shared/Icons'
 import SourcePill from '@/components/shared/SourcePill'
+import { fetchTasks } from '@/api/tasks'
+import { retryYouTube } from '@/api/youtube'
+import type { Task } from '@/types'
 
-const items = [
-  { id: 1, url: 'youtube.com/watch?v=bZQun8Y4L2A', title: 'State of GPT — Andrej Karpathy', type: 'youtube', stage: 'summarizing', pct: 78, step: 'generating summary · medium length' },
-  { id: 2, url: 'huyenchip.com/2023/04/11/llm-engineering.html', title: 'Building LLM Apps for Production', type: 'blog', stage: 'extracting', pct: 42, step: 'extracting readable content' },
-  { id: 3, url: 'reddit.com/r/PKMS/comments/xyz...', title: 'What setups are you running for a second brain?', type: 'reddit', stage: 'queued', pct: 0, step: 'waiting' },
-  { id: 4, url: 'youtube.com/watch?v=kCc8FmEb1nY', title: "Let's build GPT from scratch", type: 'youtube', stage: 'done', pct: 100, step: 'ready · added to Library' },
-  { id: 5, url: 'reddit.com/r/LocalLLaMA/comments/abc', title: 'Benchmarks: Llama-3 vs Qwen-3', type: 'reddit', stage: 'failed', pct: 0, step: 'rate limited · retry' },
-]
+function stageLabel(t: Task): string {
+  if (t.status === 'queued') return 'queued'
+  if (t.status === 'processing') return 'processing'
+  if (t.status === 'completed') return 'done'
+  if (t.status === 'failed') return 'failed'
+  return t.status
+}
+
+function sourceType(t: Task): string {
+  if (t.task_type?.includes('youtube')) return 'youtube'
+  if (t.task_type?.includes('article')) return 'blog'
+  if (t.task_type?.includes('reddit')) return 'reddit'
+  return 'web'
+}
 
 export default function InboxPage() {
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+
+  const { data: tasks = [], isLoading } = useQuery({
+    queryKey: ['tasks'],
+    queryFn: () => fetchTasks(50),
+    refetchInterval: 3000,
+  })
+
+  const retryMutation = useMutation({
+    mutationFn: (itemId: string) => retryYouTube(itemId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+
+  const inProgress = tasks.filter((t) => t.status === 'processing').length
+  const done = tasks.filter((t) => t.status === 'completed').length
+  const failed = tasks.filter((t) => t.status === 'failed').length
+  const failedTasks = tasks.filter((t) => t.status === 'failed')
+
   return (
     <div className="artboard-root">
       <Sidebar active="inbox" />
@@ -21,47 +52,96 @@ export default function InboxPage() {
           actions={
             <>
               <button className="btn ghost"><Icons.settings /> Rules</button>
-              <button className="btn primary"><Icons.plus /> Paste link</button>
+              <button className="btn primary" onClick={() => navigate('/youtube')}><Icons.plus /> Add source</button>
             </>
           }
         />
         <div className="page">
           <div className="page-narrow">
             <h1 className="page-title">Inbox <span className="dim">— the workshop</span></h1>
-            <p className="page-subtitle">Everything you've dumped in, mid-transformation. Re-tag, re-summarize, or dismiss.</p>
+            <p className="page-subtitle">Everything you've added, mid-transformation. Re-tag, re-summarize, or dismiss.</p>
 
-            <div style={{ display: 'flex', gap: 6, marginBottom: 16, alignItems: 'center', paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
-              <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>3 in progress · 1 done · 1 failed</span>
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                <button className="btn ghost" style={{ fontSize: 11.5 }}>Retry failed</button>
-                <button className="btn ghost" style={{ fontSize: 11.5 }}>Approve all</button>
+            {!isLoading && (
+              <div style={{ display: 'flex', gap: 6, marginBottom: 16, alignItems: 'center', paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+                <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
+                  {inProgress} processing · {done} done · {failed} failed
+                </span>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                  {failedTasks.length > 0 && (
+                    <button
+                      className="btn ghost"
+                      style={{ fontSize: 11.5 }}
+                      onClick={() => {
+                        failedTasks.forEach((t) => {
+                          if (t.knowledge_item_id) retryMutation.mutate(t.knowledge_item_id)
+                        })
+                      }}
+                    >
+                      Retry failed
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
+
+            {isLoading && (
+              <div style={{ color: 'var(--text-subtle)', fontSize: 13.5, padding: '24px 0' }}>Loading…</div>
+            )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {items.map((it) => (
-                <div key={it.id} className={`inbox-card stage-${it.stage}`}>
-                  <div className="inbox-stage"><div className="inbox-dot" /></div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                      <SourcePill type={it.type} />
-                      <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-subtle)' }}>{it.url}</span>
+              {tasks.map((t) => {
+                const stage = stageLabel(t)
+                const knowledgeId = t.knowledge_item_id ?? t.result?.knowledge_item_id
+                return (
+                  <div key={t.task_id} className={`inbox-card stage-${stage}`}>
+                    <div className="inbox-stage"><div className="inbox-dot" /></div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                        <SourcePill type={sourceType(t)} />
+                        <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-subtle)' }}>{t.task_type}</span>
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 10 }}>
+                        {t.message ?? t.task_type}
+                      </div>
+                      {stage !== 'done' && stage !== 'failed' && (
+                        <div className="inbox-bar"><div style={{ width: `${t.progress}%` }} /></div>
+                      )}
+                      <div className="inbox-step">
+                        {stage === 'done' ? 'ready · added to Library' : t.message ?? stage}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 10 }}>{it.title}</div>
-                    {it.stage !== 'done' && it.stage !== 'failed' && (
-                      <div className="inbox-bar"><div style={{ width: `${it.pct}%` }} /></div>
-                    )}
-                    <div className="inbox-step">{it.step}</div>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {stage === 'done' && knowledgeId && (
+                        <button
+                          className="btn ghost"
+                          style={{ fontSize: 11 }}
+                          onClick={() => navigate(`/inbox/review/${knowledgeId}`)}
+                        >
+                          Open →
+                        </button>
+                      )}
+                      {stage === 'failed' && knowledgeId && (
+                        <button
+                          className="btn ghost"
+                          style={{ fontSize: 11 }}
+                          onClick={() => retryMutation.mutate(knowledgeId)}
+                        >
+                          Retry
+                        </button>
+                      )}
+                      <button className="btn ghost" style={{ fontSize: 11, padding: '4px 6px' }}>
+                        <Icons.close style={{ width: 12, height: 12 }} />
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    {it.stage === 'done' && <button className="btn ghost" style={{ fontSize: 11 }}>Open →</button>}
-                    {it.stage === 'failed' && <button className="btn ghost" style={{ fontSize: 11 }}>Retry</button>}
-                    <button className="btn ghost" style={{ fontSize: 11, padding: '4px 6px' }}>
-                      <Icons.close style={{ width: 12, height: 12 }} />
-                    </button>
-                  </div>
+                )
+              })}
+
+              {!isLoading && tasks.length === 0 && (
+                <div style={{ color: 'var(--text-subtle)', fontSize: 13.5, padding: '24px 0', textAlign: 'center' }}>
+                  No tasks yet — add a source to get started.
                 </div>
-              ))}
+              )}
             </div>
 
             <div style={{ marginTop: 36 }}>
@@ -69,21 +149,9 @@ export default function InboxPage() {
                 Auto-ingest rules
               </div>
               <div style={{ display: 'grid', gap: 8 }}>
-                <div className="rule-row">
-                  <Icons.reddit style={{ width: 16, height: 16, color: 'var(--text-muted)' }} />
-                  <span style={{ fontSize: 13 }}>r/LocalLLaMA · top posts this week</span>
-                  <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-subtle)', marginLeft: 'auto' }}>every Monday · 9am</span>
-                  <span className="tag accent"><span className="dot" />on</span>
-                </div>
-                <div className="rule-row">
-                  <Icons.yt style={{ width: 16, height: 16, color: 'var(--text-muted)' }} />
-                  <span style={{ fontSize: 13 }}>YouTube · "Andrej Karpathy" uploads</span>
-                  <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-subtle)', marginLeft: 'auto' }}>realtime</span>
-                  <span className="tag accent"><span className="dot" />on</span>
-                </div>
                 <div className="rule-row" style={{ borderStyle: 'dashed', background: 'transparent', cursor: 'pointer' }}>
                   <Icons.plus style={{ width: 14, height: 14, color: 'var(--text-subtle)' }} />
-                  <span style={{ fontSize: 12.5, color: 'var(--text-subtle)' }}>new rule — RSS, channel, subreddit, newsletter…</span>
+                  <span style={{ fontSize: 12.5, color: 'var(--text-subtle)' }}>new rule — RSS, channel, subreddit, newsletter… (coming soon)</span>
                 </div>
               </div>
             </div>

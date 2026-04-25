@@ -1,5 +1,5 @@
 import client from './client'
-import type { KnowledgeItem, PaginatedResponse } from '@/types'
+import type { KnowledgeItem, PaginatedResponse, Tag } from '@/types'
 
 export interface FetchKnowledgeParams {
   page?: number
@@ -30,4 +30,14 @@ export async function fetchKnowledgeItem(id: string): Promise<KnowledgeItem> {
 
 export async function deleteKnowledgeItem(id: string): Promise<void> {
   await client.delete(`/api/knowledge/${id}`)
+}
+
+export async function patchKnowledgeItem(id: string, updates: { tags?: string[]; title?: string }): Promise<KnowledgeItem> {
+  const res = await client.patch<KnowledgeItem>(`/api/knowledge/${id}`, updates)
+  return res.data
+}
+
+export async function fetchTags(): Promise<Tag[]> {
+  const res = await client.get<Tag[]>('/api/tags')
+  return res.data
 }

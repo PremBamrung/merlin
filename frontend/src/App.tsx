@@ -29,7 +29,7 @@ export default function App() {
           <Route path="/graph" element={<GraphPage />} />
           <Route path="/youtube" element={<YouTubePage />} />
           <Route path="/reddit" element={<RedditPage />} />
-          <Route path="/ingest" element={<IngestReviewPage />} />
+          <Route path="/inbox/review/:id" element={<IngestReviewPage />} />
           <Route path="/share" element={<SharePage />} />
           <Route path="*" element={<Navigate to="/today" replace />} />
         </Routes>

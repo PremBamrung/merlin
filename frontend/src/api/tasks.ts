@@ -1,6 +1,11 @@
 import client from './client'
 import type { Task } from '@/types'
 
+export async function fetchTasks(limit = 20): Promise<Task[]> {
+  const res = await client.get<Task[]>('/api/tasks', { params: { limit } })
+  return res.data
+}
+
 export async function fetchTask(taskId: string): Promise<Task> {
   const res = await client.get<Task>(`/api/tasks/${taskId}`)
   return res.data

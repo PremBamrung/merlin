@@ -6,12 +6,17 @@ export interface YouTubeSubmitResponse {
 }
 
 export async function submitYouTube(
-  url: string,
-  summary_length: string
+  urlOrParams: string | { url: string; summary_length?: string },
+  summary_length = 'medium'
 ): Promise<YouTubeSubmitResponse> {
-  const res = await client.post<YouTubeSubmitResponse>('/api/sources/youtube', {
-    url,
-    summary_length,
-  })
+  const body = typeof urlOrParams === 'string'
+    ? { url: urlOrParams, summary_length }
+    : { summary_length: 'medium', ...urlOrParams }
+  const res = await client.post<YouTubeSubmitResponse>('/api/sources/youtube', body)
+  return res.data
+}
+
+export async function retryYouTube(itemId: string): Promise<YouTubeSubmitResponse> {
+  const res = await client.post<YouTubeSubmitResponse>(`/api/sources/youtube/${itemId}/retry`)
   return res.data
 }
