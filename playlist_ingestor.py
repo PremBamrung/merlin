@@ -43,8 +43,8 @@ Usage example
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
+import re
 from typing import Iterator
 
 
@@ -83,7 +83,9 @@ def enumerate_playlist_urls(playlist_url: str) -> list[str]:
         Exception:   Propagates pytube / network errors so the caller can
                      decide whether to retry or mark the task as failed.
     """
-    from pytube import Playlist  # local import so the rest of the module loads without pytube
+    from pytube import (
+        Playlist,  # local import so the rest of the module loads without pytube
+    )
 
     playlist = Playlist(playlist_url)
     return list(playlist.video_urls)

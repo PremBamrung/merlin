@@ -37,7 +37,7 @@ retriever = HybridRetriever()
 
 
 class ChatMessage(BaseModel):
-    role: str    # "user" | "assistant" | "system"
+    role: str  # "user" | "assistant" | "system"
     content: str
 
 
@@ -69,7 +69,9 @@ async def chat(body: ChatRequest, db: Session = Depends(get_db_session)):
                 return
 
             # Retrieve relevant chunks
-            source_types = body.context_filters.source_types if body.context_filters else None
+            source_types = (
+                body.context_filters.source_types if body.context_filters else None
+            )
             tag_filters = body.context_filters.tags if body.context_filters else None
 
             chunks = retriever.retrieve(
@@ -83,8 +85,13 @@ async def chat(body: ChatRequest, db: Session = Depends(get_db_session)):
             context = format_context(chunks)
 
             # Build messages for the LLM
-            system_msg = {"role": "system", "content": MERLIN_SYSTEM_PROMPT.format(context=context)}
-            history = [{"role": m.role, "content": m.content} for m in body.messages[:-1]]
+            system_msg = {
+                "role": "system",
+                "content": MERLIN_SYSTEM_PROMPT.format(context=context),
+            }
+            history = [
+                {"role": m.role, "content": m.content} for m in body.messages[:-1]
+            ]
             current = {"role": "user", "content": user_query}
             llm_messages = [system_msg, *history, current]
 

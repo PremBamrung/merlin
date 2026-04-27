@@ -16,8 +16,8 @@ Run scripts/migrate_youtube_data.py after this to populate from the old table.
 
 from typing import Sequence, Union
 
-import sqlalchemy as sa
 from alembic import op
+import sqlalchemy as sa
 
 revision: str = "001"
 down_revision: Union[str, None] = None

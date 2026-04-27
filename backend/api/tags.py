@@ -26,4 +26,7 @@ def list_tags(db: Session = Depends(get_db_session)):
             for tag in tags:
                 if isinstance(tag, str) and tag.strip():
                     counts[tag.strip()] = counts.get(tag.strip(), 0) + 1
-    return [{"name": name, "count": count} for name, count in sorted(counts.items(), key=lambda x: -x[1])]
+    return [
+        {"name": name, "count": count}
+        for name, count in sorted(counts.items(), key=lambda x: -x[1])
+    ]

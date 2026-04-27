@@ -11,7 +11,11 @@ from typing import Optional
 
 from backend.config import settings
 from backend.core.logging import logger
-from backend.knowledge_sources.base import IngestRequest, IngestResult, KnowledgeSourcePlugin
+from backend.knowledge_sources.base import (
+    IngestRequest,
+    IngestResult,
+    KnowledgeSourcePlugin,
+)
 from backend.knowledge_sources.plugins.youtube.audio_transcriber import AudioTranscriber
 from backend.knowledge_sources.plugins.youtube.extractors import (
     SubtitleExtractor,
@@ -21,16 +25,44 @@ from backend.knowledge_sources.plugins.youtube.summarizer import VideoSummarizer
 
 # Language code → full name mapping (used for summary language selection)
 LANGUAGE_MAP = {
-    "en": "english", "fr": "french", "de": "german", "es": "spanish",
-    "it": "italian", "pt": "portuguese", "ru": "russian", "ja": "japanese",
-    "ko": "korean", "zh": "chinese", "ar": "arabic", "hi": "hindi",
-    "nl": "dutch", "pl": "polish", "tr": "turkish", "sv": "swedish",
-    "da": "danish", "no": "norwegian", "fi": "finnish", "cs": "czech",
-    "hu": "hungarian", "ro": "romanian", "el": "greek", "he": "hebrew",
-    "th": "thai", "vi": "vietnamese", "id": "indonesian", "ms": "malay",
-    "uk": "ukrainian", "ca": "catalan", "bg": "bulgarian", "hr": "croatian",
-    "sk": "slovak", "sl": "slovenian", "sr": "serbian", "et": "estonian",
-    "lv": "latvian", "lt": "lithuanian",
+    "en": "english",
+    "fr": "french",
+    "de": "german",
+    "es": "spanish",
+    "it": "italian",
+    "pt": "portuguese",
+    "ru": "russian",
+    "ja": "japanese",
+    "ko": "korean",
+    "zh": "chinese",
+    "ar": "arabic",
+    "hi": "hindi",
+    "nl": "dutch",
+    "pl": "polish",
+    "tr": "turkish",
+    "sv": "swedish",
+    "da": "danish",
+    "no": "norwegian",
+    "fi": "finnish",
+    "cs": "czech",
+    "hu": "hungarian",
+    "ro": "romanian",
+    "el": "greek",
+    "he": "hebrew",
+    "th": "thai",
+    "vi": "vietnamese",
+    "id": "indonesian",
+    "ms": "malay",
+    "uk": "ukrainian",
+    "ca": "catalan",
+    "bg": "bulgarian",
+    "hr": "croatian",
+    "sk": "slovak",
+    "sl": "slovenian",
+    "sr": "serbian",
+    "et": "estonian",
+    "lv": "latvian",
+    "lt": "lithuanian",
 }
 
 _YT_REGEX = re.compile(
@@ -116,9 +148,15 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             detected_language = subtitle_result["language_code"]
             raw_text = self._subtitle_extractor.extract_text(subtitles)
         else:
-            request.report(35, "No subtitles found — downloading audio for transcription…")
-            logger.warning(f"No subtitles for {video_id}, falling back to audio transcription")
-            success, fallback_subtitles, error_msg = AudioTranscriber.transcribe_video(url)
+            request.report(
+                35, "No subtitles found — downloading audio for transcription…"
+            )
+            logger.warning(
+                f"No subtitles for {video_id}, falling back to audio transcription"
+            )
+            success, fallback_subtitles, error_msg = AudioTranscriber.transcribe_video(
+                url
+            )
             if not success or not fallback_subtitles:
                 raise ValueError(f"Failed to get subtitles or transcript: {error_msg}")
             subtitles = fallback_subtitles
@@ -145,6 +183,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
         published_at = None
         try:
             from datetime import datetime
+
             published_at = datetime.strptime(video_info["date"], "%d/%m/%Y")
         except Exception:
             pass

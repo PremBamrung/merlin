@@ -19,7 +19,11 @@ def _parse_tags(raw) -> list[str]:
         return []
     try:
         result = json.loads(raw) if isinstance(raw, str) else raw
-        return [t for t in result if isinstance(t, str)] if isinstance(result, list) else []
+        return (
+            [t for t in result if isinstance(t, str)]
+            if isinstance(result, list)
+            else []
+        )
     except Exception:
         return []
 
@@ -62,7 +66,9 @@ def get_graph_edges(db: Session = Depends(get_db_session)):
     for item in items:
         tags = _parse_tags(item.tags)
         for tag in tags:
-            edges.append({"source": item.id, "target": f"tag:{tag}", "type": "item_tag"})
+            edges.append(
+                {"source": item.id, "target": f"tag:{tag}", "type": "item_tag"}
+            )
         # track tag co-occurrence
         for tag in tags:
             tag_co.setdefault(tag, set()).update(t for t in tags if t != tag)
@@ -73,6 +79,12 @@ def get_graph_edges(db: Session = Depends(get_db_session)):
             key = tuple(sorted([tag, other]))
             if key not in seen:
                 seen.add(key)
-                edges.append({"source": f"tag:{tag}", "target": f"tag:{other}", "type": "tag_cooccurrence"})
+                edges.append(
+                    {
+                        "source": f"tag:{tag}",
+                        "target": f"tag:{other}",
+                        "type": "tag_cooccurrence",
+                    }
+                )
 
     return {"edges": edges}

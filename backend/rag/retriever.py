@@ -19,7 +19,7 @@ class RetrievedChunk:
     source_id: str
     title: str
     author: Optional[str]
-    excerpt: str           # relevant excerpt from summary or raw_content
+    excerpt: str  # relevant excerpt from summary or raw_content
     score: float = 1.0
 
 

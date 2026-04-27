@@ -8,12 +8,12 @@ Usage:
     conda run -n merlin python scripts/migrate_youtube_data.py
 """
 
+from datetime import datetime, timezone
 import json
+from pathlib import Path
 import sqlite3
 import sys
 import uuid
-from datetime import datetime, timezone
-from pathlib import Path
 
 DB_PATH = Path(__file__).parent.parent / "merlin.db"
 
@@ -31,7 +31,12 @@ def migrate():
     conn.row_factory = sqlite3.Row
 
     # Check source table exists
-    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    tables = {
+        r[0]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
     if "youtube_video_summary" not in tables:
         print("Source table youtube_video_summary not found — nothing to migrate.")
         conn.close()
@@ -58,17 +63,23 @@ def migrate():
             published_at = None
             if row["date"]:
                 try:
-                    published_at = datetime.strptime(str(row["date"]), "%Y-%m-%d %H:%M:%S").isoformat()
+                    published_at = datetime.strptime(
+                        str(row["date"]), "%Y-%m-%d %H:%M:%S"
+                    ).isoformat()
                 except Exception:
                     try:
-                        published_at = datetime.strptime(str(row["date"]), "%d/%m/%Y").isoformat()
+                        published_at = datetime.strptime(
+                            str(row["date"]), "%d/%m/%Y"
+                        ).isoformat()
                     except Exception:
                         published_at = None
 
             ingested_at = None
             if row["date_added"]:
                 try:
-                    ingested_at = datetime.strptime(str(row["date_added"]), "%Y-%m-%d %H:%M:%S").isoformat()
+                    ingested_at = datetime.strptime(
+                        str(row["date_added"]), "%Y-%m-%d %H:%M:%S"
+                    ).isoformat()
                 except Exception:
                     ingested_at = _now_iso()
             else:
@@ -101,11 +112,22 @@ def migrate():
                         ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    item_id, video_id, row["title"], row["channel"],
-                    published_at, ingested_at, ingested_at,
-                    row["subtitles"], row["summary"], row["summary_length"],
-                    tags_raw, topics_raw, row["llm_model"], row["words_count"],
-                    status, row["error_message"],
+                    item_id,
+                    video_id,
+                    row["title"],
+                    row["channel"],
+                    published_at,
+                    ingested_at,
+                    ingested_at,
+                    row["subtitles"],
+                    row["summary"],
+                    row["summary_length"],
+                    tags_raw,
+                    topics_raw,
+                    row["llm_model"],
+                    row["words_count"],
+                    status,
+                    row["error_message"],
                 ),
             )
 
@@ -143,9 +165,15 @@ def migrate():
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    actual_id, video_id, row["channel"], views,
-                    row["duration"], row["subscribers"], row["videos"],
-                    timestamps_raw, thumbnail_url,
+                    actual_id,
+                    video_id,
+                    row["channel"],
+                    views,
+                    row["duration"],
+                    row["subscribers"],
+                    row["videos"],
+                    timestamps_raw,
+                    thumbnail_url,
                 ),
             )
 
@@ -170,7 +198,9 @@ def migrate():
 
     print(f"\nDone. Migrated: {migrated}, Skipped: {skipped}")
     print(f"Old table youtube_video_summary preserved as backup.")
-    print(f"Once verified, you can rename it: ALTER TABLE youtube_video_summary RENAME TO youtube_video_summary_backup")
+    print(
+        f"Once verified, you can rename it: ALTER TABLE youtube_video_summary RENAME TO youtube_video_summary_backup"
+    )
 
 
 if __name__ == "__main__":

@@ -6,8 +6,8 @@ Tokens are stored in-memory (reset on restart). Persist to DB in a future migrat
 """
 
 import json
-import uuid
 from typing import Optional
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel

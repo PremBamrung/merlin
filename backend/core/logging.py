@@ -3,8 +3,8 @@ Shared logger for the backend package.
 """
 
 import logging
-import sys
 from pathlib import Path
+import sys
 
 from backend.config import settings
 
@@ -16,9 +16,7 @@ _handler_console.setFormatter(
     logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 )
 
-_handler_file = logging.FileHandler(
-    _LOG_DIR / "merlin_backend.log", encoding="utf-8"
-)
+_handler_file = logging.FileHandler(_LOG_DIR / "merlin_backend.log", encoding="utf-8")
 _handler_file.setFormatter(
     logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 )

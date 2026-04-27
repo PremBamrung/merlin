@@ -56,11 +56,13 @@ def get_today_digest(limit: int = 20, db: Session = Depends(get_db_session)):
     sections = []
     label_map = {"youtube": "YouTube", "article": "Articles", "pdf": "Documents"}
     for source_type, type_items in by_type.items():
-        sections.append({
-            "title": f"Recently added · {label_map.get(source_type, source_type)}",
-            "subtitle": f"{len(type_items)} item{'s' if len(type_items) != 1 else ''}",
-            "items": type_items,
-        })
+        sections.append(
+            {
+                "title": f"Recently added · {label_map.get(source_type, source_type)}",
+                "subtitle": f"{len(type_items)} item{'s' if len(type_items) != 1 else ''}",
+                "items": type_items,
+            }
+        )
 
     return {
         "date": None,

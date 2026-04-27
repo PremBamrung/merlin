@@ -161,6 +161,7 @@ Subtitles: {subtitles}
     def llm(self):
         if self._llm is None:
             from backend.config import settings
+
             self._llm = settings.llm
         return self._llm
 

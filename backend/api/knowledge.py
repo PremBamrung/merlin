@@ -28,7 +28,7 @@ def list_knowledge(
     source_type: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None,
-    tags: Optional[str] = None,   # comma-separated
+    tags: Optional[str] = None,  # comma-separated
     page: int = 1,
     per_page: int = 20,
     db: Session = Depends(get_db_session),

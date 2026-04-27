@@ -23,6 +23,7 @@ async def lifespan(app: FastAPI):
 
     # Register all knowledge source plugins
     from backend.knowledge_sources.plugins.youtube.plugin import YouTubePlugin
+
     registry.register(YouTubePlugin())
     logger.info(f"Registered plugins: {registry.source_types()}")
 
@@ -42,7 +43,11 @@ def create_app() -> FastAPI:
     # CORS — allow the Vite dev server (Phase 2) and any local origin
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://localhost:3000", "http://localhost:8000"],
+        allow_origins=[
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "http://localhost:8000",
+        ],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -61,7 +66,11 @@ def create_app() -> FastAPI:
     def config():
         return {
             "source_types": [
-                {"type": p.source_type, "display_name": p.display_name, "schema": p.input_schema}
+                {
+                    "type": p.source_type,
+                    "display_name": p.display_name,
+                    "schema": p.input_schema,
+                }
                 for p in registry.all()
             ],
         }

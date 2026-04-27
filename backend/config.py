@@ -50,7 +50,9 @@ class Settings(BaseSettings):
 
         if self.llm_provider == "openrouter":
             if not self.openrouter_api_key:
-                raise ValueError("OPENROUTER_API_KEY is required for OpenRouter provider")
+                raise ValueError(
+                    "OPENROUTER_API_KEY is required for OpenRouter provider"
+                )
             return ChatOpenAI(
                 model=self.openrouter_model_deployment,
                 base_url=self.openrouter_endpoint,

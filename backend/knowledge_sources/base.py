@@ -20,7 +20,7 @@ from typing import Any, Callable, Optional
 class IngestRequest:
     """Source-agnostic envelope passed into every plugin's ingest() method."""
 
-    raw_input: str                              # URL, file path, raw text, etc.
+    raw_input: str  # URL, file path, raw text, etc.
     options: dict[str, Any] = field(default_factory=dict)  # plugin-specific options
     task_id: str = ""
     progress_callback: Optional[Callable[[int, str], None]] = None
@@ -39,12 +39,12 @@ class IngestResult:
     """
 
     source_type: str
-    source_id: str                  # deduplication key (video_id, URL hash, etc.)
+    source_id: str  # deduplication key (video_id, URL hash, etc.)
     title: str
     author: Optional[str] = None
     published_at: Optional[datetime] = None
 
-    raw_content: str = ""           # full transcript / article text
+    raw_content: str = ""  # full transcript / article text
     summary: str = ""
     summary_length: str = "short"
 
@@ -66,8 +66,8 @@ class KnowledgeSourcePlugin(ABC):
     They can freely block (network I/O, LLM calls, ffmpeg, etc.).
     """
 
-    source_type: str        # e.g. "youtube", "article", "pdf"
-    display_name: str       # e.g. "YouTube Video", "Web Article"
+    source_type: str  # e.g. "youtube", "article", "pdf"
+    display_name: str  # e.g. "YouTube Video", "Web Article"
 
     # JSON Schema for the frontend form (drives auto-generated UI)
     input_schema: dict = field(default_factory=dict)

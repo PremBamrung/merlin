@@ -2,8 +2,8 @@
 BackgroundTaskRepository — CRUD for the background_tasks table.
 """
 
-import json
 from datetime import datetime, timezone
+import json
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -12,9 +12,10 @@ from backend.db.models import BackgroundTask
 
 
 class BackgroundTaskRepository:
-
     @staticmethod
-    def create(session: Session, task_id: str, task_type: str, input_data: dict) -> BackgroundTask:
+    def create(
+        session: Session, task_id: str, task_type: str, input_data: dict
+    ) -> BackgroundTask:
         task = BackgroundTask(
             id=task_id,
             task_type=task_type,

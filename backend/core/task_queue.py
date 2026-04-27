@@ -9,10 +9,10 @@ server restarts and is queryable via GET /api/tasks/{task_id}.
 """
 
 import asyncio
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Callable
+import uuid
 
 from backend.core.logging import logger
 from backend.db.engine import SessionFactory
@@ -22,7 +22,9 @@ from backend.knowledge_sources.base import IngestRequest, IngestResult
 
 class TaskQueue:
     def __init__(self, max_workers: int = 3):
-        self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="merlin")
+        self._executor = ThreadPoolExecutor(
+            max_workers=max_workers, thread_name_prefix="merlin"
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -86,7 +88,9 @@ class TaskQueue:
         def progress_callback(percent: int, message: str):
             try:
                 with SessionFactory() as s:
-                    BackgroundTaskRepository.update_progress(s, task_id, percent, message)
+                    BackgroundTaskRepository.update_progress(
+                        s, task_id, percent, message
+                    )
                     s.commit()
             except Exception as e:
                 logger.warning(f"Progress update failed for {task_id}: {e}")

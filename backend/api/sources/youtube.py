@@ -13,12 +13,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, HttpUrl
 from sqlalchemy.orm import Session
 
+from backend.core.task_queue import task_queue
 from backend.db.engine import get_db_session
 from backend.db.models import KnowledgeItem, YouTubeMetadata
-from backend.db.repositories.knowledge import KnowledgeItemRepository, YouTubeMetadataRepository
+from backend.db.repositories.knowledge import (
+    KnowledgeItemRepository,
+    YouTubeMetadataRepository,
+)
 from backend.db.repositories.tasks import BackgroundTaskRepository
 from backend.knowledge_sources.registry import registry
-from backend.core.task_queue import task_queue
 
 router = APIRouter(prefix="/sources/youtube", tags=["youtube"])
 
@@ -26,6 +29,7 @@ router = APIRouter(prefix="/sources/youtube", tags=["youtube"])
 # ------------------------------------------------------------------
 # Request / Response schemas
 # ------------------------------------------------------------------
+
 
 class YouTubeIngestRequest(BaseModel):
     url: str
@@ -43,10 +47,12 @@ class TaskResponse(BaseModel):
 # on_complete callback — runs in worker thread after successful ingest
 # ------------------------------------------------------------------
 
+
 def _persist_result(task_id: str, result) -> None:
     """Persist IngestResult to DB and mark task completed."""
-    from backend.db.engine import SessionFactory
     import uuid
+
+    from backend.db.engine import SessionFactory
 
     with SessionFactory() as session:
         # Upsert knowledge_item
@@ -94,6 +100,7 @@ def _persist_result(task_id: str, result) -> None:
 # Routes
 # ------------------------------------------------------------------
 
+
 @router.post("", response_model=TaskResponse)
 async def ingest_youtube(body: YouTubeIngestRequest):
     """Submit a YouTube URL for background processing. Returns task_id to poll."""
@@ -108,7 +115,10 @@ async def ingest_youtube(body: YouTubeIngestRequest):
     task_id = await task_queue.enqueue_ingest(
         plugin=plugin,
         raw_input=body.url,
-        options={"languages": body.languages or ["en", "fr"], "summary_length": body.summary_length},
+        options={
+            "languages": body.languages or ["en", "fr"],
+            "summary_length": body.summary_length,
+        },
         on_complete=_persist_result,
     )
     return TaskResponse(task_id=task_id, status="queued")
@@ -146,7 +156,9 @@ async def retry_youtube(item_id: str, db: Session = Depends(get_db_session)):
     if not item or item.source_type != "youtube":
         raise HTTPException(status_code=404, detail="Item not found")
     if item.status not in ("failed", "pending"):
-        raise HTTPException(status_code=409, detail=f"Cannot retry item with status '{item.status}'")
+        raise HTTPException(
+            status_code=409, detail=f"Cannot retry item with status '{item.status}'"
+        )
 
     # Reconstruct URL from video_id
     meta = item.youtube_metadata
@@ -158,7 +170,10 @@ async def retry_youtube(item_id: str, db: Session = Depends(get_db_session)):
     task_id = await task_queue.enqueue_ingest(
         plugin=plugin,
         raw_input=url,
-        options={"languages": ["en", "fr"], "summary_length": item.summary_length or "short"},
+        options={
+            "languages": ["en", "fr"],
+            "summary_length": item.summary_length or "short",
+        },
         on_complete=_persist_result,
     )
     return TaskResponse(task_id=task_id, status="queued")
@@ -176,6 +191,7 @@ def clear_summary(item_id: str, db: Session = Depends(get_db_session)):
 # ------------------------------------------------------------------
 # Serializer
 # ------------------------------------------------------------------
+
 
 def _serialize(item: KnowledgeItem, include_content: bool = False) -> dict:
     meta = item.youtube_metadata

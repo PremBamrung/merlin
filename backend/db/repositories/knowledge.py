@@ -3,8 +3,8 @@ KnowledgeItemRepository — CRUD for knowledge_items + youtube_metadata.
 All methods are synchronous; session is passed in (FastAPI Depends pattern).
 """
 
-import json
 from datetime import datetime, timezone
+import json
 from typing import Any, Optional
 
 from sqlalchemy import func, or_, text
@@ -14,7 +14,6 @@ from backend.db.models import KnowledgeItem, YouTubeMetadata
 
 
 class KnowledgeItemRepository:
-
     @staticmethod
     def create(session: Session, data: dict) -> KnowledgeItem:
         """Insert a new KnowledgeItem. Returns the saved instance."""
@@ -84,7 +83,9 @@ class KnowledgeItemRepository:
         return items, total
 
     @staticmethod
-    def update(session: Session, item_id: str, updates: dict) -> Optional[KnowledgeItem]:
+    def update(
+        session: Session, item_id: str, updates: dict
+    ) -> Optional[KnowledgeItem]:
         item = session.get(KnowledgeItem, item_id)
         if not item:
             return None
@@ -118,11 +119,8 @@ class KnowledgeItemRepository:
 
 
 class YouTubeMetadataRepository:
-
     @staticmethod
-    def upsert(
-        session: Session, knowledge_item_id: str, data: dict
-    ) -> YouTubeMetadata:
+    def upsert(session: Session, knowledge_item_id: str, data: dict) -> YouTubeMetadata:
         existing = session.get(YouTubeMetadata, knowledge_item_id)
         if existing:
             for k, v in data.items():
