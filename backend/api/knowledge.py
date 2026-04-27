@@ -87,6 +87,7 @@ def delete_knowledge_item(item_id: str, db: Session = Depends(get_db_session)):
 
 
 def _serialize(item, include_content: bool = False) -> dict:
+    meta = item.youtube_metadata
     d = {
         "id": item.id,
         "source_type": item.source_type,
@@ -103,6 +104,15 @@ def _serialize(item, include_content: bool = False) -> dict:
         "word_count": item.word_count,
         "status": item.status,
         "error_message": item.error_message,
+        # YouTube-specific metadata (nullable for non-youtube sources)
+        "channel": meta.channel if meta else None,
+        "views": meta.views if meta else None,
+        "duration": meta.duration if meta else None,
+        "subscribers": meta.subscribers if meta else None,
+        "videos_count": meta.videos_count if meta else None,
+        "thumbnail_url": meta.thumbnail_url if meta else None,
+        "detected_language": meta.detected_language if meta else None,
+        "timestamps": _parse_json(meta.timestamps, {}) if meta else {},
     }
     if include_content:
         d["raw_content"] = item.raw_content
