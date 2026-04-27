@@ -18,6 +18,10 @@ export interface KnowledgeItem {
   views?: number | null;
   duration?: string | null;
   channel?: string | null;
+  subscribers?: string | null;
+  videos_count?: string | null;
+  detected_language?: string | null;
+  timestamps?: Record<string, string> | null;
   raw_content?: string | null;
 }
 
