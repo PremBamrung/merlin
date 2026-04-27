@@ -29,8 +29,8 @@ router = APIRouter(prefix="/sources/youtube", tags=["youtube"])
 
 class YouTubeIngestRequest(BaseModel):
     url: str
-    languages: list[str] = ["en"]
-    summary_length: str = "medium"
+    languages: list[str] = ["en", "fr"]
+    summary_length: str = "short"
 
 
 class TaskResponse(BaseModel):
@@ -108,7 +108,7 @@ async def ingest_youtube(body: YouTubeIngestRequest):
     task_id = await task_queue.enqueue_ingest(
         plugin=plugin,
         raw_input=body.url,
-        options={"languages": body.languages, "summary_length": body.summary_length},
+        options={"languages": body.languages or ["en", "fr"], "summary_length": body.summary_length},
         on_complete=_persist_result,
     )
     return TaskResponse(task_id=task_id, status="queued")
@@ -158,7 +158,7 @@ async def retry_youtube(item_id: str, db: Session = Depends(get_db_session)):
     task_id = await task_queue.enqueue_ingest(
         plugin=plugin,
         raw_input=url,
-        options={"languages": ["en"], "summary_length": item.summary_length or "medium"},
+        options={"languages": ["en", "fr"], "summary_length": item.summary_length or "short"},
         on_complete=_persist_result,
     )
     return TaskResponse(task_id=task_id, status="queued")

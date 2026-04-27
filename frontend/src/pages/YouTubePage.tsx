@@ -8,10 +8,21 @@ import { pollTask } from '@/api/tasks'
 import type { Task } from '@/types'
 
 type Stage = 'idle' | 'submitting' | 'processing' | 'done' | 'error'
+type LanguageOption = { code: string; label: string }
+
+const LANGUAGE_OPTIONS: LanguageOption[] = [
+  { code: 'en', label: 'English' },
+  { code: 'fr', label: 'French' },
+  { code: 'de', label: 'German' },
+  { code: 'es', label: 'Spanish' },
+  { code: 'it', label: 'Italian' },
+  { code: 'pt', label: 'Portuguese' },
+]
 
 export default function YouTubePage() {
   const [url, setUrl] = useState('')
-  const [summaryLength, setSummaryLength] = useState('medium')
+  const [summaryLength, setSummaryLength] = useState('short')
+  const [languages, setLanguages] = useState<string[]>(['en', 'fr'])
   const [stage, setStage] = useState<Stage>('idle')
   const [task, setTask] = useState<Task | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
@@ -21,7 +32,11 @@ export default function YouTubePage() {
     setStage('submitting')
     setErrorMsg('')
     try {
-      const res = await submitYouTube(url.trim(), summaryLength)
+      const res = await submitYouTube({
+        url: url.trim(),
+        summary_length: summaryLength,
+        languages: languages.length > 0 ? languages : ['en', 'fr'],
+      })
       setStage('processing')
       pollTask(
         res.task_id,
@@ -35,7 +50,23 @@ export default function YouTubePage() {
     }
   }
 
-  const reset = () => { setUrl(''); setStage('idle'); setTask(null); setErrorMsg('') }
+  const toggleLanguage = (code: string) => {
+    setLanguages((current) => {
+      if (current.includes(code)) {
+        return current.length === 1 ? current : current.filter((lang) => lang !== code)
+      }
+      return [...current, code]
+    })
+  }
+
+  const reset = () => {
+    setUrl('')
+    setSummaryLength('short')
+    setLanguages(['en', 'fr'])
+    setStage('idle')
+    setTask(null)
+    setErrorMsg('')
+  }
 
   return (
     <div className="artboard-root">
@@ -81,6 +112,25 @@ export default function YouTubePage() {
                         {l}
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 24 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 8 }}>Summary languages</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {LANGUAGE_OPTIONS.map((lang) => (
+                      <button
+                        key={lang.code}
+                        className={`btn${languages.includes(lang.code) ? ' primary' : ' ghost'}`}
+                        onClick={() => toggleLanguage(lang.code)}
+                        style={{ textTransform: 'capitalize' }}
+                      >
+                        {lang.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-subtle)' }}>
+                    Merlin matches the video language when possible and falls back to English.
                   </div>
                 </div>
 

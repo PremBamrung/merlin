@@ -46,7 +46,7 @@ class IngestResult:
 
     raw_content: str = ""           # full transcript / article text
     summary: str = ""
-    summary_length: str = "medium"
+    summary_length: str = "short"
 
     tags: list[str] = field(default_factory=list)
     topics: dict[str, str] = field(default_factory=dict)

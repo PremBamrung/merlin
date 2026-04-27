@@ -50,13 +50,13 @@ class YouTubePlugin(KnowledgeSourcePlugin):
                 "type": "array",
                 "items": {"type": "string"},
                 "title": "Preferred languages",
-                "default": ["en"],
+                "default": ["en", "fr"],
             },
             "summary_length": {
                 "type": "string",
                 "enum": ["short", "medium", "long"],
                 "title": "Summary length",
-                "default": "medium",
+                "default": "short",
             },
         },
         "required": ["url"],
@@ -84,15 +84,15 @@ class YouTubePlugin(KnowledgeSourcePlugin):
         errors = []
         if not self.can_handle(raw_input):
             errors.append("Not a valid YouTube URL")
-        length = options.get("summary_length", "medium")
+        length = options.get("summary_length", "short")
         if length not in ("short", "medium", "long"):
             errors.append("summary_length must be one of: short, medium, long")
         return errors
 
     def ingest(self, request: IngestRequest) -> IngestResult:
         url = request.raw_input
-        user_languages: list[str] = request.options.get("languages", ["en"])
-        summary_length: str = request.options.get("summary_length", "medium")
+        user_languages: list[str] = request.options.get("languages", ["en", "fr"])
+        summary_length: str = request.options.get("summary_length", "short")
 
         request.report(5, "Extracting video ID…")
         video_id = self._video_extractor.extract_video_id(url)
@@ -188,6 +188,8 @@ class YouTubePlugin(KnowledgeSourcePlugin):
 
     @staticmethod
     def _pick_summary_language(detected_code: str, user_languages: list[str]) -> str:
+        if not user_languages:
+            return "english"
         base = detected_code.split("-")[0].split("_")[0].lower()
         if base in [lang.lower() for lang in user_languages]:
             return LANGUAGE_MAP.get(base, "english")

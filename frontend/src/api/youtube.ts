@@ -6,12 +6,12 @@ export interface YouTubeSubmitResponse {
 }
 
 export async function submitYouTube(
-  urlOrParams: string | { url: string; summary_length?: string },
-  summary_length = 'medium'
+  urlOrParams: string | { url: string; summary_length?: string; languages?: string[] },
+  summary_length = 'short'
 ): Promise<YouTubeSubmitResponse> {
   const body = typeof urlOrParams === 'string'
     ? { url: urlOrParams, summary_length }
-    : { summary_length: 'medium', ...urlOrParams }
+    : { summary_length: 'short', languages: ['en', 'fr'], ...urlOrParams }
   const res = await client.post<YouTubeSubmitResponse>('/api/sources/youtube', body)
   return res.data
 }

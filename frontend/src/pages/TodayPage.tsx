@@ -36,7 +36,7 @@ export default function TodayPage() {
   })
 
   const ingestMutation = useMutation({
-    mutationFn: (url: string) => submitYouTube({ url, summary_length: 'medium' }),
+    mutationFn: (url: string) => submitYouTube({ url, summary_length: 'short' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
     },
