@@ -10,6 +10,7 @@ import YouTubePage from '@/pages/YouTubePage'
 import RedditPage from '@/pages/RedditPage'
 import IngestReviewPage from '@/pages/IngestReviewPage'
 import SharePage from '@/pages/SharePage'
+import LibraryItemPage from '@/pages/LibraryItemPage'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 2, staleTime: 30000 } },
@@ -25,6 +26,7 @@ export default function App() {
           <Route path="/digest" element={<DigestPage />} />
           <Route path="/inbox" element={<InboxPage />} />
           <Route path="/library" element={<LibraryPage />} />
+          <Route path="/library/:id" element={<LibraryItemPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/graph" element={<GraphPage />} />
           <Route path="/youtube" element={<YouTubePage />} />

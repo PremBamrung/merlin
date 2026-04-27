@@ -76,6 +76,7 @@ export default function IngestReviewPage() {
           actions={
             <>
               <button className="btn ghost" onClick={() => navigate('/inbox')}>Skip</button>
+              <button className="btn ghost" onClick={() => navigate(`/library/${item.id}`)}>View document</button>
               <button
                 className="btn primary"
                 disabled={saveMutation.isPending || savedOk}

@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import Sidebar from '@/components/shared/Sidebar'
 import Topbar from '@/components/shared/Topbar'
 import Icons from '@/components/shared/Icons'
@@ -6,6 +7,7 @@ import SourcePill from '@/components/shared/SourcePill'
 import { fetchDigest, ingestDigestItem, skipDigestItem } from '@/api/digest'
 
 export default function DigestPage() {
+  const navigate = useNavigate()
   const qc = useQueryClient()
 
   const { data, isLoading } = useQuery({
@@ -86,7 +88,7 @@ export default function DigestPage() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {sec.items.map((it) => (
-                    <div key={it.id} className="digest-card">
+                    <div key={it.id} className="digest-card" onClick={() => navigate(`/library/${it.id}`)}>
                       <div className="digest-thumb">
                         {it.source_type === 'youtube' && <Icons.yt style={{ width: 22, height: 22 }} />}
                         {it.source_type === 'article' && <Icons.paper style={{ width: 22, height: 22 }} />}
@@ -114,14 +116,14 @@ export default function DigestPage() {
                             <button
                               className="btn ghost"
                               style={{ fontSize: 11, padding: '3px 8px' }}
-                              onClick={() => ingestMutation.mutate(it.id)}
+                              onClick={(e) => { e.stopPropagation(); ingestMutation.mutate(it.id) }}
                             >
                               Ingest
                             </button>
                             <button
                               className="btn ghost"
                               style={{ fontSize: 11, padding: '3px 8px' }}
-                              onClick={() => skipMutation.mutate(it.id)}
+                              onClick={(e) => { e.stopPropagation(); skipMutation.mutate(it.id) }}
                             >
                               Skip
                             </button>

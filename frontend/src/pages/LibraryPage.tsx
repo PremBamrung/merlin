@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import Sidebar from '@/components/shared/Sidebar'
 import Topbar from '@/components/shared/Topbar'
 import Icons from '@/components/shared/Icons'
@@ -17,6 +18,7 @@ function timeAgo(dateStr: string): string {
 }
 
 export default function LibraryPage() {
+  const navigate = useNavigate()
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [typeFilter, setTypeFilter] = useState('all')
   const [search, setSearch] = useState('')
@@ -120,6 +122,7 @@ export default function LibraryPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 18, marginTop: 24 }}>
                 {items.map((s: KnowledgeItem) => (
                   <div key={s.id} style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', cursor: 'pointer', transition: 'all var(--dur)', position: 'relative' }}
+                    onClick={() => navigate(`/library/${s.id}`)}
                     onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
                     onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
                   >
@@ -177,6 +180,7 @@ export default function LibraryPage() {
               <div style={{ marginTop: 24, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
                 {items.map((s: KnowledgeItem) => (
                   <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background var(--dur)' }}
+                    onClick={() => navigate(`/library/${s.id}`)}
                     onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-1)')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = '')}
                   >
@@ -189,7 +193,10 @@ export default function LibraryPage() {
                       ))}
                     </div>
                     <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-subtle)', width: 60, textAlign: 'right' }}>{timeAgo(s.ingested_at)}</span>
-                    <button onClick={() => deleteMutation.mutate(s.id)} style={{ background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--text-subtle)', padding: 2 }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(s.id) }}
+                      style={{ background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--text-subtle)', padding: 2 }}
+                    >
                       <Icons.trash style={{ width: 12, height: 12 }} />
                     </button>
                   </div>

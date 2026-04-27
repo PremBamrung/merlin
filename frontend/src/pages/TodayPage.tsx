@@ -158,7 +158,7 @@ export default function TodayPage() {
               </div>
               <div style={{ display: 'grid', gap: 10 }}>
                 {recentItems.map((s) => (
-                  <div key={s.id} className="recent-row">
+                  <div key={s.id} className="recent-row" onClick={() => navigate(`/library/${s.id}`)}>
                     <div className="recent-thumb">
                       {s.source_type === 'youtube' && <Icons.yt style={{ width: 20, height: 20 }} />}
                       {s.source_type === 'article' && <Icons.paper style={{ width: 20, height: 20 }} />}

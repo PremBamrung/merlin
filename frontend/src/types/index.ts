@@ -18,6 +18,7 @@ export interface KnowledgeItem {
   views?: number | null;
   duration?: string | null;
   channel?: string | null;
+  raw_content?: string | null;
 }
 
 export interface ChatMessage {
