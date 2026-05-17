@@ -150,3 +150,25 @@ class Embedding(Base):
     __table_args__ = (
         Index("ix_embeddings_item", "knowledge_item_id", "chunk_index", unique=True),
     )
+
+
+class ShareToken(Base):
+    __tablename__ = "share_tokens"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    token = Column(String(8), unique=True, nullable=False, index=True)
+    knowledge_item_id = Column(
+        String(36), ForeignKey("knowledge_items.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at = Column(DateTime, default=_now)
+
+
+class DigestAction(Base):
+    __tablename__ = "digest_actions"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    knowledge_item_id = Column(
+        String(36), ForeignKey("knowledge_items.id", ondelete="CASCADE"), nullable=False
+    )
+    action = Column(String(20), nullable=False)  # "ingest" | "skip"
+    created_at = Column(DateTime, default=_now)

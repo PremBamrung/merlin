@@ -1,7 +1,7 @@
 """
 GET  /api/digest/today       — ranked knowledge items as digest
-POST /api/digest/{id}/ingest — mark digest item as ingested (no-op placeholder)
-POST /api/digest/{id}/skip   — mark digest item as skipped (no-op placeholder)
+POST /api/digest/{id}/ingest — mark digest item as ingested
+POST /api/digest/{id}/skip   — mark digest item as skipped
 """
 
 import json
@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from backend.db.engine import get_db_session
-from backend.db.models import KnowledgeItem
+from backend.db.models import DigestAction, KnowledgeItem
 
 router = APIRouter(prefix="/digest", tags=["digest"])
 
@@ -72,10 +72,14 @@ def get_today_digest(limit: int = 20, db: Session = Depends(get_db_session)):
 
 
 @router.post("/{item_id}/ingest")
-def ingest_digest_item(item_id: str):
+def ingest_digest_item(item_id: str, db: Session = Depends(get_db_session)):
+    db.add(DigestAction(knowledge_item_id=item_id, action="ingest"))
+    db.commit()
     return {"ok": True, "item_id": item_id}
 
 
 @router.post("/{item_id}/skip")
-def skip_digest_item(item_id: str):
+def skip_digest_item(item_id: str, db: Session = Depends(get_db_session)):
+    db.add(DigestAction(knowledge_item_id=item_id, action="skip"))
+    db.commit()
     return {"ok": True, "item_id": item_id}
