@@ -7,6 +7,7 @@ export interface FetchKnowledgeParams {
   search?: string
   source_type?: string
   status?: string
+  tags?: string
 }
 
 export async function fetchKnowledge(
@@ -18,6 +19,7 @@ export async function fetchKnowledge(
   if (params.search?.trim()) p.search = params.search.trim()
   if (params.source_type && params.source_type !== 'all') p.source_type = params.source_type
   if (params.status && params.status !== 'all') p.status = params.status
+  if (params.tags?.trim()) p.tags = params.tags.trim()
 
   const res = await client.get<PaginatedResponse<KnowledgeItem>>('/api/knowledge', { params: p })
   return res.data

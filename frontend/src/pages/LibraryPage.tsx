@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import Sidebar from '@/components/shared/Sidebar'
 import Topbar from '@/components/shared/Topbar'
 import Icons from '@/components/shared/Icons'
 import SourcePill from '@/components/shared/SourcePill'
 import { fetchKnowledge, deleteKnowledgeItem } from '@/api/knowledge'
 import type { KnowledgeItem } from '@/types'
+
+const PAGE_SIZE = 24
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -19,29 +21,77 @@ function timeAgo(dateStr: string): string {
 
 export default function LibraryPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [typeFilter, setTypeFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
+  const [page, setPage] = useState(1)
+  const [allItems, setAllItems] = useState<KnowledgeItem[]>([])
   const queryClient = useQueryClient()
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['knowledge', typeFilter, search],
-    queryFn: () => fetchKnowledge({ per_page: 50, source_type: typeFilter, search }),
+  // URL-driven tag filter from sidebar
+  const tagParam = searchParams.get('tag') ?? ''
+  const [tagFilter, setTagFilter] = useState(tagParam)
+
+  useEffect(() => {
+    const t = searchParams.get('tag') ?? ''
+    setTagFilter(t)
+    setPage(1)
+    setAllItems([])
+  }, [searchParams])
+
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ['knowledge', typeFilter, search, tagFilter, page],
+    queryFn: () => fetchKnowledge({
+      per_page: PAGE_SIZE,
+      page,
+      source_type: typeFilter,
+      search: search || undefined,
+      ...(tagFilter ? { tags: tagFilter } : {}),
+    }),
     staleTime: 30000,
     retry: 2,
   })
 
+  useEffect(() => {
+    if (data?.items) {
+      setAllItems((prev) => page === 1 ? data.items : [...prev, ...data.items])
+    }
+  }, [data, page])
+
   const deleteMutation = useMutation({
     mutationFn: deleteKnowledgeItem,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['knowledge'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['knowledge'] })
+      setAllItems([])
+      setPage(1)
+    },
   })
 
-  const items = data?.items ?? []
   const total = data?.total ?? 0
+  const hasMore = allItems.length < total
 
   const sourceLabel = (type: string) =>
     type === 'youtube' ? 'youtube' : type === 'article' ? 'blog' : type
+
+  const applyTagFilter = (tag: string) => {
+    setTagFilter(tag)
+    setPage(1)
+    setAllItems([])
+    if (tag) {
+      setSearchParams({ tag })
+    } else {
+      setSearchParams({})
+    }
+  }
+
+  const resetFilters = () => {
+    setTypeFilter('all')
+    setSearch('')
+    setSearchInput('')
+    applyTagFilter('')
+  }
 
   return (
     <div className="artboard-root">
@@ -54,7 +104,13 @@ export default function LibraryPage() {
               <div>
                 <h1 className="page-title">Library</h1>
                 <p className="page-subtitle">
-                  <span className="mono">{items.length}</span> of <span className="mono">{total}</span> sources
+                  <span className="mono">{allItems.length}</span> of <span className="mono">{total}</span> sources
+                  {tagFilter && (
+                    <span style={{ marginLeft: 10 }}>
+                      · filtered by <b style={{ color: 'var(--accent)' }}>{tagFilter}</b>
+                      <button onClick={resetFilters} style={{ marginLeft: 6, background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 12 }}>✕</button>
+                    </span>
+                  )}
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -64,10 +120,16 @@ export default function LibraryPage() {
                     placeholder="Search library…"
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && setSearch(searchInput)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        setSearch(searchInput)
+                        setPage(1)
+                        setAllItems([])
+                      }
+                    }}
                     style={{ background: 'transparent', border: 0, outline: 0, color: 'var(--text)', flex: 1, fontSize: 13, fontFamily: 'inherit' }}
                   />
-                  {searchInput && <span className="kbd" style={{ cursor: 'pointer' }} onClick={() => { setSearch(searchInput) }}>↵</span>}
+                  {searchInput && <span className="kbd" style={{ cursor: 'pointer' }} onClick={() => { setSearch(searchInput); setPage(1); setAllItems([]) }}>↵</span>}
                 </div>
                 <div style={{ display: 'flex', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 7, padding: 2 }}>
                   {(['grid', 'list'] as const).map((v) => (
@@ -88,7 +150,7 @@ export default function LibraryPage() {
               ].map((f) => (
                 <button
                   key={f.id}
-                  onClick={() => setTypeFilter(f.id)}
+                  onClick={() => { setTypeFilter(f.id); setPage(1); setAllItems([]) }}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', background: typeFilter === f.id ? 'var(--accent-soft)' : 'transparent', border: `1px solid ${typeFilter === f.id ? 'var(--border-accent)' : 'var(--border)'}`, borderRadius: 20, color: typeFilter === f.id ? 'var(--accent)' : 'var(--text-muted)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', transition: 'all var(--dur)' }}
                 >
                   {f.label}
@@ -96,8 +158,8 @@ export default function LibraryPage() {
               ))}
             </div>
 
-            {isLoading && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 18, marginTop: 24 }}>
+            {isLoading && page === 1 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 18, marginTop: 24 }}>
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
                     <div style={{ aspectRatio: '16/9', background: 'var(--bg-2)' }} />
@@ -110,7 +172,7 @@ export default function LibraryPage() {
               </div>
             )}
 
-            {!isLoading && items.length === 0 && (
+            {!isLoading && allItems.length === 0 && (
               <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)' }}>
                 <Icons.library style={{ width: 40, height: 40, margin: '0 auto 16px', display: 'block', opacity: 0.3 }} />
                 <p style={{ fontSize: 16, margin: '0 0 8px' }}>No items in your library yet</p>
@@ -118,9 +180,9 @@ export default function LibraryPage() {
               </div>
             )}
 
-            {!isLoading && view === 'grid' && items.length > 0 && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 18, marginTop: 24 }}>
-                {items.map((s: KnowledgeItem) => (
+            {view === 'grid' && allItems.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 18, marginTop: 24 }}>
+                {allItems.map((s: KnowledgeItem) => (
                   <div key={s.id} style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', cursor: 'pointer', transition: 'all var(--dur)', position: 'relative' }}
                     onClick={() => navigate(`/library/${s.id}`)}
                     onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
@@ -166,7 +228,15 @@ export default function LibraryPage() {
                       {s.tags.length > 0 && (
                         <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
                           {s.tags.slice(0, 3).map((t) => (
-                            <span key={t} className="tag"><span className="dot" />{t}</span>
+                            <span
+                              key={t}
+                              className="tag"
+                              onClick={(e) => { e.stopPropagation(); applyTagFilter(t) }}
+                              style={{ cursor: 'pointer' }}
+                              title={`Filter by ${t}`}
+                            >
+                              <span className="dot" />{t}
+                            </span>
                           ))}
                         </div>
                       )}
@@ -176,9 +246,9 @@ export default function LibraryPage() {
               </div>
             )}
 
-            {!isLoading && view === 'list' && items.length > 0 && (
+            {view === 'list' && allItems.length > 0 && (
               <div style={{ marginTop: 24, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-                {items.map((s: KnowledgeItem) => (
+                {allItems.map((s: KnowledgeItem) => (
                   <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background var(--dur)' }}
                     onClick={() => navigate(`/library/${s.id}`)}
                     onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-1)')}
@@ -189,7 +259,14 @@ export default function LibraryPage() {
                     <span style={{ color: 'var(--text-subtle)', fontSize: 12 }}>{s.channel || s.author}</span>
                     <div style={{ display: 'flex', gap: 4 }}>
                       {s.tags.slice(0, 2).map((t) => (
-                        <span key={t} className="tag" style={{ fontSize: 10 }}><span className="dot" />{t}</span>
+                        <span
+                          key={t}
+                          className="tag"
+                          style={{ fontSize: 10, cursor: 'pointer' }}
+                          onClick={(e) => { e.stopPropagation(); applyTagFilter(t) }}
+                        >
+                          <span className="dot" />{t}
+                        </span>
                       ))}
                     </div>
                     <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-subtle)', width: 60, textAlign: 'right' }}>{timeAgo(s.ingested_at)}</span>
@@ -201,6 +278,20 @@ export default function LibraryPage() {
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Load more */}
+            {hasMore && allItems.length > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
+                <button
+                  className="btn ghost"
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={isFetching}
+                  style={{ minWidth: 120 }}
+                >
+                  {isFetching ? 'Loading…' : `Load more (${total - allItems.length} remaining)`}
+                </button>
               </div>
             )}
           </div>
