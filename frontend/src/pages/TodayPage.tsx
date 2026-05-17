@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Sidebar from '@/components/shared/Sidebar'
@@ -7,8 +7,11 @@ import Icons from '@/components/shared/Icons'
 import SourcePill from '@/components/shared/SourcePill'
 import { fetchTasks } from '@/api/tasks'
 import { fetchKnowledge } from '@/api/knowledge'
+import { fetchDigest } from '@/api/digest'
 import { submitYouTube } from '@/api/youtube'
 import type { Task } from '@/types'
+
+const IS_URL = /https?:\/\/|youtu|\.com\/|\.org\//
 
 function taskStage(t: Task): string {
   if (t.status === 'queued') return 'queued'
@@ -35,6 +38,18 @@ export default function TodayPage() {
     queryFn: () => fetchKnowledge({ per_page: 4 }),
   })
 
+  const { data: digestData } = useQuery({
+    queryKey: ['digest'],
+    queryFn: () => fetchDigest(10),
+    staleTime: 60000,
+  })
+
+  const { data: statsData } = useQuery({
+    queryKey: ['knowledge', 'stats'],
+    queryFn: () => fetchKnowledge({ per_page: 1, status: 'completed' }),
+    staleTime: 30000,
+  })
+
   const ingestMutation = useMutation({
     mutationFn: (url: string) => submitYouTube({ url, summary_length: 'short' }),
     onSuccess: () => {
@@ -42,26 +57,49 @@ export default function TodayPage() {
     },
   })
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault()
+        document.getElementById('omnibox-input')?.focus()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   const activeTasks = (tasksData ?? []).filter((t) => t.status !== 'completed')
 
   const hint = input.trim() === ''
     ? 'Paste a link, drop a YouTube URL, or ask Merlin about your library…'
-    : /https?:\/\/|youtu|\.com\/|\.org\//.test(input)
+    : IS_URL.test(input)
       ? 'Press ↵ to ingest this source'
       : 'Press ↵ to ask your library'
 
-  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key !== 'Enter' || !input.trim()) return
+  const handleSubmit = () => {
     const val = input.trim()
+    if (!val) return
     setInput('')
-    if (/https?:\/\/|youtu|\.com\/|\.org\//.test(val)) {
+    if (IS_URL.test(val)) {
       ingestMutation.mutate(val)
     } else {
-      navigate('/chat')
+      navigate('/chat', { state: { initialQuery: val } })
     }
   }
 
+  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter' || !input.trim()) return
+    handleSubmit()
+  }
+
   const recentItems = recentData?.items ?? []
+  const digestItems = (digestData?.sections ?? []).flatMap((s) => s.items).slice(0, 3)
+  const totalItems = statsData?.total ?? recentData?.total ?? 0
+
+  const thisWeek = recentItems.filter((item) => {
+    const d = new Date(item.ingested_at)
+    return Date.now() - d.getTime() < 7 * 24 * 60 * 60 * 1000
+  }).length
 
   return (
     <div className="artboard-root">
@@ -69,155 +107,200 @@ export default function TodayPage() {
       <div className="main">
         <Topbar crumbs={['Home', 'Today']} />
         <div className="page">
-          <div className="page-narrow">
+          <div className="today-outer">
+            {/* Header */}
             <div style={{ marginBottom: 28 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4 }}>
                 <span className="mono" style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
                   {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                 </span>
                 <span className="text-subtle">·</span>
-                <span className="text-subtle mono" style={{ fontSize: 11 }}>{recentData?.total ?? 0} sources in library</span>
+                <span className="text-subtle mono" style={{ fontSize: 11 }}>{totalItems} sources in library</span>
               </div>
               <h1 className="page-title">Good morning. <span className="dim">What are we learning?</span></h1>
             </div>
 
-            {/* Omnibox */}
-            <div className={`omnibox${focused ? ' is-focused' : ''}`}>
-              <div className="omnibox-input">
-                <Icons.sparkle style={{ width: 18, height: 18, color: 'var(--accent)', flexShrink: 0 }} />
-                <input
-                  className="omnibox-field"
-                  placeholder="Paste a link, drop a YouTube URL, or ask Merlin…"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onFocus={() => setFocused(true)}
-                  onBlur={() => setFocused(false)}
-                  onKeyDown={handleKey}
-                />
-                <button
-                  className="btn primary"
-                  disabled={!input.trim() || ingestMutation.isPending}
-                  onClick={() => {
-                    if (input.trim()) handleKey({ key: 'Enter', preventDefault: () => {} } as React.KeyboardEvent<HTMLInputElement>)
-                  }}
-                >
-                  <Icons.arrowUp /> Send
-                </button>
-              </div>
-              <div className="omnibox-hint">
-                <span>{hint}</span>
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>accepts</span>
-                  <SourcePill type="youtube" />
-                  <SourcePill type="blog" />
-                  <SourcePill type="reddit" />
-                  <SourcePill type="web" />
-                </div>
-              </div>
-            </div>
-
-            {/* Queue */}
-            {activeTasks.length > 0 && (
-              <div style={{ marginTop: 28 }}>
-                <div className="section-head">
-                  <span className="section-title">Ingesting</span>
-                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{activeTasks.length} in queue</span>
-                  <span className="text-subtle" style={{ fontSize: 12, cursor: 'pointer', marginLeft: 8 }} onClick={() => navigate('/inbox')}>
-                    View all →
-                  </span>
-                </div>
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {activeTasks.slice(0, 3).map((t) => {
-                    const stage = taskStage(t)
-                    return (
-                      <div key={t.task_id} className="queue-row">
-                        <div className="queue-dot" data-stage={stage} />
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: 13.5, fontWeight: 500 }}>{t.message ?? t.task_type}</span>
-                          </div>
-                          <div className="queue-bar"><div style={{ width: `${t.progress}%` }} /></div>
-                        </div>
-                        <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                          {stage}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Recent */}
-            <div style={{ marginTop: 36 }}>
-              <div className="section-head">
-                <span className="section-title">Recently added</span>
-                <span className="text-subtle" style={{ fontSize: 12, cursor: 'pointer' }} onClick={() => navigate('/library')}>
-                  View library →
-                </span>
-              </div>
-              <div style={{ display: 'grid', gap: 10 }}>
-                {recentItems.map((s) => (
-                  <div key={s.id} className="recent-row" onClick={() => navigate(`/library/${s.id}`)}>
-                    <div className="recent-thumb">
-                      {s.source_type === 'youtube' && <Icons.yt style={{ width: 20, height: 20 }} />}
-                      {s.source_type === 'article' && <Icons.paper style={{ width: 20, height: 20 }} />}
-                      {s.source_type === 'pdf' && <Icons.paper style={{ width: 20, height: 20 }} />}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 3 }}>
-                        <SourcePill type={s.source_type === 'article' ? 'blog' : s.source_type} />
-                        {s.channel && <span className="text-subtle" style={{ fontSize: 11 }}>{s.channel}</span>}
-                        {s.author && !s.channel && <span className="text-subtle" style={{ fontSize: 11 }}>{s.author}</span>}
-                        <span className="text-subtle">·</span>
-                        <span className="text-subtle mono" style={{ fontSize: 10.5 }}>
-                          {s.ingested_at ? new Date(s.ingested_at).toLocaleDateString() : ''}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>{s.title}</div>
-                      {s.summary && (
-                        <div style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.45, display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden' } as React.CSSProperties}>
-                          {s.summary}
-                        </div>
-                      )}
-                      {s.tags.length > 0 && (
-                        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                          {s.tags.map((t) => (
-                            <span key={t} className="tag">
-                              <span className="dot" />
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+            <div className="today-layout">
+              {/* Left: omnibox + queue + recent */}
+              <div className="today-left">
+                {/* Omnibox */}
+                <div className={`omnibox${focused ? ' is-focused' : ''}`}>
+                  <div className="omnibox-input">
+                    <Icons.sparkle style={{ width: 18, height: 18, color: 'var(--accent)', flexShrink: 0 }} />
+                    <input
+                      className="omnibox-field"
+                      placeholder="Paste a link, drop a YouTube URL, or ask Merlin…"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onFocus={() => setFocused(true)}
+                      onBlur={() => setFocused(false)}
+                      onKeyDown={handleKey}
+                      id="omnibox-input"
+                    />
+                    <button
+                      className="btn primary"
+                      disabled={!input.trim() || ingestMutation.isPending}
+                      onClick={handleSubmit}
+                    >
+                      <Icons.arrowUp /> Send
+                    </button>
+                  </div>
+                  <div className="omnibox-hint">
+                    <span>{hint}</span>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>accepts</span>
+                      <SourcePill type="youtube" />
+                      <SourcePill type="blog" />
+                      <SourcePill type="reddit" />
+                      <SourcePill type="web" />
                     </div>
                   </div>
-                ))}
-                {recentItems.length === 0 && (
-                  <div style={{ color: 'var(--text-subtle)', fontSize: 13.5, padding: '12px 0' }}>
-                    No sources yet — paste a YouTube URL above to get started.
+                </div>
+
+                {/* Queue */}
+                {activeTasks.length > 0 && (
+                  <div style={{ marginTop: 28 }}>
+                    <div className="section-head">
+                      <span className="section-title">Ingesting</span>
+                      <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{activeTasks.length} in queue</span>
+                      <span className="text-subtle" style={{ fontSize: 12, cursor: 'pointer', marginLeft: 8 }} onClick={() => navigate('/inbox')}>
+                        View all →
+                      </span>
+                    </div>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {activeTasks.slice(0, 3).map((t) => {
+                        const stage = taskStage(t)
+                        return (
+                          <div key={t.task_id} className="queue-row">
+                            <div className="queue-dot" data-stage={stage} />
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ fontSize: 13.5, fontWeight: 500 }}>{t.message ?? t.task_type}</span>
+                              </div>
+                              <div className="queue-bar"><div style={{ width: `${t.progress}%` }} /></div>
+                            </div>
+                            <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                              {stage}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
-              </div>
-            </div>
 
-            {/* Ask your library */}
-            <div style={{ marginTop: 40 }}>
-              <div className="section-head">
-                <span className="section-title">Ask your library</span>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {[
-                  'What did Karpathy say about RLHF vs SFT?',
-                  'Summarize my llm-research tag into 5 bullets',
-                  'Which blogs disagreed with each other?',
-                  'What am I avoiding learning lately?',
-                ].map((q, i) => (
-                  <div key={i} className="prompt-chip" onClick={() => navigate('/chat')}>
-                    <Icons.chat style={{ width: 14, height: 14, color: 'var(--accent)', flexShrink: 0 }} />
-                    <span>{q}</span>
+                {/* Recent */}
+                <div style={{ marginTop: 36 }}>
+                  <div className="section-head">
+                    <span className="section-title">Recently added</span>
+                    <span className="text-subtle" style={{ fontSize: 12, cursor: 'pointer' }} onClick={() => navigate('/library')}>
+                      View library →
+                    </span>
                   </div>
-                ))}
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {recentItems.map((s) => (
+                      <div key={s.id} className="recent-row" onClick={() => navigate(`/library/${s.id}`)}>
+                        <div className="recent-thumb">
+                          {s.source_type === 'youtube' && <Icons.yt style={{ width: 20, height: 20 }} />}
+                          {s.source_type === 'article' && <Icons.paper style={{ width: 20, height: 20 }} />}
+                          {s.source_type === 'pdf' && <Icons.paper style={{ width: 20, height: 20 }} />}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 3 }}>
+                            <SourcePill type={s.source_type === 'article' ? 'blog' : s.source_type} />
+                            {s.channel && <span className="text-subtle" style={{ fontSize: 11 }}>{s.channel}</span>}
+                            {s.author && !s.channel && <span className="text-subtle" style={{ fontSize: 11 }}>{s.author}</span>}
+                            <span className="text-subtle">·</span>
+                            <span className="text-subtle mono" style={{ fontSize: 10.5 }}>
+                              {s.ingested_at ? new Date(s.ingested_at).toLocaleDateString() : ''}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>{s.title}</div>
+                          {s.summary && (
+                            <div style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.45, display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden' } as React.CSSProperties}>
+                              {s.summary}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {recentItems.length === 0 && (
+                      <div style={{ color: 'var(--text-subtle)', fontSize: 13.5, padding: '12px 0' }}>
+                        No sources yet — paste a YouTube URL above to get started.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Ask your library */}
+                <div style={{ marginTop: 40 }}>
+                  <div className="section-head">
+                    <span className="section-title">Ask your library</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    {[
+                      'What did Karpathy say about RLHF vs SFT?',
+                      'Summarize my llm-research tag into 5 bullets',
+                      'Which blogs disagreed with each other?',
+                      'What am I avoiding learning lately?',
+                    ].map((q, i) => (
+                      <div key={i} className="prompt-chip" onClick={() => navigate('/chat', { state: { initialQuery: q } })}>
+                        <Icons.chat style={{ width: 14, height: 14, color: 'var(--accent)', flexShrink: 0 }} />
+                        <span>{q}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right: mini-digest + stats */}
+              <div className="today-right">
+                {/* Quick stats */}
+                <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 18px', marginBottom: 20 }}>
+                  <div className="section-title" style={{ marginBottom: 12 }}>Library stats</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    {[
+                      { label: 'total sources', value: String(totalItems) },
+                      { label: 'added this week', value: String(thisWeek) },
+                    ].map(({ label, value }) => (
+                      <div key={label}>
+                        <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-ui)', lineHeight: 1 }}>{value}</div>
+                        <div style={{ fontSize: 10.5, color: 'var(--text-subtle)', marginTop: 3, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Mini-digest */}
+                {digestItems.length > 0 && (
+                  <div>
+                    <div className="section-head">
+                      <span className="section-title">From your digest</span>
+                      <span className="text-subtle" style={{ fontSize: 12, cursor: 'pointer' }} onClick={() => navigate('/digest')}>
+                        Full digest →
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {digestItems.map((item) => (
+                        <div
+                          key={item.id}
+                          onClick={() => navigate(`/library/${item.id}`)}
+                          style={{ padding: '10px 12px', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', transition: 'border-color var(--dur)' }}
+                          onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--border-accent)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <SourcePill type={item.source_type === 'article' ? 'blog' : item.source_type} />
+                            {item.author && <span className="text-subtle" style={{ fontSize: 11 }}>{item.author}</span>}
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.3, display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden' } as React.CSSProperties}>
+                            {item.title}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -225,6 +308,13 @@ export default function TodayPage() {
       </div>
 
       <style>{`
+        .today-outer { max-width: 1400px; margin: 0 auto; }
+        .today-layout { display: grid; grid-template-columns: 1fr; gap: 32px; }
+        @media (min-width: 1200px) {
+          .today-layout { grid-template-columns: 3fr 2fr; }
+        }
+        .today-left {}
+        .today-right {}
         .omnibox {
           background: var(--bg-1);
           border: 1px solid var(--border);

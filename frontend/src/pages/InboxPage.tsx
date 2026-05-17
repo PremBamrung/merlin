@@ -1,3 +1,4 @@
+import type React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Sidebar from '@/components/shared/Sidebar'
@@ -5,6 +6,7 @@ import Topbar from '@/components/shared/Topbar'
 import Icons from '@/components/shared/Icons'
 import SourcePill from '@/components/shared/SourcePill'
 import { fetchTasks } from '@/api/tasks'
+import { fetchKnowledgeItem } from '@/api/knowledge'
 import { retryYouTube } from '@/api/youtube'
 import type { Task } from '@/types'
 
@@ -21,6 +23,62 @@ function sourceType(t: Task): string {
   if (t.task_type?.includes('article')) return 'blog'
   if (t.task_type?.includes('reddit')) return 'reddit'
   return 'web'
+}
+
+function TaskCard({ t, onOpen, onRetry }: { t: Task; onOpen: () => void; onRetry: () => void }) {
+  const stage = stageLabel(t)
+  const knowledgeId = t.knowledge_item_id ?? t.result?.knowledge_item_id
+
+  const { data: item } = useQuery({
+    queryKey: ['knowledge', knowledgeId],
+    queryFn: () => fetchKnowledgeItem(knowledgeId!),
+    enabled: !!knowledgeId,
+    staleTime: 60000,
+  })
+
+  const title = item?.title ?? t.message ?? t.task_type
+  const thumbnail = item?.thumbnail_url
+
+  return (
+    <div className={`inbox-card stage-${stage}`}>
+      {/* Thumbnail or status dot */}
+      <div className="inbox-stage">
+        {thumbnail ? (
+          <img src={thumbnail} alt={title} style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+        ) : (
+          <div style={{ width: 44, height: 44, borderRadius: 6, background: 'var(--bg-2)', display: 'grid', placeItems: 'center', color: 'var(--text-subtle)' }}>
+            <div className="inbox-dot" />
+          </div>
+        )}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+          <SourcePill type={sourceType(t)} />
+          <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-subtle)' }}>{t.task_type}</span>
+        </div>
+        <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 8, display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden' } as React.CSSProperties}>
+          {title}
+        </div>
+        {stage !== 'done' && stage !== 'failed' && (
+          <div className="inbox-bar"><div style={{ width: `${t.progress}%` }} /></div>
+        )}
+        <div className="inbox-step">
+          {stage === 'done' ? 'ready · added to Library' : t.message ?? stage}
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+        {stage === 'done' && knowledgeId && (
+          <button className="btn ghost" style={{ fontSize: 11 }} onClick={onOpen}>Open →</button>
+        )}
+        {stage === 'failed' && knowledgeId && (
+          <button className="btn ghost" style={{ fontSize: 11 }} onClick={onRetry}>Retry</button>
+        )}
+        <button className="btn ghost" style={{ fontSize: 11, padding: '4px 6px' }}>
+          <Icons.close style={{ width: 12, height: 12 }} />
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export default function InboxPage() {
@@ -57,7 +115,7 @@ export default function InboxPage() {
           }
         />
         <div className="page">
-          <div className="page-narrow">
+          <div className="inbox-outer">
             <h1 className="page-title">Inbox <span className="dim">— the workshop</span></h1>
             <p className="page-subtitle">Everything you've added, mid-transformation. Re-tag, re-summarize, or dismiss.</p>
 
@@ -88,57 +146,21 @@ export default function InboxPage() {
               <div style={{ color: 'var(--text-subtle)', fontSize: 13.5, padding: '24px 0' }}>Loading…</div>
             )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="inbox-grid">
               {tasks.map((t) => {
-                const stage = stageLabel(t)
                 const knowledgeId = t.knowledge_item_id ?? t.result?.knowledge_item_id
                 return (
-                  <div key={t.task_id} className={`inbox-card stage-${stage}`}>
-                    <div className="inbox-stage"><div className="inbox-dot" /></div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                        <SourcePill type={sourceType(t)} />
-                        <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-subtle)' }}>{t.task_type}</span>
-                      </div>
-                      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 10 }}>
-                        {t.message ?? t.task_type}
-                      </div>
-                      {stage !== 'done' && stage !== 'failed' && (
-                        <div className="inbox-bar"><div style={{ width: `${t.progress}%` }} /></div>
-                      )}
-                      <div className="inbox-step">
-                        {stage === 'done' ? 'ready · added to Library' : t.message ?? stage}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      {stage === 'done' && knowledgeId && (
-                        <button
-                          className="btn ghost"
-                          style={{ fontSize: 11 }}
-                          onClick={() => navigate(`/inbox/review/${knowledgeId}`)}
-                        >
-                          Open →
-                        </button>
-                      )}
-                      {stage === 'failed' && knowledgeId && (
-                        <button
-                          className="btn ghost"
-                          style={{ fontSize: 11 }}
-                          onClick={() => retryMutation.mutate(knowledgeId)}
-                        >
-                          Retry
-                        </button>
-                      )}
-                      <button className="btn ghost" style={{ fontSize: 11, padding: '4px 6px' }}>
-                        <Icons.close style={{ width: 12, height: 12 }} />
-                      </button>
-                    </div>
-                  </div>
+                  <TaskCard
+                    key={t.task_id}
+                    t={t}
+                    onOpen={() => navigate(`/inbox/review/${knowledgeId}`)}
+                    onRetry={() => knowledgeId && retryMutation.mutate(knowledgeId)}
+                  />
                 )
               })}
 
               {!isLoading && tasks.length === 0 && (
-                <div style={{ color: 'var(--text-subtle)', fontSize: 13.5, padding: '24px 0', textAlign: 'center' }}>
+                <div style={{ color: 'var(--text-subtle)', fontSize: 13.5, padding: '24px 0', textAlign: 'center', gridColumn: '1 / -1' }}>
                   No tasks yet — add a source to get started.
                 </div>
               )}
@@ -159,12 +181,16 @@ export default function InboxPage() {
         </div>
       </div>
       <style>{`
+        .inbox-outer { max-width: 1600px; margin: 0 auto; }
+        .inbox-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+        @media (min-width: 1200px) { .inbox-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (min-width: 1800px) { .inbox-grid { grid-template-columns: repeat(3, 1fr); } }
         .inbox-card {
           display: flex; gap: 14px; padding: 14px;
           background: var(--bg-1); border: 1px solid var(--border);
           border-radius: 10px; align-items: flex-start;
         }
-        .inbox-stage { width: 24px; display: grid; place-items: center; padding-top: 6px; }
+        .inbox-stage { display: flex; align-items: flex-start; }
         .inbox-dot {
           width: 8px; height: 8px; border-radius: 50%;
           background: var(--accent); animation: pulse-ib 1.6s ease-in-out infinite;
