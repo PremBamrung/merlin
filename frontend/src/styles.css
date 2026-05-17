@@ -299,7 +299,7 @@ body {
   padding: 28px 32px 64px;
 }
 .page-narrow { max-width: 920px; margin: 0 auto; }
-.page-wide { max-width: 1200px; margin: 0 auto; }
+.page-wide { max-width: 1400px; margin: 0 auto; }
 
 .page-title {
   font-family: var(--font-ui);
@@ -447,6 +447,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  max-width: 860px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 .chat-msg {
   display: flex;
@@ -596,3 +600,23 @@ body {
 /* meta pairs */
 .meta-k { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-subtle); margin-bottom: 4px; }
 .meta-v { font-size: 13px; color: var(--text); }
+
+/* Mobile sidebar collapse */
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: 0 1fr;
+  }
+  .app.sidebar-open {
+    grid-template-columns: 240px 1fr;
+  }
+  .side {
+    transform: translateX(-240px);
+    transition: transform var(--dur);
+    position: absolute;
+    height: 100%;
+    z-index: 50;
+  }
+  .app.sidebar-open .side {
+    transform: translateX(0);
+  }
+}
