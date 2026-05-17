@@ -1,9 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import Sidebar from '@/components/shared/Sidebar'
 import Topbar from '@/components/shared/Topbar'
 import Icons from '@/components/shared/Icons'
 import { useChatStore, generateMessageId } from '@/stores/chatStore'
 import { streamChat } from '@/api/chat'
+import { fetchTags } from '@/api/knowledge'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -14,16 +17,59 @@ const SUGGESTIONS = [
   "What topics am I exploring most lately?",
 ]
 
+const ALL_SOURCE_TYPES = ['youtube', 'article', 'pdf'] as const
+
 export default function ChatPage() {
+  const location = useLocation()
   const { messages, isStreaming, addMessage, updateLastMessage, setStreaming, clearMessages } = useChatStore()
-  const [input, setInput] = useState('')
+
+  const initialQuery = (location.state as { initialQuery?: string } | null)?.initialQuery ?? ''
+  const [input, setInput] = useState(initialQuery)
+  const [selectedSources, setSelectedSources] = useState<string[]>([])
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+
   const abortRef = useRef<AbortController | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  const { data: tags = [] } = useQuery({
+    queryKey: ['tags'],
+    queryFn: fetchTags,
+    staleTime: 60000,
+  })
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  useEffect(() => {
+    if (initialQuery) {
+      textareaRef.current?.focus()
+    }
+  }, [initialQuery])
+
+  const toggleSource = (type: string) => {
+    setSelectedSources((prev) =>
+      prev.includes(type) ? prev.filter((s) => s !== type) : [...prev, type]
+    )
+  }
+
+  const toggleTag = (name: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(name) ? prev.filter((t) => t !== name) : [...prev, name]
+    )
+  }
+
+  const contextFilters = {
+    source_types: selectedSources.length > 0 ? selectedSources : undefined,
+    tags: selectedTags.length > 0 ? selectedTags : undefined,
+  }
+
+  const activeFilterCount = selectedSources.length + selectedTags.length
+
+  const footerLabel = activeFilterCount > 0
+    ? `${activeFilterCount} filter${activeFilterCount !== 1 ? 's' : ''} active`
+    : 'full vault · all sources'
 
   const send = () => {
     const text = input.trim()
@@ -50,7 +96,8 @@ export default function ChatPage() {
       (err) => {
         updateLastMessage(`Error: ${err}`)
         setStreaming(false)
-      }
+      },
+      contextFilters
     )
   }
 
@@ -73,7 +120,9 @@ export default function ChatPage() {
                   <Icons.close /> Clear
                 </button>
               )}
-              <button className="btn primary"><Icons.plus /> New chat</button>
+              <button className="btn primary" onClick={() => { clearMessages(); setInput('') }}>
+                <Icons.plus /> New chat
+              </button>
             </>
           }
         />
@@ -82,19 +131,57 @@ export default function ChatPage() {
           {/* Context rail */}
           <div className="chat-ctx">
             <div className="mono" style={{ fontSize: 10.5, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 14 }}>Context</div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', marginBottom: 8 }}>Merlin answers using your full library.</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', marginBottom: 12 }}>Filter what Merlin searches.</div>
 
-            <div className="ctx-section-label">Scope</div>
-            <div className="ctx-item">
-              <Icons.library style={{ width: 12, height: 12 }} />
-              <span>All sources</span>
-              <span className="mono" style={{ fontSize: 10.5, marginLeft: 'auto' }}>full vault</span>
+            <div className="ctx-section-label">Sources</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
+              {ALL_SOURCE_TYPES.map((type) => (
+                <label key={type} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, transition: 'background var(--dur)' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedSources.includes(type)}
+                    onChange={() => toggleSource(type)}
+                    style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: 12.5, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{type}</span>
+                </label>
+              ))}
             </div>
 
-            <div className="ctx-add">
-              <Icons.plus style={{ width: 11, height: 11 }} />
-              narrow to a tag or source
-            </div>
+            {tags.length > 0 && (
+              <>
+                <div className="ctx-section-label">Tags</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 200, overflowY: 'auto' }}>
+                  {tags.map((t) => (
+                    <label key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, transition: 'background var(--dur)' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedTags.includes(t.name)}
+                        onChange={() => toggleTag(t.name)}
+                        style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: 12.5, color: 'var(--text-muted)', flex: 1 }}>{t.name}</span>
+                      <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>{t.count}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {activeFilterCount > 0 && (
+              <button
+                onClick={() => { setSelectedSources([]); setSelectedTags([]) }}
+                style={{ marginTop: 12, background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', fontSize: 11, color: 'var(--text-subtle)', cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                Clear filters
+              </button>
+            )}
           </div>
 
           {/* Chat main */}
@@ -164,7 +251,9 @@ export default function ChatPage() {
                   onKeyDown={handleKey}
                 />
                 <div className="chat-input-footer">
-                  <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-subtle)' }}>full vault · all sources</span>
+                  <span className="mono" style={{ fontSize: 10.5, color: activeFilterCount > 0 ? 'var(--accent)' : 'var(--text-subtle)' }}>
+                    {footerLabel}
+                  </span>
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                     {isStreaming ? (
                       <button className="btn ghost" onClick={abort} style={{ fontSize: 11.5 }}>Stop</button>

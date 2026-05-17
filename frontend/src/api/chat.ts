@@ -5,21 +5,32 @@ export interface ChatRequestMessage {
   content: string
 }
 
+export interface ContextFilters {
+  source_types?: string[]
+  tags?: string[]
+}
+
 export function streamChat(
   messages: ChatRequestMessage[],
   onChunk: (content: string) => void,
   onCitations: (citations: Citation[]) => void,
   onDone: () => void,
-  onError: (msg: string) => void
+  onError: (msg: string) => void,
+  contextFilters?: ContextFilters
 ): AbortController {
   const controller = new AbortController()
 
   async function run() {
     try {
+      const body: Record<string, unknown> = { messages }
+      if (contextFilters && (contextFilters.source_types?.length || contextFilters.tags?.length)) {
+        body.context_filters = contextFilters
+      }
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       })
 
