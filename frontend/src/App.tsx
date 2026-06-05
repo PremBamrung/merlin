@@ -8,7 +8,6 @@ import LibraryPage from '@/pages/LibraryPage'
 import ChatPage from '@/pages/ChatPage'
 import GraphPage from '@/pages/GraphPage'
 import YouTubePage from '@/pages/YouTubePage'
-import RedditPage from '@/pages/RedditPage'
 import IngestReviewPage from '@/pages/IngestReviewPage'
 import SharePage from '@/pages/SharePage'
 import LibraryItemPage from '@/pages/LibraryItemPage'
@@ -44,7 +43,6 @@ function AppShell() {
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/graph" element={<GraphPage />} />
         <Route path="/youtube" element={<YouTubePage />} />
-        <Route path="/reddit" element={<RedditPage />} />
         <Route path="/inbox/review/:id" element={<IngestReviewPage />} />
         <Route path="/share" element={<SharePage />} />
         <Route path="*" element={<Navigate to="/today" replace />} />

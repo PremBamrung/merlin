@@ -4,6 +4,7 @@ import Sidebar from '@/components/shared/Sidebar'
 import Topbar from '@/components/shared/Topbar'
 import Icons from '@/components/shared/Icons'
 import SourcePill from '@/components/shared/SourcePill'
+import DocumentMarkdown from '@/components/shared/DocumentMarkdown'
 import { fetchDigest, ingestDigestItem, skipDigestItem } from '@/api/digest'
 
 export default function DigestPage() {
@@ -96,7 +97,9 @@ export default function DigestPage() {
                             </div>
                             <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 5, lineHeight: 1.3 }}>{it.title}</div>
                             {it.summary && (
-                              <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 8 }}>{it.summary}</div>
+                              <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 8 }}>
+                                <DocumentMarkdown content={it.summary} />
+                              </div>
                             )}
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                               <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-subtle)' }}>{it.why}</span>

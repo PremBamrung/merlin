@@ -20,3 +20,17 @@ export async function retryYouTube(itemId: string): Promise<YouTubeSubmitRespons
   const res = await client.post<YouTubeSubmitResponse>(`/api/sources/youtube/${itemId}/retry`)
   return res.data
 }
+
+export async function clearYouTubeSummary(itemId: string): Promise<{ ok: boolean }> {
+  const res = await client.delete<{ ok: boolean }>(`/api/sources/youtube/${itemId}/summary`)
+  return res.data
+}
+
+/**
+ * Regenerate a YouTube item's summary: clear it (resets status → pending,
+ * keeps the transcript) then re-enqueue ingestion via retry.
+ */
+export async function regenerateYouTubeSummary(itemId: string): Promise<YouTubeSubmitResponse> {
+  await clearYouTubeSummary(itemId)
+  return retryYouTube(itemId)
+}

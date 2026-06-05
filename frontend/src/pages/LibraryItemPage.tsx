@@ -1,11 +1,12 @@
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Sidebar from '@/components/shared/Sidebar'
 import Topbar from '@/components/shared/Topbar'
 import SourcePill from '@/components/shared/SourcePill'
 import DocumentMarkdown from '@/components/shared/DocumentMarkdown'
 import { fetchKnowledgeItem } from '@/api/knowledge'
+import { regenerateYouTubeSummary } from '@/api/youtube'
 
 function sourceLabel(type: string): string {
   return type === 'article' ? 'blog' : type
@@ -27,6 +28,7 @@ function timestampToSeconds(ts: string): number {
 export default function LibraryItemPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const [showFullContent, setShowFullContent] = useState(false)
   const transcriptRef = useRef<HTMLDivElement>(null)
 
@@ -34,7 +36,21 @@ export default function LibraryItemPage() {
     queryKey: ['knowledge', id],
     queryFn: () => fetchKnowledgeItem(id!),
     enabled: !!id,
+    refetchInterval: (query) => {
+      const s = query.state.data?.status
+      return s === 'pending' || s === 'processing' ? 2000 : false
+    },
   })
+
+  const regenerate = useMutation({
+    mutationFn: () => regenerateYouTubeSummary(id!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['knowledge', id] })
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+
+  const isPending = item?.status === 'pending' || item?.status === 'processing'
 
   const sourceTypeDisplay = useMemo(() => {
     if (!item) return ''
@@ -99,7 +115,21 @@ export default function LibraryItemPage() {
       <div className="main">
         <Topbar
           crumbs={['Library', 'Document']}
-          actions={<button className="btn ghost" onClick={() => navigate('/library')}>Back to Library</button>}
+          actions={
+            <>
+              {item.source_type === 'youtube' && (
+                <button
+                  className="btn ghost"
+                  onClick={() => regenerate.mutate()}
+                  disabled={regenerate.isPending || isPending}
+                  title="Clear and re-generate the summary from the transcript"
+                >
+                  {regenerate.isPending || isPending ? 'Regenerating…' : 'Regenerate summary'}
+                </button>
+              )}
+              <button className="btn ghost" onClick={() => navigate('/library')}>Back to Library</button>
+            </>
+          }
         />
         <div className="page">
           <div className="lib-item-outer">
@@ -124,6 +154,33 @@ export default function LibraryItemPage() {
                   </p>
                 )}
 
+                {item.status === 'failed' && (
+                  <div style={{ background: 'var(--bg-1)', border: '1px solid var(--danger)', borderRadius: 10, padding: 16, marginBottom: 20 }}>
+                    <div className="mono" style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--danger)', marginBottom: 6 }}>
+                      Ingestion failed
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                      {item.error_message || 'This source failed to process.'}
+                    </div>
+                    {item.source_type === 'youtube' && (
+                      <button
+                        className="btn ghost"
+                        style={{ marginTop: 12 }}
+                        onClick={() => regenerate.mutate()}
+                        disabled={regenerate.isPending}
+                      >
+                        {regenerate.isPending ? 'Retrying…' : 'Retry'}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {isPending && (
+                  <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border-accent)', borderRadius: 10, padding: 16, marginBottom: 20, color: 'var(--text-muted)', fontSize: 13 }}>
+                    <span style={{ color: 'var(--accent)' }}>✦</span> Generating summary… this updates automatically when ready.
+                  </div>
+                )}
+
                 {item.summary && (
                   <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 10, padding: 18, marginBottom: 20 }}>
                     <div className="mono" style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-subtle)', marginBottom: 10 }}>
@@ -133,7 +190,7 @@ export default function LibraryItemPage() {
                   </div>
                 )}
 
-                {!item.summary && (
+                {!item.summary && item.status !== 'failed' && !isPending && (
                   <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 10, padding: 18, marginBottom: 20, color: 'var(--text-muted)' }}>
                     No summary is available for this document.
                   </div>

@@ -4,6 +4,7 @@ import Sidebar from '@/components/shared/Sidebar'
 import Topbar from '@/components/shared/Topbar'
 import Icons from '@/components/shared/Icons'
 import SourcePill from '@/components/shared/SourcePill'
+import DocumentMarkdown from '@/components/shared/DocumentMarkdown'
 import { fetchKnowledge } from '@/api/knowledge'
 import { createShare } from '@/api/share'
 
@@ -106,7 +107,9 @@ export default function SharePage() {
                 <div className="mono" style={{ fontSize: 10.5, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Icons.sparkle style={{ width: 12, height: 12 }} /> Merlin's summary
                 </div>
-                <p style={{ fontSize: 16, lineHeight: 1.7, margin: 0, color: 'var(--text)' }}>{item.summary}</p>
+                <div style={{ fontSize: 16, lineHeight: 1.7, color: 'var(--text)' }}>
+                  <DocumentMarkdown content={item.summary} />
+                </div>
               </div>
             )}
 

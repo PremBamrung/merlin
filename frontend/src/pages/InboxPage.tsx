@@ -5,7 +5,7 @@ import Sidebar from '@/components/shared/Sidebar'
 import Topbar from '@/components/shared/Topbar'
 import Icons from '@/components/shared/Icons'
 import SourcePill from '@/components/shared/SourcePill'
-import { fetchTasks } from '@/api/tasks'
+import { fetchTasks, deleteTask, clearTasks } from '@/api/tasks'
 import { fetchKnowledgeItem } from '@/api/knowledge'
 import { retryYouTube } from '@/api/youtube'
 import type { Task } from '@/types'
@@ -25,7 +25,7 @@ function sourceType(t: Task): string {
   return 'web'
 }
 
-function TaskCard({ t, onOpen, onRetry }: { t: Task; onOpen: () => void; onRetry: () => void }) {
+function TaskCard({ t, onOpen, onRetry, onDismiss }: { t: Task; onOpen: () => void; onRetry: () => void; onDismiss: () => void }) {
   const stage = stageLabel(t)
   const knowledgeId = t.knowledge_item_id ?? t.result?.knowledge_item_id
 
@@ -63,7 +63,11 @@ function TaskCard({ t, onOpen, onRetry }: { t: Task; onOpen: () => void; onRetry
           <div className="inbox-bar"><div style={{ width: `${t.progress}%` }} /></div>
         )}
         <div className="inbox-step">
-          {stage === 'done' ? 'ready · added to Library' : t.message ?? stage}
+          {stage === 'done'
+            ? 'ready · added to Library'
+            : stage === 'failed'
+              ? (t.error ?? t.message ?? 'failed')
+              : t.message ?? stage}
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
@@ -73,7 +77,7 @@ function TaskCard({ t, onOpen, onRetry }: { t: Task; onOpen: () => void; onRetry
         {stage === 'failed' && knowledgeId && (
           <button className="btn ghost" style={{ fontSize: 11 }} onClick={onRetry}>Retry</button>
         )}
-        <button className="btn ghost" style={{ fontSize: 11, padding: '4px 6px' }}>
+        <button className="btn ghost" style={{ fontSize: 11, padding: '4px 6px' }} onClick={onDismiss} title="Dismiss task">
           <Icons.close style={{ width: 12, height: 12 }} />
         </button>
       </div>
@@ -93,6 +97,16 @@ export default function InboxPage() {
 
   const retryMutation = useMutation({
     mutationFn: (itemId: string) => retryYouTube(itemId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+
+  const dismissMutation = useMutation({
+    mutationFn: (taskId: string) => deleteTask(taskId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+
+  const clearFailedMutation = useMutation({
+    mutationFn: () => clearTasks('failed'),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })
 
@@ -126,17 +140,28 @@ export default function InboxPage() {
                 </span>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                   {failedTasks.length > 0 && (
-                    <button
-                      className="btn ghost"
-                      style={{ fontSize: 11.5 }}
-                      onClick={() => {
-                        failedTasks.forEach((t) => {
-                          if (t.knowledge_item_id) retryMutation.mutate(t.knowledge_item_id)
-                        })
-                      }}
-                    >
-                      Retry failed
-                    </button>
+                    <>
+                      <button
+                        className="btn ghost"
+                        style={{ fontSize: 11.5 }}
+                        onClick={() => {
+                          failedTasks.forEach((t) => {
+                            if (t.knowledge_item_id) retryMutation.mutate(t.knowledge_item_id)
+                          })
+                        }}
+                      >
+                        Retry failed
+                      </button>
+                      <button
+                        className="btn ghost"
+                        style={{ fontSize: 11.5, color: 'var(--danger)' }}
+                        onClick={() => clearFailedMutation.mutate()}
+                        disabled={clearFailedMutation.isPending}
+                        title="Delete all failed ingestion tasks"
+                      >
+                        {clearFailedMutation.isPending ? 'Clearing…' : `Clear failed (${failedTasks.length})`}
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -153,8 +178,9 @@ export default function InboxPage() {
                   <TaskCard
                     key={t.task_id}
                     t={t}
-                    onOpen={() => navigate(`/inbox/review/${knowledgeId}`)}
+                    onOpen={() => navigate(`/library/${knowledgeId}`)}
                     onRetry={() => knowledgeId && retryMutation.mutate(knowledgeId)}
+                    onDismiss={() => dismissMutation.mutate(t.task_id)}
                   />
                 )
               })}

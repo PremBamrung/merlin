@@ -6,6 +6,7 @@ import Topbar from '@/components/shared/Topbar'
 import Icons from '@/components/shared/Icons'
 import SourcePill from '@/components/shared/SourcePill'
 import { fetchKnowledge, deleteKnowledgeItem } from '@/api/knowledge'
+import { fetchConfig } from '@/api/config'
 import type { KnowledgeItem } from '@/types'
 
 const PAGE_SIZE = 24
@@ -40,6 +41,12 @@ export default function LibraryPage() {
     setPage(1)
     setAllItems([])
   }, [searchParams])
+
+  const { data: sourceTypes = [] } = useQuery({
+    queryKey: ['config'],
+    queryFn: fetchConfig,
+    staleTime: Infinity,
+  })
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['knowledge', typeFilter, search, tagFilter, page],
@@ -141,12 +148,11 @@ export default function LibraryPage() {
               </div>
             </div>
 
-            {/* Filter chips */}
+            {/* Filter chips — driven by registered source plugins */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
               {[
                 { id: 'all', label: 'Everything' },
-                { id: 'youtube', label: 'YouTube' },
-                { id: 'article', label: 'Blogs' },
+                ...sourceTypes.map((s) => ({ id: s.type, label: s.display_name })),
               ].map((f) => (
                 <button
                   key={f.id}

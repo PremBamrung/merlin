@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import Sidebar from '@/components/shared/Sidebar'
 import Topbar from '@/components/shared/Topbar'
@@ -7,6 +7,7 @@ import Icons from '@/components/shared/Icons'
 import { useChatStore, generateMessageId } from '@/stores/chatStore'
 import { streamChat } from '@/api/chat'
 import { fetchTags } from '@/api/knowledge'
+import { fetchConfig } from '@/api/config'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -16,8 +17,6 @@ const SUGGESTIONS = [
   "Which authors disagreed with each other?",
   "What topics am I exploring most lately?",
 ]
-
-const ALL_SOURCE_TYPES = ['youtube', 'article', 'pdf'] as const
 
 export default function ChatPage() {
   const location = useLocation()
@@ -36,6 +35,12 @@ export default function ChatPage() {
     queryKey: ['tags'],
     queryFn: fetchTags,
     staleTime: 60000,
+  })
+
+  const { data: sourceTypes = [] } = useQuery({
+    queryKey: ['config'],
+    queryFn: fetchConfig,
+    staleTime: Infinity,
   })
 
   useEffect(() => {
@@ -133,23 +138,27 @@ export default function ChatPage() {
             <div className="mono" style={{ fontSize: 10.5, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 14 }}>Context</div>
             <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', marginBottom: 12 }}>Filter what Merlin searches.</div>
 
-            <div className="ctx-section-label">Sources</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
-              {ALL_SOURCE_TYPES.map((type) => (
-                <label key={type} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, transition: 'background var(--dur)' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedSources.includes(type)}
-                    onChange={() => toggleSource(type)}
-                    style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: 12.5, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{type}</span>
-                </label>
-              ))}
-            </div>
+            {sourceTypes.length > 1 && (
+              <>
+                <div className="ctx-section-label">Sources</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
+                  {sourceTypes.map((src) => (
+                    <label key={src.type} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, transition: 'background var(--dur)' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedSources.includes(src.type)}
+                        onChange={() => toggleSource(src.type)}
+                        style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{src.display_name}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
 
             {tags.length > 0 && (
               <>
@@ -226,10 +235,10 @@ export default function ChatPage() {
                       {msg.citations && msg.citations.length > 0 && (
                         <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
                           {msg.citations.map((c) => (
-                            <span key={c.id} className="cite">
+                            <Link key={c.id} to={`/library/${c.id}`} className="cite" title={`Open "${c.title}"`}>
                               {c.source_type === 'youtube' ? <Icons.yt style={{ width: 10, height: 10 }} /> : <Icons.paper style={{ width: 10, height: 10 }} />}
                               {c.title}
-                            </span>
+                            </Link>
                           ))}
                         </div>
                       )}

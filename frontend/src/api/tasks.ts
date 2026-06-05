@@ -11,6 +11,17 @@ export async function fetchTask(taskId: string): Promise<Task> {
   return res.data
 }
 
+export async function deleteTask(taskId: string): Promise<{ ok: boolean }> {
+  const res = await client.delete<{ ok: boolean }>(`/api/tasks/${taskId}`)
+  return res.data
+}
+
+/** Bulk-clear tasks. Defaults to clearing failed ingestions. */
+export async function clearTasks(status: string = 'failed'): Promise<{ deleted: number }> {
+  const res = await client.delete<{ deleted: number }>('/api/tasks', { params: { status } })
+  return res.data
+}
+
 export function pollTask(
   taskId: string,
   onProgress: (task: Task) => void,

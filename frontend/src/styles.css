@@ -536,7 +536,10 @@ body {
   border-radius: 4px;
   cursor: pointer;
   border: 1px solid var(--border-accent);
+  text-decoration: none;
+  transition: background var(--dur), border-color var(--dur);
 }
+.cite:hover { background: var(--accent); color: var(--bg); }
 .ctx-item {
   display: flex; align-items: center; gap: 8px;
   padding: 6px 8px;

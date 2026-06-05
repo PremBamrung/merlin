@@ -9,6 +9,7 @@ import { fetchTasks } from '@/api/tasks'
 import { fetchKnowledge } from '@/api/knowledge'
 import { fetchDigest } from '@/api/digest'
 import { submitYouTube } from '@/api/youtube'
+import { fetchConfig } from '@/api/config'
 import type { Task } from '@/types'
 
 const IS_URL = /https?:\/\/|youtu|\.com\/|\.org\//
@@ -48,6 +49,12 @@ export default function TodayPage() {
     queryKey: ['knowledge', 'stats'],
     queryFn: () => fetchKnowledge({ per_page: 1, status: 'completed' }),
     staleTime: 30000,
+  })
+
+  const { data: sourceTypes = [] } = useQuery({
+    queryKey: ['config'],
+    queryFn: fetchConfig,
+    staleTime: Infinity,
   })
 
   const ingestMutation = useMutation({
@@ -149,10 +156,9 @@ export default function TodayPage() {
                     <span>{hint}</span>
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
                       <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>accepts</span>
-                      <SourcePill type="youtube" />
-                      <SourcePill type="blog" />
-                      <SourcePill type="reddit" />
-                      <SourcePill type="web" />
+                      {sourceTypes.map((s) => (
+                        <SourcePill key={s.type} type={s.type === 'article' ? 'blog' : s.type} />
+                      ))}
                     </div>
                   </div>
                 </div>
