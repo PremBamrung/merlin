@@ -80,3 +80,20 @@ class BackgroundTaskRepository:
             .limit(limit)
             .all()
         )
+
+    @staticmethod
+    def delete(session: Session, task_id: str) -> bool:
+        task = session.get(BackgroundTask, task_id)
+        if not task:
+            return False
+        session.delete(task)
+        return True
+
+    @staticmethod
+    def delete_by_status(session: Session, status: str) -> int:
+        """Bulk-delete tasks in a given status (e.g. 'failed'). Returns count."""
+        return (
+            session.query(BackgroundTask)
+            .filter(BackgroundTask.status == status)
+            .delete(synchronize_session=False)
+        )
