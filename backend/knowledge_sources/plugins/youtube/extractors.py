@@ -9,7 +9,16 @@ from pytube.innertube import InnerTube
 import requests
 from youtube_transcript_api import YouTubeTranscriptApi
 
+from backend.config import settings
 from backend.core.logging import logger
+from backend.core.rate_limit import MinIntervalRateLimiter
+
+# Shared across all ingest workers so concurrent video ingestions don't
+# burst-hit YouTube's transcript endpoint and get the IP banned (HTTP 429).
+_subtitle_rate_limiter = MinIntervalRateLimiter(
+    settings.youtube_subtitle_min_interval,
+    name="youtube-subtitles",
+)
 
 
 class CustomPyYouTube(pytube.YouTube):
@@ -126,6 +135,7 @@ class SubtitleExtractor:
 
         try:
             ytt_api = YouTubeTranscriptApi()
+            _subtitle_rate_limiter.wait()
             transcript_list = ytt_api.list(video_id)
             transcript = None
             detected_language = None
@@ -179,6 +189,7 @@ class SubtitleExtractor:
 
                 # Always try direct fetch first, regardless of language
                 try:
+                    _subtitle_rate_limiter.wait()
                     result = transcript.fetch()
                     logger.info(
                         f"Successfully fetched auto-generated transcript in {transcript_lang}"
@@ -195,6 +206,7 @@ class SubtitleExtractor:
                     )
 
                     try:
+                        _subtitle_rate_limiter.wait()
                         translated_transcript = transcript.translate(target_lang)
                         result = translated_transcript.fetch()
                         logger.info(
@@ -207,6 +219,7 @@ class SubtitleExtractor:
                         if target_lang != "en":
                             try:
                                 logger.info("Trying translation to English as fallback")
+                                _subtitle_rate_limiter.wait()
                                 translated_transcript = transcript.translate("en")
                                 result = translated_transcript.fetch()
                                 logger.info(
@@ -230,6 +243,7 @@ class SubtitleExtractor:
                                                 != transcript_lang
                                             ):
                                                 try:
+                                                    _subtitle_rate_limiter.wait()
                                                     result = alt_transcript.fetch()
                                                     detected_language = (
                                                         alt_transcript.language_code
@@ -262,6 +276,7 @@ class SubtitleExtractor:
                 # Manual transcript - fetch directly
                 if detected_language is None:
                     detected_language = transcript.language_code
+                _subtitle_rate_limiter.wait()
                 result = transcript.fetch()
                 logger.info(
                     f"Successfully fetched manual transcript in language: {detected_language}"

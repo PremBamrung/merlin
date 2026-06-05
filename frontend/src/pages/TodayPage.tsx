@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Sidebar from '@/components/shared/Sidebar'
@@ -63,6 +63,25 @@ export default function TodayPage() {
       qc.invalidateQueries({ queryKey: ['tasks'] })
     },
   })
+
+  // When an ingestion task finishes, the polled tasks query sees it before the
+  // "Recently added" list does (knowledge query has a 30s staleTime). Detect the
+  // transition to "completed" and invalidate knowledge queries so the list and
+  // stats refetch right away instead of after the stale window.
+  const completedTaskIds = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const tasks = tasksData ?? []
+    let hasNewlyCompleted = false
+    for (const t of tasks) {
+      if (t.status === 'completed' && !completedTaskIds.current.has(t.task_id)) {
+        completedTaskIds.current.add(t.task_id)
+        hasNewlyCompleted = true
+      }
+    }
+    if (hasNewlyCompleted) {
+      qc.invalidateQueries({ queryKey: ['knowledge'] })
+    }
+  }, [tasksData, qc])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

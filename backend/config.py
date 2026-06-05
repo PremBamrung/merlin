@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     app_password: str = ""
     log_level: str = "INFO"
 
+    # YouTube subtitle fetching — minimum seconds between requests to
+    # YouTube's transcript endpoint (across all ingest workers), to avoid
+    # being temporarily IP-banned (HTTP 429) during bulk ingestion.
+    youtube_subtitle_min_interval: float = 2.0
+
     @cached_property
     def llm(self):
         """Lazily create the LLM instance based on active provider."""
