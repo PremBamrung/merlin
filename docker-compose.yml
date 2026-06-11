@@ -1,11 +1,11 @@
 services:
-  backend:
+  app:
     build:
       context: .
-      dockerfile: Dockerfile.backend
+      dockerfile: Dockerfile
       network: host
     ports:
-      - "8000:8000"
+      - "8501:8501"
     volumes:
       - ./data:/app/data
       - ./.env:/app/.env:ro
@@ -14,20 +14,8 @@ services:
       - .env
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 15s
-
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-      network: host
-    ports:
-      - "5173:5173"
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
+      start_period: 20s
