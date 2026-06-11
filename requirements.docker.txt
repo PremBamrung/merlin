@@ -148,7 +148,7 @@ websockets==16.0
 widgetsnbextension==4.0.10
 yarg==0.1.9
 yarl==1.11.1
-youtube-transcript-api==1.2.3
+youtube-transcript-api>=1.2.4
 yt-dlp==2025.2.19
 zipp==3.17.0
 
