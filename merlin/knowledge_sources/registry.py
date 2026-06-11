@@ -1,11 +1,11 @@
 """
 PluginRegistry — central registry for all KnowledgeSourcePlugin instances.
-Register plugins at app startup in backend/main.py.
+Register plugins at app startup in merlin/bootstrap.py.
 """
 
 from typing import Optional
 
-from backend.knowledge_sources.base import KnowledgeSourcePlugin
+from merlin.knowledge_sources.base import KnowledgeSourcePlugin
 
 
 class PluginRegistry:

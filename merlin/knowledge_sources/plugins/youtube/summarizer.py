@@ -3,7 +3,7 @@ from typing import Generator
 
 from langchain_core.prompts import PromptTemplate
 
-from backend.core.logging import logger
+from merlin.core.logging import logger
 
 
 class VideoSummarizer:
@@ -160,7 +160,7 @@ Subtitles: {subtitles}
     @property
     def llm(self):
         if self._llm is None:
-            from backend.config import settings
+            from merlin.config import settings
 
             self._llm = settings.llm
         return self._llm

@@ -8,7 +8,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from backend.db.models import BackgroundTask
+from merlin.db.models import BackgroundTask
 
 
 class BackgroundTaskRepository:

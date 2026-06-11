@@ -9,9 +9,9 @@ from pytube.innertube import InnerTube
 import requests
 from youtube_transcript_api import YouTubeTranscriptApi
 
-from backend.config import settings
-from backend.core.logging import logger
-from backend.core.rate_limit import MinIntervalRateLimiter
+from merlin.config import settings
+from merlin.core.logging import logger
+from merlin.core.rate_limit import MinIntervalRateLimiter
 
 # Shared across all ingest workers so concurrent video ingestions don't
 # burst-hit YouTube's transcript endpoint and get the IP banned (HTTP 429).

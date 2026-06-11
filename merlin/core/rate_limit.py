@@ -11,7 +11,7 @@ a minimum spacing between them across all threads.
 import threading
 import time
 
-from backend.core.logging import logger
+from merlin.core.logging import logger
 
 
 class MinIntervalRateLimiter:

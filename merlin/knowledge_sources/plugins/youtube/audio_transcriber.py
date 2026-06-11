@@ -8,8 +8,8 @@ from dotenv import load_dotenv
 import requests
 import yt_dlp
 
-from backend.config import settings
-from backend.core.logging import logger
+from merlin.config import settings
+from merlin.core.logging import logger
 
 GROQ_API_KEY = settings.groq_api_key
 

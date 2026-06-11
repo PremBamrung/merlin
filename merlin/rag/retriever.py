@@ -9,7 +9,7 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from backend.db.models import KnowledgeItem
+from merlin.db.models import KnowledgeItem
 
 
 @dataclass

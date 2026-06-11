@@ -2,12 +2,12 @@
 Plugin system base — abstract interface every knowledge source must implement.
 
 To add a new source type:
-1. Create backend/knowledge_sources/plugins/mytype/plugin.py
+1. Create merlin/knowledge_sources/plugins/mytype/plugin.py
 2. Subclass KnowledgeSourcePlugin and set source_type
 3. Implement can_handle(), ingest(), and optionally validate_input()
-4. Register in backend/main.py: registry.register(MyTypePlugin())
+4. Register in merlin/bootstrap.py: registry.register(MyTypePlugin())
 
-The API layer, task queue, and DB repositories require zero changes.
+The service layer, task queue, and DB repositories require zero changes.
 """
 
 from abc import ABC, abstractmethod

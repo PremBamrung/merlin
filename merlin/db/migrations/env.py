@@ -3,9 +3,14 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from backend.db.models import Base
+from merlin.config import settings
+from merlin.db.models import Base
 
 config = context.config
+
+# Migrate the same database the app uses (DATABASE_URL / settings default),
+# not the static sqlalchemy.url in alembic.ini — keeps alembic and the app aligned.
+config.set_main_option("sqlalchemy.url", settings.database_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

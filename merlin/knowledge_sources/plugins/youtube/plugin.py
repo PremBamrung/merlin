@@ -9,19 +9,19 @@ import json
 import re
 from typing import Optional
 
-from backend.config import settings
-from backend.core.logging import logger
-from backend.knowledge_sources.base import (
+from merlin.config import settings
+from merlin.core.logging import logger
+from merlin.knowledge_sources.base import (
     IngestRequest,
     IngestResult,
     KnowledgeSourcePlugin,
 )
-from backend.knowledge_sources.plugins.youtube.audio_transcriber import AudioTranscriber
-from backend.knowledge_sources.plugins.youtube.extractors import (
+from merlin.knowledge_sources.plugins.youtube.audio_transcriber import AudioTranscriber
+from merlin.knowledge_sources.plugins.youtube.extractors import (
     SubtitleExtractor,
     VideoExtractor,
 )
-from backend.knowledge_sources.plugins.youtube.summarizer import VideoSummarizer
+from merlin.knowledge_sources.plugins.youtube.summarizer import VideoSummarizer
 
 # Language code → full name mapping (used for summary language selection)
 LANGUAGE_MAP = {

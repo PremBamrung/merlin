@@ -10,7 +10,7 @@ from typing import Any, Optional
 from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
-from backend.db.models import KnowledgeItem, YouTubeMetadata
+from merlin.db.models import KnowledgeItem, YouTubeMetadata
 
 
 class KnowledgeItemRepository:

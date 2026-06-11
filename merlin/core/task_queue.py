@@ -14,10 +14,10 @@ from datetime import datetime, timezone
 from typing import Callable
 import uuid
 
-from backend.core.logging import logger
-from backend.db.engine import SessionFactory
-from backend.db.repositories.tasks import BackgroundTaskRepository
-from backend.knowledge_sources.base import IngestRequest, IngestResult
+from merlin.core.logging import logger
+from merlin.db.engine import SessionFactory
+from merlin.db.repositories.tasks import BackgroundTaskRepository
+from merlin.knowledge_sources.base import IngestRequest, IngestResult
 
 
 class TaskQueue:
@@ -62,6 +62,41 @@ class TaskQueue:
         loop = asyncio.get_event_loop()
         loop.run_in_executor(
             self._executor,
+            self._run_ingest,
+            task_id,
+            plugin,
+            raw_input,
+            options,
+            on_complete,
+        )
+        return task_id
+
+    def submit_ingest(
+        self,
+        plugin,
+        raw_input: str,
+        options: dict,
+        on_complete: Callable[[str, IngestResult], None],
+    ) -> str:
+        """
+        Synchronous variant of enqueue_ingest for non-async callers (Streamlit).
+
+        Same semantics — persists a queued task row and submits the blocking work
+        to the thread pool — but without requiring a running asyncio event loop in
+        the calling thread.
+        """
+        task_id = str(uuid.uuid4())
+
+        with SessionFactory() as session:
+            BackgroundTaskRepository.create(
+                session,
+                task_id=task_id,
+                task_type=f"ingest_{plugin.source_type}",
+                input_data={"raw_input": raw_input, **options},
+            )
+            session.commit()
+
+        self._executor.submit(
             self._run_ingest,
             task_id,
             plugin,

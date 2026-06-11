@@ -3,7 +3,7 @@ import string
 
 from sqlalchemy.orm import Session
 
-from backend.db.models import ShareToken
+from merlin.db.models import ShareToken
 
 
 def _gen_token() -> str:

@@ -9,7 +9,7 @@ from typing import Generator
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
-from backend.config import settings
+from merlin.config import settings
 
 engine = create_engine(
     settings.database_url,
