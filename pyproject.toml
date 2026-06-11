@@ -4,15 +4,12 @@ version = "2.0.0"
 description = "Personal knowledge management app"
 requires-python = ">=3.11"
 dependencies = [
-    # FastAPI backend
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.32.0",
+    # Streamlit frontend (single-process app)
+    "streamlit>=1.58.0",
     "pydantic-settings>=2.6.0",
-    "python-multipart>=0.0.12",
     # Database / migrations
     "sqlalchemy>=2.0.0",
     "alembic>=1.14.0",
-    "aiosqlite>=0.20.0",
     # LLM
     "langchain>=0.3.7",
     "langchain-core>=0.3.19",
@@ -30,8 +27,12 @@ dependencies = [
     # Dev
     "pytest>=9.0.0",
     "pytest-xdist>=3.8.0",
-    "httpx>=0.27.0",
 ]
+
+[tool.uv]
+# The `merlin` package is imported from the repo root (cwd), the same way
+# `streamlit run app.py` resolves it — uv does not need to build/install it.
+package = false
 
 [tool.ruff]
 # Enable Ruff linting and formatting
