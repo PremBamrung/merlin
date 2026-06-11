@@ -1,18 +1,26 @@
 FROM python:3.11-slim
 
+# uv binary (dependency manager)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 WORKDIR /app
 
-# System deps: ffmpeg for the audio-transcription fallback; gcc/python3-dev for
-# any packages that build from source.
+# System deps: ffmpeg for the audio-transcription fallback.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    gcc \
-    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install pinned dependencies (exported from uv: `uv export > requirements.docker.txt`)
-COPY requirements.docker.txt ./
-RUN pip install --no-cache-dir -r requirements.docker.txt
+# Use the image's Python; don't let uv download its own. Put the project venv
+# on PATH so `alembic`/`streamlit` resolve directly in CMD.
+ENV UV_PYTHON_DOWNLOADS=never \
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PATH="/app/.venv/bin:$PATH"
+
+# Install dependencies in their own cached layer (keyed on the manifest + lock).
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen
 
 # Application code (core library + Streamlit UI + entry point)
 COPY merlin/ ./merlin/
