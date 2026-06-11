@@ -226,9 +226,15 @@ export default function TodayPage() {
                     {recentItems.map((s) => (
                       <div key={s.id} className="recent-row" onClick={() => navigate(`/library/${s.id}`)}>
                         <div className="recent-thumb">
-                          {s.source_type === 'youtube' && <Icons.yt style={{ width: 20, height: 20 }} />}
-                          {s.source_type === 'article' && <Icons.paper style={{ width: 20, height: 20 }} />}
-                          {s.source_type === 'pdf' && <Icons.paper style={{ width: 20, height: 20 }} />}
+                          {s.thumbnail_url ? (
+                            <img src={s.thumbnail_url} alt={s.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <>
+                              {s.source_type === 'youtube' && <Icons.yt style={{ width: 20, height: 20 }} />}
+                              {s.source_type === 'article' && <Icons.paper style={{ width: 20, height: 20 }} />}
+                              {s.source_type === 'pdf' && <Icons.paper style={{ width: 20, height: 20 }} />}
+                            </>
+                          )}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 3 }}>
@@ -390,6 +396,7 @@ export default function TodayPage() {
         .recent-thumb {
           width: 44px; height: 44px; border-radius: 8px; background: var(--bg-2);
           display: grid; place-items: center; color: var(--text-muted); flex-shrink: 0;
+          overflow: hidden;
         }
         .prompt-chip {
           display: flex; align-items: center; gap: 10px;
