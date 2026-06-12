@@ -8,7 +8,7 @@ Usage:
     conda run -n merlin python scripts/migrate_youtube_data.py
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import json
 from pathlib import Path
 import sqlite3
@@ -19,7 +19,7 @@ DB_PATH = Path(__file__).parent.parent / "merlin.db"
 
 
 def _now_iso():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def migrate():
@@ -197,9 +197,9 @@ def migrate():
     conn.close()
 
     print(f"\nDone. Migrated: {migrated}, Skipped: {skipped}")
-    print(f"Old table youtube_video_summary preserved as backup.")
+    print("Old table youtube_video_summary preserved as backup.")
     print(
-        f"Once verified, you can rename it: ALTER TABLE youtube_video_summary RENAME TO youtube_video_summary_backup"
+        "Once verified, you can rename it: ALTER TABLE youtube_video_summary RENAME TO youtube_video_summary_backup"
     )
 
 
