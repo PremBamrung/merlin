@@ -33,6 +33,12 @@ class Settings(BaseSettings):
 
     # Groq (audio transcription fallback)
     groq_api_key: str = ""
+    # Max upload size for Groq's /audio/transcriptions endpoint. Files above
+    # this are split into chunks and transcribed separately. Groq's hard limit
+    # is 25 MB (free) / 100 MB (dev); keep a margin below 25.
+    groq_max_upload_mb: float = 24.0
+    # Chunk length (seconds) when an audio file exceeds groq_max_upload_mb.
+    groq_audio_chunk_seconds: int = 600
 
     # Active LLM provider: "azure" | "openrouter"
     llm_provider: str = "azure"

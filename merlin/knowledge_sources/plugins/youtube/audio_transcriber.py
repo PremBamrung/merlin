@@ -1,6 +1,9 @@
+import glob
 import os
 from pathlib import Path
 import re
+import shutil
+import subprocess
 import tempfile
 from typing import Dict, List, Optional
 
@@ -12,6 +15,7 @@ from merlin.config import settings
 from merlin.core.logging import logger
 
 GROQ_API_KEY = settings.groq_api_key
+GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 
 
 class AudioTranscriber:
@@ -41,16 +45,21 @@ class AudioTranscriber:
                     base_name = os.path.splitext(filename)[0]
                     actual_file_path = f"{base_name}.mp3"
 
-        # Configuration options for yt-dlp
+        # Configuration options for yt-dlp.
+        # Whisper resamples to 16 kHz mono internally, so downmixing here is
+        # lossless for transcription and shrinks the file ~5x (a 192 kbps stereo
+        # MP3 hits Groq's 25 MB upload cap around ~17 min; 16 kHz mono @ 64 kbps
+        # pushes that past ~50 min, with chunking covering anything longer).
         ydl_opts = {
             "format": "bestaudio/best",
             "postprocessors": [
                 {
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": "mp3",
-                    "preferredquality": "192",
+                    "preferredquality": "64",
                 }
             ],
+            "postprocessor_args": ["-ar", "16000", "-ac", "1"],
             "outtmpl": output_path,
             "quiet": True,  # Suppress yt-dlp output
             "progress_hooks": [progress_hook],
@@ -113,10 +122,142 @@ class AudioTranscriber:
             return False, error_msg
 
     @staticmethod
+    def _result_to_subtitles(result: Dict, offset: float = 0.0) -> List[Dict]:
+        """Convert a Groq verbose_json result to our subtitle format.
+
+        `offset` (seconds) is added to every start time so transcripts from
+        later audio chunks line up on the original timeline.
+        """
+        segments = result.get("segments", [])
+        if not segments:
+            full_text = (result.get("text") or "").strip()
+            if not full_text:
+                return []
+            return [
+                {
+                    "start": offset,
+                    "duration": result.get("duration", 0),
+                    "text": full_text,
+                }
+            ]
+
+        subtitles = []
+        for segment in segments:
+            start = segment.get("start", 0)
+            end = segment.get("end", 0)
+            text = segment.get("text", "").strip()
+            if text:  # Only add non-empty segments
+                subtitles.append(
+                    {
+                        "start": start + offset,
+                        "duration": end - start,
+                        "text": text,
+                    }
+                )
+        return subtitles
+
+    @staticmethod
+    def _post_audio(audio_file_path: str) -> tuple[bool, Optional[Dict], Optional[str]]:
+        """POST a single audio file to Groq and return the parsed JSON result."""
+        headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
+        with open(audio_file_path, "rb") as audio_file:
+            files = {"file": audio_file}
+            data = {
+                "model": "whisper-large-v3-turbo",
+                "temperature": 0,
+                "response_format": "verbose_json",
+            }
+            response = requests.post(GROQ_URL, headers=headers, files=files, data=data)
+
+        if not response.ok:
+            if response.status_code == 413:
+                error_msg = (
+                    "Audio too large for Groq transcription (HTTP 413). Lower "
+                    "settings.groq_max_upload_mb or shorten the video."
+                )
+            else:
+                error_msg = f"Groq API error: {response.status_code} - {response.text}"
+            logger.error(error_msg)
+            return False, None, error_msg
+
+        return True, response.json(), None
+
+    @staticmethod
+    def _split_audio(audio_file_path: str, out_dir: str) -> List[str]:
+        """Split audio into time segments with ffmpeg (stream copy, no re-encode)."""
+        out_template = os.path.join(out_dir, "chunk_%03d.mp3")
+        cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            audio_file_path,
+            "-f",
+            "segment",
+            "-segment_time",
+            str(settings.groq_audio_chunk_seconds),
+            "-c",
+            "copy",
+            out_template,
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+        return sorted(glob.glob(os.path.join(out_dir, "chunk_*.mp3")))
+
+    @staticmethod
+    def _transcribe_chunked(
+        audio_file_path: str,
+    ) -> tuple[bool, Optional[List[Dict]], Optional[str]]:
+        """Split an oversized audio file, transcribe each chunk, and stitch."""
+        chunk_dir = tempfile.mkdtemp(prefix="groq_chunks_")
+        try:
+            chunk_paths = AudioTranscriber._split_audio(audio_file_path, chunk_dir)
+            if not chunk_paths:
+                return False, None, "Failed to split audio for chunked transcription"
+
+            logger.info(f"Transcribing {len(chunk_paths)} audio chunks")
+            all_subtitles: List[Dict] = []
+            offset = 0.0
+            for i, chunk_path in enumerate(chunk_paths):
+                ok, result, error_msg = AudioTranscriber._post_audio(chunk_path)
+                if not ok:
+                    return (
+                        False,
+                        None,
+                        (f"Chunk {i + 1}/{len(chunk_paths)} failed: {error_msg}"),
+                    )
+                all_subtitles.extend(
+                    AudioTranscriber._result_to_subtitles(result, offset)
+                )
+                # Advance the timeline by this chunk's real duration when Groq
+                # reports it, else fall back to the configured chunk length.
+                offset += float(
+                    result.get("duration") or settings.groq_audio_chunk_seconds
+                )
+
+            if not all_subtitles:
+                return False, None, "No transcription produced from audio chunks"
+
+            logger.info(
+                f"Chunked transcription completed with {len(all_subtitles)} segments"
+            )
+            return True, all_subtitles, None
+        except subprocess.CalledProcessError as e:
+            stderr = e.stderr.decode("utf-8", "replace") if e.stderr else ""
+            error_msg = f"ffmpeg failed to split audio: {stderr}"
+            logger.error(error_msg)
+            return False, None, error_msg
+        finally:
+            shutil.rmtree(chunk_dir, ignore_errors=True)
+
+    @staticmethod
     def transcribe_audio(
         audio_file_path: str,
     ) -> tuple[bool, Optional[List[Dict]], Optional[str]]:
         """Transcribes audio file using Groq Whisper API with verbose_json format.
+
+        Files larger than `settings.groq_max_upload_mb` are split into chunks
+        and transcribed separately (Groq rejects oversized uploads with 413).
 
         Args:
             audio_file_path (str): Path to the audio file to transcribe.
@@ -131,80 +272,36 @@ class AudioTranscriber:
             logger.error(error_msg)
             return False, None, error_msg
 
-        url = "https://api.groq.com/openai/v1/audio/transcriptions"
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-        }
-
         logger.info(f"Starting transcription for: {audio_file_path}")
 
         try:
-            with open(audio_file_path, "rb") as audio_file:
-                files = {
-                    "file": audio_file,
-                }
-                data = {
-                    "model": "whisper-large-v3-turbo",
-                    "temperature": 0,
-                    "response_format": "verbose_json",
-                }
-
-                response = requests.post(url, headers=headers, files=files, data=data)
-
-                if not response.ok:
-                    error_msg = (
-                        f"Groq API error: {response.status_code} - {response.text}"
-                    )
-                    logger.error(error_msg)
-                    return False, None, error_msg
-
-                result = response.json()
-
-                # Extract segments and convert to subtitle format
-                segments = result.get("segments", [])
-                if not segments:
-                    # Fallback: if no segments, use the full text as a single entry
-                    full_text = result.get("text", "")
-                    if full_text:
-                        duration = result.get("duration", 0)
-                        subtitles = [
-                            {"start": 0, "duration": duration, "text": full_text}
-                        ]
-                        logger.info(
-                            "Transcription completed (single entry, no segments)"
-                        )
-                        return True, subtitles, None
-                    else:
-                        error_msg = (
-                            "No text or segments found in transcription response"
-                        )
-                        logger.error(error_msg)
-                        return False, None, error_msg
-
-                # Convert segments to subtitle format
-                subtitles = []
-                for segment in segments:
-                    start = segment.get("start", 0)
-                    end = segment.get("end", 0)
-                    text = segment.get("text", "").strip()
-                    duration = end - start
-
-                    if text:  # Only add non-empty segments
-                        subtitles.append(
-                            {
-                                "start": start,
-                                "duration": duration,
-                                "text": text,
-                            }
-                        )
-
-                logger.info(f"Transcription completed with {len(subtitles)} segments")
-                return True, subtitles, None
-
-        except FileNotFoundError:
+            size_bytes = os.path.getsize(audio_file_path)
+        except OSError:
             error_msg = f"Audio file not found: {audio_file_path}"
             logger.error(error_msg)
             return False, None, error_msg
+
+        max_bytes = int(settings.groq_max_upload_mb * 1024 * 1024)
+        if size_bytes > max_bytes:
+            logger.info(
+                f"Audio is {size_bytes / 1_048_576:.1f} MB (> "
+                f"{settings.groq_max_upload_mb} MB) — using chunked transcription"
+            )
+            return AudioTranscriber._transcribe_chunked(audio_file_path)
+
+        try:
+            ok, result, error_msg = AudioTranscriber._post_audio(audio_file_path)
+            if not ok:
+                return False, None, error_msg
+
+            subtitles = AudioTranscriber._result_to_subtitles(result)
+            if not subtitles:
+                error_msg = "No text or segments found in transcription response"
+                logger.error(error_msg)
+                return False, None, error_msg
+
+            logger.info(f"Transcription completed with {len(subtitles)} segments")
+            return True, subtitles, None
         except Exception as e:
             error_msg = f"An unexpected error occurred during transcription: {e}"
             logger.error(error_msg)
