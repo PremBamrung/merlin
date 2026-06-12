@@ -27,6 +27,7 @@ dependencies = [
     # Dev
     "pytest>=9.0.0",
     "pytest-xdist>=3.8.0",
+    "plotly>=6.8.0",
 ]
 
 [tool.uv]
@@ -77,4 +78,9 @@ quote-style = "double"
 indent-style = "space"
 # Use LF line endings
 line-ending = "auto"
+
+[dependency-groups]
+dev = [
+    "playwright>=1.60.0",
+]
 
