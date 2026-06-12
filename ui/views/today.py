@@ -1,8 +1,12 @@
-"""Today view — at-a-glance dashboard: recent items + active ingest tasks."""
+"""Today — entry point: omnibox, key metrics, live ingest queue, recent grid."""
+
+from datetime import date
 
 import streamlit as st
 
-from merlin.services import library
+from merlin.services import ingest, library
+from ui.components.item_card import item_card
+from ui.components.omnibox import omnibox
 from ui.components.task_panel import task_panel
 
 
@@ -11,33 +15,42 @@ def _count(**filters) -> int:
 
 
 def render() -> None:
-    st.title("🏠 Today")
+    st.session_state["_page"] = "today"
 
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Total items", _count())
-    m2.metric("Completed", _count(status="completed"))
-    m3.metric("Needs attention", _count(status="failed"))
+    st.title("Good evening")
+    st.caption(date.today().strftime("%A, %B %-d"))
 
-    left, right = st.columns([3, 2], gap="large")
+    # --- Omnibox ----------------------------------------------------------
+    omnibox()
 
-    with left:
-        st.subheader("Recently added")
-        recent = library.list_items(page=1, per_page=8)["items"]
-        if not recent:
-            st.info("Nothing yet — head to **Ingest** to add your first video.")
-        for item in recent:
-            with st.container(border=True):
-                cols = st.columns([1, 3])
-                if item.get("thumbnail_url"):
-                    cols[0].image(item["thumbnail_url"], width="stretch")
-                with cols[1]:
-                    st.markdown(f"**{item.get('title') or 'Untitled'}**")
-                    sub = item.get("channel") or item.get("author") or ""
-                    st.caption(f"{sub} · {(item.get('ingested_at') or '')[:10]}")
-                    summary = item.get("summary") or ""
-                    if summary:
-                        st.caption(summary[:140] + ("…" if len(summary) > 140 else ""))
+    st.divider()
 
-    with right:
-        st.subheader("Ingest tasks")
+    # --- Key metrics ------------------------------------------------------
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total items", f"{_count():,}")
+    c2.metric("Completed", f"{_count(status='completed'):,}")
+    c3.metric("Needs attention", f"{_count(status='failed'):,}")
+
+    # --- Active ingest queue (only when something is in flight) -----------
+    if any(
+        t["status"] in ("queued", "processing")
+        for t in ingest.recent_tasks(limit=8)
+    ):
+        st.divider()
+        st.subheader("Ingesting")
         task_panel()
+
+    st.divider()
+
+    # --- Recently added ---------------------------------------------------
+    st.subheader("Recently added")
+    recent = library.list_items(page=1, per_page=6)["items"]
+    if not recent:
+        st.info("Nothing yet — paste a YouTube link above to add your first video.")
+        return
+
+    for start in range(0, len(recent), 3):
+        cols = st.columns(3)
+        for col, item in zip(cols, recent[start : start + 3], strict=False):
+            with col:
+                item_card(item)

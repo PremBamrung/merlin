@@ -1,0 +1,4 @@
+# Merlin theme — native Streamlit dark (OLED-friendly), default red accent.
+# Intentionally minimal: matches the clean default-dark look. No custom CSS.
+[theme]
+base = "dark"

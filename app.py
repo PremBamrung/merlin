@@ -16,31 +16,10 @@ st.set_page_config(page_title="Merlin", page_icon="🧙", layout="wide")
 # Register knowledge-source plugins once (idempotent across reruns).
 register_plugins()
 
-# Import views after page config / bootstrap.
-from ui.views import chat, ingest, library, today  # noqa: E402
+# Build the navigation registry (pages are also reachable by name from views,
+# e.g. the Today omnibox routing a question to Chat).
+from ui.nav import build_pages  # noqa: E402
 
-navigation = st.navigation(
-    [
-        st.Page(
-            today.render,
-            title="Today",
-            icon=":material/home:",
-            url_path="today",
-            default=True,
-        ),
-        st.Page(
-            ingest.render,
-            title="Ingest",
-            icon=":material/add_circle:",
-            url_path="ingest",
-        ),
-        st.Page(
-            library.render,
-            title="Library",
-            icon=":material/grid_view:",
-            url_path="library",
-        ),
-        st.Page(chat.render, title="Chat", icon=":material/forum:", url_path="chat"),
-    ]
-)
+pages = build_pages()
+navigation = st.navigation(list(pages.values()))
 navigation.run()

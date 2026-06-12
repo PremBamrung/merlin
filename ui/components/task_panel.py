@@ -1,15 +1,10 @@
-"""Background-task progress panel — a self-refreshing fragment."""
+"""Background-task progress — native, self-refreshing."""
 
 import streamlit as st
 
 from merlin.services import ingest
-
-_STATUS_ICON = {
-    "queued": "⏳",
-    "processing": "⚙️",
-    "completed": "✅",
-    "failed": "❌",
-}
+from ui.styles import STATUS_EMOJI
+from ui.util import short
 
 
 @st.fragment(run_every=2)
@@ -20,15 +15,16 @@ def task_panel(limit: int = 8) -> None:
         st.caption("No ingest tasks yet.")
         return
 
-    active = [t for t in tasks if t["status"] in ("queued", "processing")]
-    st.caption(f"{len(active)} active · {len(tasks)} recent")
+    active = sum(1 for t in tasks if t["status"] in ("queued", "processing"))
+    st.caption(f"{active} active · {len(tasks)} recent")
 
     for t in tasks:
-        icon = _STATUS_ICON.get(t["status"], "•")
-        label = t["message"] or t["status"]
+        emoji = STATUS_EMOJI.get(t["status"], "•")
+        label = short(t.get("message") or t.get("error") or t["status"], 80)
         if t["status"] in ("queued", "processing"):
-            st.progress((t["progress"] or 0) / 100, text=f"{icon} {label}")
+            pct = max(0, min(100, t.get("progress") or 0))
+            st.progress(pct / 100, text=f"{emoji} {label}")
         elif t["status"] == "failed":
-            st.error(f"{icon} {t['error'] or 'failed'}", icon="🚫")
+            st.error(f"{emoji} {t.get('error') or 'failed'}")
         else:
-            st.caption(f"{icon} {label}")
+            st.caption(f"{emoji} {label}")
