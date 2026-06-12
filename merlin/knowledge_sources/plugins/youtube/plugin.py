@@ -221,6 +221,33 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             },
         )
 
+    def resummarize(
+        self,
+        raw_text: str,
+        title: str,
+        channel: str | None,
+        detected_language: str,
+        user_languages: list[str],
+        summary_length: str,
+    ) -> tuple[str, dict, dict]:
+        """Re-summarise an already-ingested video from its stored transcript.
+
+        No YouTube/Groq/yt-dlp access — the transcript and metadata are already
+        persisted, so this only re-runs the summariser (e.g. to change the
+        summary length or language). Returns (summary, topics, timestamps).
+        """
+        summary_lang = self._pick_summary_language(
+            detected_language or "", user_languages
+        )
+        return self.summarizer.summarize(
+            subtitles=raw_text,
+            title=title,
+            channel=channel or "",
+            lang=summary_lang,
+            summary_length=summary_length,
+            streaming=False,
+        )
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------

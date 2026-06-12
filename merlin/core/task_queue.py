@@ -10,7 +10,6 @@ server restarts and is queryable via GET /api/tasks/{task_id}.
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 from typing import Callable
 import uuid
 
@@ -106,9 +105,67 @@ class TaskQueue:
         )
         return task_id
 
+    def submit_callable(
+        self,
+        work: Callable[[str, Callable[[int, str], None]], None],
+        task_type: str,
+        input_data: dict,
+    ) -> str:
+        """Run an arbitrary blocking job as a tracked background task.
+
+        Persists a queued `background_tasks` row, then runs `work(task_id,
+        report)` off-thread — `report(percent, message)` updates progress. The
+        `work` callable owns its own persistence and must mark the task
+        completed (e.g. via `BackgroundTaskRepository.set_completed`); failures
+        are caught here and recorded as `failed`.
+        """
+        task_id = str(uuid.uuid4())
+
+        with SessionFactory() as session:
+            BackgroundTaskRepository.create(
+                session,
+                task_id=task_id,
+                task_type=task_type,
+                input_data=input_data,
+            )
+            session.commit()
+
+        self._executor.submit(self._run_callable, task_id, work)
+        return task_id
+
     # ------------------------------------------------------------------
     # Worker (runs in thread pool)
     # ------------------------------------------------------------------
+
+    def _run_callable(
+        self,
+        task_id: str,
+        work: Callable[[str, Callable[[int, str], None]], None],
+    ) -> None:
+        logger.info(f"Task {task_id} started — callable job")
+
+        def report(percent: int, message: str):
+            try:
+                with SessionFactory() as s:
+                    BackgroundTaskRepository.update_progress(
+                        s, task_id, percent, message
+                    )
+                    s.commit()
+            except Exception as e:
+                logger.warning(f"Progress update failed for {task_id}: {e}")
+
+        with SessionFactory() as s:
+            BackgroundTaskRepository.set_processing(s, task_id)
+            s.commit()
+
+        try:
+            work(task_id, report)
+            logger.info(f"Task {task_id} completed successfully")
+        except Exception as exc:
+            logger.exception(f"Task {task_id} failed: {exc}")
+            with SessionFactory() as s:
+                BackgroundTaskRepository.set_failed(s, task_id, str(exc))
+                s.commit()
 
     def _run_ingest(
         self,

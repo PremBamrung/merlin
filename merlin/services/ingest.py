@@ -7,9 +7,11 @@ FastAPI `sources/youtube.py` router); it upserts the knowledge item + YouTube
 metadata and marks the task completed.
 """
 
+from datetime import UTC, datetime
 import json
 import uuid
 
+from merlin.config import settings
 from merlin.core.task_queue import task_queue
 from merlin.db.engine import SessionFactory
 from merlin.db.models import KnowledgeItem
@@ -18,6 +20,7 @@ from merlin.db.repositories.knowledge import (
     YouTubeMetadataRepository,
 )
 from merlin.db.repositories.tasks import BackgroundTaskRepository
+from merlin.knowledge_sources.plugins.youtube.extractors import VideoExtractor
 from merlin.knowledge_sources.registry import registry
 
 # ------------------------------------------------------------------
@@ -78,6 +81,10 @@ def submit_youtube(
 ) -> str:
     """Validate and enqueue a YouTube ingest. Returns the task_id to poll.
 
+    If the video is already in the library (with a stored transcript), this
+    skips the full pipeline — no metadata fetch, no subtitle/audio download —
+    and re-summarises from the saved transcript instead.
+
     Raises ValueError if the plugin is unavailable or input is invalid.
     """
     plugin = registry.get("youtube")
@@ -89,11 +96,92 @@ def submit_youtube(
     if errors:
         raise ValueError("; ".join(errors))
 
+    # Already ingested? Re-summarise from the stored transcript rather than
+    # re-running extraction (metadata + subs are already saved).
+    video_id = VideoExtractor.extract_video_id(url)
+    if video_id:
+        with SessionFactory() as session:
+            existing = KnowledgeItemRepository.get_by_source(
+                session, "youtube", video_id
+            )
+            existing_id = existing.id if existing and existing.raw_content else None
+        if existing_id:
+            return resummarize(existing_id, summary_length, languages)
+
     return task_queue.submit_ingest(
         plugin=plugin,
         raw_input=url,
         options=options,
         on_complete=persist_result,
+    )
+
+
+def resummarize(
+    item_id: str,
+    summary_length: str | None = None,
+    languages: list[str] | None = None,
+) -> str:
+    """Re-summarise an existing item from its stored transcript (no network).
+
+    Reuses the saved `raw_content` + YouTube metadata and only re-runs the
+    summariser, then bumps `ingested_at` so the refreshed item surfaces at the
+    top of the "Newest" sort. Returns a task_id to poll, like `submit_youtube`.
+    """
+
+    def work(task_id: str, report) -> None:
+        report(10, "Loading stored transcript…")
+        with SessionFactory() as session:
+            item = KnowledgeItemRepository.get_by_id(session, item_id)
+            if not item:
+                raise ValueError("Item not found")
+            raw_text = item.raw_content
+            title = item.title
+            channel = item.author
+            meta = item.youtube_metadata
+            detected = (meta.detected_language if meta else "") or ""
+            length = summary_length or item.summary_length or "short"
+        if not raw_text:
+            raise ValueError("No stored transcript to re-summarise")
+
+        report(40, "Generating summary…")
+        plugin = registry.get("youtube")
+        if not plugin:
+            raise ValueError("YouTube plugin not registered")
+        summary, topics, timestamps = plugin.resummarize(
+            raw_text=raw_text,
+            title=title,
+            channel=channel,
+            detected_language=detected,
+            user_languages=languages or ["en"],
+            summary_length=length,
+        )
+
+        report(90, "Saving to knowledge base…")
+        with SessionFactory() as session:
+            item = KnowledgeItemRepository.get_by_id(session, item_id)
+            if not item:
+                raise ValueError("Item not found")
+            item.summary = summary
+            item.summary_length = length
+            item.topics = json.dumps(topics)
+            item.llm_model = settings.llm_model_name
+            item.status = "completed"
+            item.error_message = None
+            item.ingested_at = datetime.now(UTC)  # bump to top of "Newest"
+            if item.youtube_metadata is not None:
+                item.youtube_metadata.timestamps = json.dumps(timestamps)
+            BackgroundTaskRepository.set_completed(
+                session,
+                task_id,
+                {"knowledge_item_id": item_id},
+                knowledge_item_id=item_id,
+            )
+            session.commit()
+
+    return task_queue.submit_callable(
+        work,
+        task_type="resummarize_youtube",
+        input_data={"item_id": item_id, "summary_length": summary_length},
     )
 
 
@@ -107,19 +195,27 @@ def retry(
     Unlike the old API (which hardcoded ["en", "fr"]), the caller may pass the
     desired languages and/or a new summary length; languages default to the
     item's detected language then English, and length to the item's current.
+
+    When the transcript is already stored this re-summarises in place; only if
+    it's missing do we fall back to a full re-ingest from YouTube.
     """
     with SessionFactory() as session:
         item = KnowledgeItemRepository.get_by_id(session, item_id)
         if not item or item.source_type != "youtube":
             raise ValueError("Item not found")
+        has_transcript = bool(item.raw_content)
         meta = item.youtube_metadata
-        if not meta:
-            raise ValueError("No YouTube metadata found")
-        video_id = meta.video_id
-        detected = (meta.detected_language or "").split("-")[0] or None
+        video_id = meta.video_id if meta else None
+        detected = (meta.detected_language or "").split("-")[0] if meta else None
         summary_length = summary_length or item.summary_length or "short"
 
     langs = languages or [lang for lang in (detected, "en") if lang]
+
+    if has_transcript:
+        return resummarize(item_id, summary_length, langs)
+
+    if not video_id:
+        raise ValueError("No YouTube metadata found")
     url = f"https://www.youtube.com/watch?v={video_id}"
     return submit_youtube(url, langs, summary_length)
 
