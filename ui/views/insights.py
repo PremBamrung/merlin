@@ -14,7 +14,6 @@ from ui.styles import TAG_SWATCHES
 
 
 def render() -> None:
-    st.session_state["_page"] = "insights"
     st.title("Insights")
     st.caption("How your library has grown")
 
@@ -37,7 +36,7 @@ def render() -> None:
     st.subheader("Ingest activity")
     fig = activity_heatmap(timeline)
     if fig:
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     st.divider()
 
@@ -47,12 +46,12 @@ def render() -> None:
         st.subheader("Top channels")
         fig = hbar(cached_top_channels(limit=12))
         if fig:
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
     with right:
         st.subheader("Items per month")
         fig = monthly_bar(timeline)
         if fig:
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
     st.divider()
 
@@ -62,11 +61,11 @@ def render() -> None:
         st.subheader("Status")
         fig = status_donut(cached_status_counts())
         if fig:
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
     with right2:
         tags = cached_tags()
         if tags:
             st.subheader("Top tags")
             fig = hbar(tags[:12], color=TAG_SWATCHES[3])
             if fig:
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")

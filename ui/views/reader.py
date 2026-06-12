@@ -50,7 +50,7 @@ def render(item_id: str) -> None:
             st.link_button(
                 "↗ Open on YouTube",
                 youtube_url(item["source_id"]),
-                use_container_width=True,
+                width="stretch",
             )
 
     # --- Title + meta ------------------------------------------------------
