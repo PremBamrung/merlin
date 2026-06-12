@@ -97,11 +97,16 @@ def submit_youtube(
     )
 
 
-def retry(item_id: str, languages: list[str] | None = None) -> str:
+def retry(
+    item_id: str,
+    languages: list[str] | None = None,
+    summary_length: str | None = None,
+) -> str:
     """Re-ingest an existing item by reconstructing its URL from the video id.
 
     Unlike the old API (which hardcoded ["en", "fr"]), the caller may pass the
-    desired languages; defaults to the item's detected language, then English.
+    desired languages and/or a new summary length; languages default to the
+    item's detected language then English, and length to the item's current.
     """
     with SessionFactory() as session:
         item = KnowledgeItemRepository.get_by_id(session, item_id)
@@ -112,7 +117,7 @@ def retry(item_id: str, languages: list[str] | None = None) -> str:
             raise ValueError("No YouTube metadata found")
         video_id = meta.video_id
         detected = (meta.detected_language or "").split("-")[0] or None
-        summary_length = item.summary_length or "short"
+        summary_length = summary_length or item.summary_length or "short"
 
     langs = languages or [lang for lang in (detected, "en") if lang]
     url = f"https://www.youtube.com/watch?v={video_id}"

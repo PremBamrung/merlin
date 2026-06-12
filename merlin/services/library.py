@@ -56,6 +56,7 @@ def list_items(
     tags: list[str] | None = None,
     page: int = 1,
     per_page: int = 20,
+    sort: str = "newest",
 ) -> dict:
     with SessionFactory() as session:
         items, total = KnowledgeItemRepository.list_all(
@@ -66,6 +67,7 @@ def list_items(
             tags=tags,
             page=page,
             page_size=per_page,
+            sort=sort,
         )
         return {
             "items": [serialize_item(i) for i in items],
@@ -116,6 +118,92 @@ def clear_summary(item_id: str) -> bool:
         if ok:
             session.commit()
         return ok
+
+
+def ingest_timeline() -> list[dict]:
+    """Count of items per ingested calendar day, oldest first."""
+    from sqlalchemy import func
+
+    from merlin.db.models import KnowledgeItem
+
+    with SessionFactory() as session:
+        day = func.date(KnowledgeItem.ingested_at)
+        rows = (
+            session.query(day, func.count(KnowledgeItem.id))
+            .filter(KnowledgeItem.ingested_at.isnot(None))
+            .group_by(day)
+            .order_by(day)
+            .all()
+        )
+    return [{"date": d, "count": c} for d, c in rows if d]
+
+
+def top_channels(limit: int = 12) -> list[dict]:
+    """Most frequent YouTube channels (falls back to author), by item count."""
+    from sqlalchemy import func
+
+    from merlin.db.models import KnowledgeItem, YouTubeMetadata
+
+    with SessionFactory() as session:
+        rows = (
+            session.query(YouTubeMetadata.channel, func.count(KnowledgeItem.id))
+            .join(KnowledgeItem, KnowledgeItem.id == YouTubeMetadata.knowledge_item_id)
+            .filter(YouTubeMetadata.channel.isnot(None))
+            .group_by(YouTubeMetadata.channel)
+            .order_by(func.count(KnowledgeItem.id).desc())
+            .limit(limit)
+            .all()
+        )
+    return [{"name": name, "count": count} for name, count in rows if name]
+
+
+def count_channels() -> int:
+    """Number of distinct YouTube channels."""
+    from sqlalchemy import distinct, func
+
+    from merlin.db.models import YouTubeMetadata
+
+    with SessionFactory() as session:
+        return (
+            session.query(func.count(distinct(YouTubeMetadata.channel)))
+            .filter(YouTubeMetadata.channel.isnot(None))
+            .scalar()
+            or 0
+        )
+
+
+def status_counts() -> list[dict]:
+    """Item count per status."""
+    from sqlalchemy import func
+
+    from merlin.db.models import KnowledgeItem
+
+    with SessionFactory() as session:
+        rows = (
+            session.query(KnowledgeItem.status, func.count(KnowledgeItem.id))
+            .group_by(KnowledgeItem.status)
+            .all()
+        )
+    return [{"name": name or "unknown", "count": count} for name, count in rows]
+
+
+def list_source_types() -> list[dict]:
+    """Distinct source types with item counts, most frequent first."""
+    from sqlalchemy import func
+
+    from merlin.db.models import KnowledgeItem
+
+    with SessionFactory() as session:
+        rows = (
+            session.query(KnowledgeItem.source_type, func.count(KnowledgeItem.id))
+            .group_by(KnowledgeItem.source_type)
+            .all()
+        )
+    return [
+        {"name": name, "count": count}
+        for name, count in sorted(rows, key=lambda r: -r[1])
+        if name
+    ]
 
 
 def list_tags() -> list[dict]:

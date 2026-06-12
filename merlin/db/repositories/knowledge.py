@@ -3,11 +3,9 @@ KnowledgeItemRepository — CRUD for knowledge_items + youtube_metadata.
 All methods are synchronous; session is passed in (FastAPI Depends pattern).
 """
 
-from datetime import datetime, timezone
-import json
-from typing import Any, Optional
+from datetime import UTC, datetime
 
-from sqlalchemy import func, or_, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from merlin.db.models import KnowledgeItem, YouTubeMetadata
@@ -23,13 +21,13 @@ class KnowledgeItemRepository:
         return item
 
     @staticmethod
-    def get_by_id(session: Session, item_id: str) -> Optional[KnowledgeItem]:
+    def get_by_id(session: Session, item_id: str) -> KnowledgeItem | None:
         return session.get(KnowledgeItem, item_id)
 
     @staticmethod
     def get_by_source(
         session: Session, source_type: str, source_id: str
-    ) -> Optional[KnowledgeItem]:
+    ) -> KnowledgeItem | None:
         return (
             session.query(KnowledgeItem)
             .filter_by(source_type=source_type, source_id=source_id)
@@ -39,14 +37,18 @@ class KnowledgeItemRepository:
     @staticmethod
     def list_all(
         session: Session,
-        source_type: Optional[str] = None,
-        status: Optional[str] = None,
-        search: Optional[str] = None,
-        tags: Optional[list[str]] = None,
+        source_type: str | None = None,
+        status: str | None = None,
+        search: str | None = None,
+        tags: list[str] | None = None,
         page: int = 1,
         page_size: int = 20,
+        sort: str = "newest",
     ) -> tuple[list[KnowledgeItem], int]:
-        """Return (items, total_count) with optional filters."""
+        """Return (items, total_count) with optional filters.
+
+        sort: newest | oldest | longest | title
+        """
         q = session.query(KnowledgeItem)
 
         if source_type:
@@ -73,9 +75,16 @@ class KnowledgeItemRepository:
             else:
                 return [], 0
 
+        order_by = {
+            "newest": KnowledgeItem.ingested_at.desc(),
+            "oldest": KnowledgeItem.ingested_at.asc(),
+            "longest": KnowledgeItem.word_count.desc().nulls_last(),
+            "title": KnowledgeItem.title.asc(),
+        }.get(sort, KnowledgeItem.ingested_at.desc())
+
         total = q.count()
         items = (
-            q.order_by(KnowledgeItem.ingested_at.desc())
+            q.order_by(order_by)
             .offset((page - 1) * page_size)
             .limit(page_size)
             .all()
@@ -85,13 +94,13 @@ class KnowledgeItemRepository:
     @staticmethod
     def update(
         session: Session, item_id: str, updates: dict
-    ) -> Optional[KnowledgeItem]:
+    ) -> KnowledgeItem | None:
         item = session.get(KnowledgeItem, item_id)
         if not item:
             return None
         for k, v in updates.items():
             setattr(item, k, v)
-        item.updated_at = datetime.now(timezone.utc)
+        item.updated_at = datetime.now(UTC)
         return item
 
     @staticmethod
@@ -114,7 +123,7 @@ class KnowledgeItemRepository:
         item.topics = None
         item.status = "pending"
         item.error_message = None
-        item.updated_at = datetime.now(timezone.utc)
+        item.updated_at = datetime.now(UTC)
         return True
 
 
@@ -132,5 +141,5 @@ class YouTubeMetadataRepository:
         return meta
 
     @staticmethod
-    def get_by_video_id(session: Session, video_id: str) -> Optional[YouTubeMetadata]:
+    def get_by_video_id(session: Session, video_id: str) -> YouTubeMetadata | None:
         return session.query(YouTubeMetadata).filter_by(video_id=video_id).first()
