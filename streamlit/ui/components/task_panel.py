@@ -1,8 +1,7 @@
 """Background-task progress — native, self-refreshing."""
 
-import streamlit as st
-
 from merlin.services import ingest
+import streamlit as st
 from ui.styles import STATUS_EMOJI
 from ui.util import short
 

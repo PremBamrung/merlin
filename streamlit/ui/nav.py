@@ -5,7 +5,6 @@ routing a question to Chat via `st.switch_page`).
 """
 
 import streamlit as st
-
 from ui.views import chat, ingest, insights, library, today
 
 _PAGES: dict[str, st.Page] | None = None

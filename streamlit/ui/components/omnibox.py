@@ -6,9 +6,8 @@ is unit-testable on its own.
 
 import re
 
-import streamlit as st
-
 from merlin.services import ingest
+import streamlit as st
 from ui.state import clear_caches, queue_question
 
 # Looks-like-a-link heuristic: a scheme, a known host, or a bare domain/path.

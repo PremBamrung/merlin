@@ -5,9 +5,8 @@ Caches the *engine/queue* indirectly (they are module singletons in merlin.*),
 and short-lived reference data (tags). Never caches a live DB Session.
 """
 
-import streamlit as st
-
 from merlin.services import library
+import streamlit as st
 
 
 @st.cache_data(ttl=30)

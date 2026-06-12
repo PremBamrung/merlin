@@ -6,9 +6,8 @@ renders the toolbar + grid/list of cards.
 
 from math import ceil
 
-import streamlit as st
-
 from merlin.services import library
+import streamlit as st
 from ui.components.item_card import item_card, item_row
 from ui.state import cached_source_types, cached_tags
 from ui.views import reader

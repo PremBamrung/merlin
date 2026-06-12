@@ -1,15 +1,25 @@
 """
-Merlin — Streamlit entry point.
+Merlin — Streamlit entry point (ARCHIVED).
 
-Run with:  uv run streamlit run app.py
+This is the legacy single-process Streamlit UI, archived under `streamlit/` as
+the v3 "engine room" while the FastAPI `api/` + React `web/` frontend is built.
+The core library (`merlin/`) stays at the repo root and is shared by both.
 
-A single Streamlit (Starlette/Uvicorn) process. The UI imports the `merlin`
-core library directly — there is no separate backend service.
+Run from the repo root with:  uv run streamlit run streamlit/app.py
 """
 
-import streamlit as st
+from pathlib import Path
+import sys
 
-from merlin.bootstrap import register_plugins
+# The core library lives at the repo root (one level up from this archive).
+# Ensure it is importable whether launched as `streamlit run streamlit/app.py`
+# (from the repo root) or `streamlit run app.py` (with cwd=streamlit/).
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from merlin.bootstrap import register_plugins  # noqa: E402
+import streamlit as st  # noqa: E402
 
 st.set_page_config(page_title="Merlin", page_icon="🧙", layout="wide")
 

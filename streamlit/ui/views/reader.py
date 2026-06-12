@@ -5,9 +5,8 @@ here). Replaces the old cramped detail dialog: the summary finally gets room,
 topics become timestamped YouTube deep-links, and item actions live here.
 """
 
-import streamlit as st
-
 from merlin.services import ingest, library
+import streamlit as st
 from ui.state import clear_caches
 from ui.util import ts_to_seconds, youtube_url
 

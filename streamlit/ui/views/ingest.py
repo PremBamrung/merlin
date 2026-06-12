@@ -1,9 +1,8 @@
 """Ingest view — the power entry: full control over a YouTube ingest."""
 
-import streamlit as st
-
 from merlin.knowledge_sources.plugins.youtube.plugin import LANGUAGE_MAP
 from merlin.services import ingest
+import streamlit as st
 from ui.components.task_panel import task_panel
 from ui.state import clear_caches
 

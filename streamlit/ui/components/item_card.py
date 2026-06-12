@@ -5,7 +5,6 @@ Reader in-session), a caption meta line, and tag badges. No custom HTML/CSS.
 """
 
 import streamlit as st
-
 from ui.styles import STATUS_EMOJI
 from ui.util import rel_date, short
 

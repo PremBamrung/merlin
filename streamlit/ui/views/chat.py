@@ -1,8 +1,7 @@
 """Chat view — streaming RAG chat with inline sources, regenerate & follow-ups."""
 
-import streamlit as st
-
 from merlin.services import chat
+import streamlit as st
 from ui.components.citation_list import render_citations
 from ui.state import cached_tags, init_chat_state, queue_question, take_pending_question
 from ui.util import short

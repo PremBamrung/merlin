@@ -5,7 +5,6 @@ in chat history.
 """
 
 import streamlit as st
-
 from ui.util import short, youtube_url
 
 

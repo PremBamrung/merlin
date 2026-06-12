@@ -2,9 +2,8 @@
 
 from datetime import date
 
-import streamlit as st
-
 from merlin.services import ingest, library
+import streamlit as st
 from ui.components.item_card import item_card
 from ui.components.omnibox import omnibox
 from ui.components.task_panel import task_panel

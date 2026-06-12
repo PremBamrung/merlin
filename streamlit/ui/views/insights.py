@@ -1,7 +1,6 @@
 """Insights — charts over the whole knowledge base."""
 
 import streamlit as st
-
 from ui.charts import activity_heatmap, hbar, monthly_bar, status_donut
 from ui.state import (
     cached_channel_count,
