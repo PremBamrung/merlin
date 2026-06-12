@@ -4,7 +4,11 @@ version = "2.0.0"
 description = "Personal knowledge management app"
 requires-python = ">=3.11"
 dependencies = [
-    # Streamlit frontend (single-process app)
+    # FastAPI backend (v3 — serves /api/* + the built React SPA)
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "httpx>=0.27.0",
+    # Streamlit frontend (archived under streamlit/ — the v3 "engine room")
     "streamlit>=1.58.0",
     "pydantic-settings>=2.6.0",
     # Database / migrations
@@ -63,6 +67,16 @@ select = [
     "UP",  # pyupgrade
 ]
 ignore = []
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection idiom calls these in argument defaults
+# (e.g. `tags: list[str] | None = Query(None)`), which B008 would flag.
+extend-immutable-calls = [
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Depends",
+]
 
 [tool.ruff.lint.isort]
 # Configure isort to match Black's style

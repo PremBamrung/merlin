@@ -1,9 +1,38 @@
 services:
-  app:
+  # v3 runtime: FastAPI serves /api/* (and the built React SPA at / when present).
+  api:
     build:
       context: .
       dockerfile: Dockerfile
       network: host
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Archived Streamlit "engine room" — opt-in:  docker compose --profile streamlit up
+  # Shares the same image/volumes; only the command + port differ.
+  streamlit:
+    profiles: ["streamlit"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+    command: >
+      sh -c "alembic upgrade head &&
+             streamlit run streamlit/app.py
+             --server.port 8501 --server.address 0.0.0.0 --server.headless true"
     ports:
       - "8501:8501"
     volumes:
