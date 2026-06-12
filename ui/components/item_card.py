@@ -44,14 +44,14 @@ def item_card(item: dict) -> None:
     """Grid card."""
     with st.container(border=True):
         if item.get("thumbnail_url"):
-            st.image(item["thumbnail_url"], use_container_width=True)
+            st.image(item["thumbnail_url"], width="stretch")
         if item.get("duration"):
             st.caption(f"⏱ {item['duration']}")
         st.button(
             item.get("title") or "Untitled",
             key=f"card_{item['id']}",
             type="tertiary",
-            use_container_width=True,
+            width="stretch",
             on_click=_open,
             args=(item["id"],),
         )
@@ -70,13 +70,13 @@ def item_row(item: dict) -> None:
         c1, c2 = st.columns([1, 4], vertical_alignment="center")
         with c1:
             if item.get("thumbnail_url"):
-                st.image(item["thumbnail_url"], use_container_width=True)
+                st.image(item["thumbnail_url"], width="stretch")
         with c2:
             st.button(
                 item.get("title") or "Untitled",
                 key=f"row_{item['id']}",
                 type="tertiary",
-                use_container_width=True,
+                width="stretch",
                 on_click=_open,
                 args=(item["id"],),
             )

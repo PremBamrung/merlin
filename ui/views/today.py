@@ -15,8 +15,6 @@ def _count(**filters) -> int:
 
 
 def render() -> None:
-    st.session_state["_page"] = "today"
-
     st.title("Good evening")
     st.caption(date.today().strftime("%A, %B %-d"))
 

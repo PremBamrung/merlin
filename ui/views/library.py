@@ -24,8 +24,6 @@ _SORTS = {
 
 
 def render() -> None:
-    st.session_state["_page"] = "library"
-
     # Reader takes over the page when an item is selected (query param keeps
     # the URL shareable; session_state survives in-app navigation).
     item_id = st.query_params.get("item") or st.session_state.get("open_item")

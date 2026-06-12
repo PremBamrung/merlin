@@ -62,14 +62,12 @@ def goto(name: str) -> None:
 
 
 def open_reader(item_id: str) -> None:
-    """Open an item in the Reader (in-session — no page reload, state kept).
+    """Request the Reader for an item (callback-safe — state mutation only).
 
-    Sets `?item=` (so the URL is shareable) and routes to the Library page,
-    which renders the Reader when an item is selected.
+    This is invoked from `on_click` callbacks, where navigation primitives
+    (`st.switch_page` / `st.rerun`) are no-ops. So we only record the intent in
+    `session_state`; `app.py` performs the actual routing in the main script
+    body (mirrors `?item=` to the URL and switches to the Library page, which
+    renders the Reader when an item is selected).
     """
     st.session_state["open_item"] = item_id
-    st.query_params["item"] = item_id
-    if st.session_state.get("_page") != "library":
-        goto("library")
-    else:
-        st.rerun()

@@ -16,7 +16,6 @@ def _fmt_lang(code: str) -> str:
 
 
 def render() -> None:
-    st.session_state["_page"] = "ingest"
     st.title("Ingest")
     st.caption("Summarise a YouTube video into your knowledge base.")
 

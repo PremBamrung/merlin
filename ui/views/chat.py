@@ -45,7 +45,6 @@ def _followups(citations: list[dict]) -> list[str]:
 
 
 def render() -> None:
-    st.session_state["_page"] = "chat"
     st.title("Chat")
     st.caption("Ask your knowledge base")
     init_chat_state()
