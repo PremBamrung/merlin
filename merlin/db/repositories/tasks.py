@@ -82,6 +82,28 @@ class BackgroundTaskRepository:
         )
 
     @staticmethod
+    def list_by_status(
+        session: Session, status: str, limit: int = 50
+    ) -> list[BackgroundTask]:
+        """Most-recent tasks in a single status (e.g. 'failed')."""
+        return (
+            session.query(BackgroundTask)
+            .filter(BackgroundTask.status == status)
+            .order_by(BackgroundTask.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+    @staticmethod
+    def count_by_status(session: Session, *statuses: str) -> int:
+        """Count tasks whose status is in `statuses`."""
+        return (
+            session.query(BackgroundTask)
+            .filter(BackgroundTask.status.in_(statuses))
+            .count()
+        )
+
+    @staticmethod
     def delete(session: Session, task_id: str) -> bool:
         task = session.get(BackgroundTask, task_id)
         if not task:
