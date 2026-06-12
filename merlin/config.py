@@ -19,6 +19,12 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = f"sqlite:///{Path(__file__).parent.parent / 'merlin.db'}"
+    # SQLite journal mode. WAL is best for native runs, but is UNSAFE on a macOS
+    # Docker bind mount (mmap/-shm + fsync semantics don't survive the VM↔host
+    # boundary, so committed-but-uncheckpointed writes can be lost on restart).
+    # The Docker .env overrides this to DELETE, which commits straight into the
+    # main .db file.
+    sqlite_journal_mode: str = "WAL"
 
     # Azure OpenAI
     azure_openai_endpoint: str = ""

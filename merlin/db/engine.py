@@ -18,11 +18,16 @@ engine = create_engine(
 )
 
 
-# Enable WAL mode for better concurrent read performance
+# Journal mode is configurable: WAL gives better read concurrency on native
+# runs, but DELETE is required on a macOS Docker bind mount where WAL can lose
+# uncheckpointed commits on restart (see Settings.sqlite_journal_mode).
+# busy_timeout lets the background workers + UI wait out a lock instead of
+# failing with "database is locked" (notably under DELETE's coarser locking).
 @event.listens_for(engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute(f"PRAGMA journal_mode={settings.sqlite_journal_mode}")
+    cursor.execute("PRAGMA busy_timeout=5000")
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
 
