@@ -1,0 +1,120 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* ------------------------------------------------------------------ *
+ * Design tokens (FRONTEND_V3_DESIGN_SYSTEM.md §2–4)
+ * Tailwind v4 reads `--color-*` here and generates `bg-*`/`text-*`/…
+ * utilities. Dark-first: there is one surface family, no `dark:` variants.
+ * ------------------------------------------------------------------ */
+@theme {
+  /* Surfaces — near-black, layered by elevation */
+  --color-bg: #0a0a0b;
+  --color-surface: #111113;
+  --color-surface-2: #18181b;
+  --color-border: #232327;
+  --color-border-strong: #2e2e33;
+
+  /* Text */
+  --color-fg: #ededef;
+  --color-fg-muted: #a1a1aa;
+  --color-fg-subtle: #6b6b73;
+
+  /* Accent — Streamlit's red, the only chroma in the chrome */
+  --color-accent: #ff4b4b;
+  --color-accent-hover: #ff6363;
+  --color-accent-active: #e23b3b;
+  --color-accent-fg: #ffffff;
+  --color-accent-subtle: #2a1416;
+  --color-accent-border: #4d2122;
+
+  /* Semantic signals (coexist with the red brand) */
+  --color-success: #30a46c;
+  --color-warning: #f5a524;
+  --color-info: #5b9df9;
+
+  /* Type families */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Radius family */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+
+  /* Focus ring glow */
+  --color-accent-ring: rgba(255, 75, 75, 0.45);
+}
+
+/* Custom variant so `accent-ring` works in ring utilities if needed */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    color-scheme: dark;
+  }
+  body {
+    margin: 0;
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 22px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* Visible focus ring on all interactive elements (a11y §10) */
+  :focus-visible {
+    outline: 2px solid var(--color-border-strong);
+    outline-offset: 1px;
+  }
+  ::selection {
+    background: var(--color-accent-subtle);
+  }
+  /* Slim dark scrollbars */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 9999px;
+    border: 2px solid var(--color-bg);
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Reusable type primitives
+ * ------------------------------------------------------------------ */
+@layer components {
+  /* The signature eyebrow: mono, uppercase, tracked, subtle */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 16px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-fg-subtle);
+  }
+}
+
+/* Reduced motion: kill transforms/shimmer (§7) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
