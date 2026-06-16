@@ -13,16 +13,27 @@ export function ItemGrid({
   items,
   density = "cozy",
   view = "grid",
+  highlight,
+  focusedId,
 }: {
   items: ListItem[];
   density?: Density;
   view?: LibraryView;
+  /** Search term to highlight in titles/snippets. */
+  highlight?: string;
+  /** Item id currently focused via keyboard (j/k). */
+  focusedId?: string;
 }) {
   if (view === "list") {
     return (
       <div className="flex flex-col gap-2">
         {items.map((it) => (
-          <ItemRow key={it.id} item={it} />
+          <ItemRow
+            key={it.id}
+            item={it}
+            highlight={highlight}
+            focused={it.id === focusedId}
+          />
         ))}
       </div>
     );
@@ -38,7 +49,13 @@ export function ItemGrid({
       }}
     >
       {items.map((it) => (
-        <ItemCard key={it.id} item={it} dense={d.dense} />
+        <ItemCard
+          key={it.id}
+          item={it}
+          dense={d.dense}
+          highlight={highlight}
+          focused={it.id === focusedId}
+        />
       ))}
     </div>
   );

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Search,
   LayoutGrid,
@@ -37,9 +37,21 @@ const SORTS = [
 ];
 const DENSITIES: Density[] = ["comfortable", "cozy", "compact"];
 
+/** True when focus is in a text field — grid shortcuts are suppressed there. */
+function inEditable(el: EventTarget | null): boolean {
+  const n = el as HTMLElement | null;
+  return (
+    !!n &&
+    (/^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName) || n.isContentEditable)
+  );
+}
+
 export default function LibraryRoute() {
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const { view, setView, density, setDensity } = useUi();
+  // Index of the card focused via j/k (−1 = none).
+  const [focused, setFocused] = useState(-1);
 
   // URL is the source of truth for filters/sort/page.
   const search = params.get("search") ?? "";
@@ -93,6 +105,47 @@ export default function LibraryRoute() {
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "Newest";
 
   const hasFilters = !!(search || sourceType || tags.length);
+  const items = q.data?.items ?? [];
+
+  const goToPage = (p: number) => {
+    update({ page: p === 1 ? undefined : String(p) });
+    setFocused(-1);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Reset keyboard focus whenever the result set changes (render-time pattern,
+  // matching the search box above — no effect, no cascading render).
+  const resultSig = `${search}|${sourceType}|${sort}|${page}|${tags.join(",")}`;
+  const [prevSig, setPrevSig] = useState(resultSig);
+  if (resultSig !== prevSig) {
+    setPrevSig(resultSig);
+    setFocused(-1);
+  }
+
+  // Grid keyboard nav: j/k move, Enter opens, ←/→ page. Suppressed while typing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || inEditable(e.target)) return;
+      if (e.key === "j") {
+        e.preventDefault();
+        setFocused((f) => Math.min(f + 1, items.length - 1));
+      } else if (e.key === "k") {
+        e.preventDefault();
+        setFocused((f) => Math.max((f < 0 ? items.length : f) - 1, 0));
+      } else if (e.key === "Enter" && focused >= 0 && items[focused]) {
+        navigate(`/library/${items[focused].id}`);
+      } else if (e.key === "ArrowRight" && page < totalPages) {
+        e.preventDefault();
+        goToPage(page + 1);
+      } else if (e.key === "ArrowLeft" && page > 1) {
+        e.preventDefault();
+        goToPage(page - 1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, focused, page, totalPages]);
 
   return (
     <div className="space-y-5">
@@ -240,16 +293,15 @@ export default function LibraryRoute() {
         )
       ) : (
         <>
-          <ItemGrid items={q.data!.items} density={density} view={view} />
+          <ItemGrid
+            items={items}
+            density={density}
+            view={view}
+            highlight={search}
+            focusedId={focused >= 0 ? items[focused]?.id : undefined}
+          />
           {totalPages > 1 && (
-            <Pager
-              page={page}
-              totalPages={totalPages}
-              onPage={(p) => {
-                update({ page: p === 1 ? undefined : String(p) });
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-            />
+            <Pager page={page} totalPages={totalPages} onPage={goToPage} />
           )}
         </>
       )}

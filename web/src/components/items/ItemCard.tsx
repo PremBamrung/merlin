@@ -1,7 +1,9 @@
+import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { ImageOff } from "lucide-react";
 import type { ListItem } from "@/lib/api/endpoints";
 import { StatusDot } from "@/components/common/StatusDot";
+import { Highlight } from "@/components/common/Highlight";
 import { Badge } from "@/components/ui/badge";
 import {
   relDate,
@@ -42,22 +44,41 @@ function Thumb({ item }: { item: ListItem }) {
  * Library/Today card: thumbnail, duration, title, mono meta line, status dot,
  * summary snippet, tag pills. Links to the Reader. `dense` drops the snippet.
  */
-export function ItemCard({ item, dense }: { item: ListItem; dense?: boolean }) {
+export function ItemCard({
+  item,
+  dense,
+  highlight,
+  focused,
+}: {
+  item: ListItem;
+  dense?: boolean;
+  highlight?: string;
+  focused?: boolean;
+}) {
   const meta = [item.channel ?? item.author, relDate(item.ingested_at)]
     .filter(Boolean)
     .join(" · ");
   const isFailed = item.status === "failed";
+  const ref = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    if (focused) ref.current?.scrollIntoView({ block: "nearest" });
+  }, [focused]);
 
   return (
     <Link
+      ref={ref}
       to={`/library/${item.id}`}
-      className="group flex flex-col overflow-hidden rounded-[10px] border border-border bg-surface transition-colors hover:border-border-strong"
+      className={cn(
+        "group flex flex-col overflow-hidden rounded-[10px] border border-border bg-surface transition-colors hover:border-border-strong",
+        focused && "border-accent-border ring-2 ring-accent/50",
+      )}
     >
       <Thumb item={item} />
       <div className="flex flex-1 flex-col gap-2 p-3">
         {isFailed && <span className="eyebrow text-accent">⛔ Failed</span>}
         <h3 className="line-clamp-2 text-[14px] font-medium leading-snug text-fg">
-          {item.title ?? "Untitled"}
+          <Highlight text={item.title ?? "Untitled"} term={highlight} />
         </h3>
 
         <div className="flex items-center gap-1.5 text-[11px]">
@@ -69,9 +90,11 @@ export function ItemCard({ item, dense }: { item: ListItem; dense?: boolean }) {
 
         {!dense && (item.summary || isFailed) && (
           <p className="line-clamp-2 text-[12.5px] leading-snug text-fg-muted">
-            {isFailed
-              ? (item.error_message ?? "Ingest failed.")
-              : shortText(item.summary, 140)}
+            {isFailed ? (
+              (item.error_message ?? "Ingest failed.")
+            ) : (
+              <Highlight text={shortText(item.summary, 140)} term={highlight} />
+            )}
           </p>
         )}
 
@@ -95,16 +118,32 @@ export function ItemCard({ item, dense }: { item: ListItem; dense?: boolean }) {
 }
 
 /** Compact list-row variant of an item (Library list view). */
-export function ItemRow({ item }: { item: ListItem }) {
+export function ItemRow({
+  item,
+  highlight,
+  focused,
+}: {
+  item: ListItem;
+  highlight?: string;
+  focused?: boolean;
+}) {
   const meta = [item.channel ?? item.author, relDate(item.ingested_at)]
     .filter(Boolean)
     .join(" · ");
   const src = thumbnailUrl(item);
+  const ref = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    if (focused) ref.current?.scrollIntoView({ block: "nearest" });
+  }, [focused]);
+
   return (
     <Link
+      ref={ref}
       to={`/library/${item.id}`}
       className={cn(
         "group flex items-center gap-3 rounded-[10px] border border-border bg-surface px-3 py-2.5 transition-colors hover:border-border-strong",
+        focused && "border-accent-border ring-2 ring-accent/50",
       )}
     >
       <div className="relative aspect-video w-28 shrink-0 overflow-hidden rounded-md bg-surface-2">
@@ -120,7 +159,7 @@ export function ItemRow({ item }: { item: ListItem }) {
         <div className="flex items-center gap-2">
           <StatusDot status={item.status} />
           <h3 className="truncate text-[14px] font-medium text-fg">
-            {item.title ?? "Untitled"}
+            <Highlight text={item.title ?? "Untitled"} term={highlight} />
           </h3>
         </div>
         <p className="truncate font-mono text-[11px] uppercase tracking-wide text-fg-subtle">
