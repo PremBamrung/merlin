@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 
 class IngestYouTubeRequest(BaseModel):
     url: str
-    languages: list[str] = Field(default_factory=lambda: ["en"])
+    languages: list[str] = Field(default_factory=lambda: ["en", "fr"])
     summary_length: str = "short"
 
 

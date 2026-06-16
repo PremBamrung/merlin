@@ -254,9 +254,17 @@ class YouTubePlugin(KnowledgeSourcePlugin):
 
     @staticmethod
     def _pick_summary_language(detected_code: str, user_languages: list[str]) -> str:
+        """Pick the summary language from the languages the user understands.
+
+        If the video's own language is one the user understands, summarise in it
+        (read in the original). Otherwise summarise in the user's *preferred*
+        understood language — the first in their list — never a hard-coded
+        English, so the language picker actually controls the output.
+        """
         if not user_languages:
             return "english"
+        normalized = [lang.lower() for lang in user_languages]
         base = detected_code.split("-")[0].split("_")[0].lower()
-        if base in [lang.lower() for lang in user_languages]:
+        if base in normalized:
             return LANGUAGE_MAP.get(base, "english")
-        return "english"
+        return LANGUAGE_MAP.get(normalized[0], "english")

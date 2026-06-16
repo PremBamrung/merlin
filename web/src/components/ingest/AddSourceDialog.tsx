@@ -23,7 +23,7 @@ export function AddSourceDialog() {
 
   const [url, setUrl] = useState("");
   const [length, setLength] = useState<(typeof LENGTHS)[number]>("short");
-  const [langs, setLangs] = useState<string[]>(["en"]);
+  const [langs, setLangs] = useState<string[]>(["en", "fr"]);
   const [advanced, setAdvanced] = useState(false);
   const ingest = useIngestYouTube();
 
@@ -35,7 +35,7 @@ export function AddSourceDialog() {
     if (open) {
       setUrl(prefill);
       setLength("short");
-      setLangs(["en"]);
+      setLangs(["en", "fr"]);
       setAdvanced(false);
       ingest.reset();
     }

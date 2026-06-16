@@ -91,7 +91,10 @@ def submit_youtube(
     if not plugin:
         raise ValueError("YouTube plugin not registered")
 
-    options = {"languages": languages or ["en"], "summary_length": summary_length}
+    options = {
+        "languages": languages or ["en", "fr"],
+        "summary_length": summary_length,
+    }
     errors = plugin.validate_input(url, options)
     if errors:
         raise ValueError("; ".join(errors))
@@ -147,12 +150,20 @@ def resummarize(
         plugin = registry.get("youtube")
         if not plugin:
             raise ValueError("YouTube plugin not registered")
+        # Default to the languages the user understands, seeded with the
+        # video's own detected language so a re-summarise of a French video
+        # reads in French rather than falling back to English.
+        langs = languages or [
+            lang
+            for lang in (detected.split("-")[0].lower(), "en", "fr")
+            if lang
+        ]
         summary, topics, timestamps = plugin.resummarize(
             raw_text=raw_text,
             title=title,
             channel=channel,
             detected_language=detected,
-            user_languages=languages or ["en"],
+            user_languages=langs,
             summary_length=length,
         )
 

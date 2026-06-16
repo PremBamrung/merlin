@@ -45,7 +45,7 @@ def test_ingest_youtube_defaults_languages(client, monkeypatch):
     )
     resp = client.post("/api/ingest/youtube", json={"url": "https://youtu.be/x"})
     assert resp.status_code == 200
-    assert seen == {"languages": ["en"], "summary_length": "short"}
+    assert seen == {"languages": ["en", "fr"], "summary_length": "short"}
 
 
 def test_ingest_youtube_bad_input_is_400(client, monkeypatch):

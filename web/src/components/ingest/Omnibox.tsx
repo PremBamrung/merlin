@@ -18,7 +18,7 @@ export function Omnibox({ className }: { className?: string }) {
   const submit = () => {
     const { kind, text } = omniboxRoute(value);
     if (kind === "ingest") {
-      ingest.mutate({ url: text, languages: ["en"], summary_length: "short" });
+      ingest.mutate({ url: text, languages: ["en", "fr"], summary_length: "short" });
       setValue("");
     } else if (kind === "ask") {
       navigate(`/chat?q=${encodeURIComponent(text)}`);
