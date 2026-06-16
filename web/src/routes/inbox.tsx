@@ -1,8 +1,9 @@
-import { RotateCw, Trash2, CheckCircle2 } from "lucide-react";
+import { RotateCw, Trash2, CheckCircle2, CheckCheck } from "lucide-react";
 import {
   useInbox,
   useRetryFailed,
   useClearFailed,
+  useDigestAction,
 } from "@/hooks/useDigest";
 import { useActiveTasks } from "@/store/tasks";
 import { FailedCard } from "@/components/inbox/FailedCard";
@@ -20,6 +21,7 @@ export default function InboxRoute() {
   const q = useInbox(LIMIT);
   const retryFailed = useRetryFailed();
   const clearFailed = useClearFailed();
+  const digestAction = useDigestAction();
   const activeIds = useActiveTasks((s) => s.activeIds);
 
   const counts = q.data?.counts;
@@ -103,13 +105,27 @@ export default function InboxRoute() {
 
           {pending.length > 0 && (
             <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="eyebrow">To review</p>
-                {counts && counts.pending > pending.length && (
-                  <span className="text-[12px] text-fg-subtle">
-                    Showing {pending.length} of {thousands(counts.pending)}
-                  </span>
-                )}
+              <div className="flex items-center justify-between gap-3">
+                <p className="eyebrow">To review · {pending.length}</p>
+                <div className="flex items-center gap-3">
+                  {counts && counts.pending > pending.length && (
+                    <span className="text-[12px] text-fg-subtle">
+                      Showing {pending.length} of {thousands(counts.pending)}
+                    </span>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={digestAction.isPending}
+                    onClick={() =>
+                      pending.forEach((item) =>
+                        digestAction.mutate({ id: item.id, action: "keep" }),
+                      )
+                    }
+                  >
+                    <CheckCheck className="size-3.5" /> Keep all shown
+                  </Button>
+                </div>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(420px,1fr))]">
                 {pending.map((item) => (

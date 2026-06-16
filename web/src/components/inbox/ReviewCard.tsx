@@ -53,7 +53,7 @@ export function ReviewCard({ item }: { item: ListItem }) {
         </div>
       </Link>
 
-      <div className="flex items-center gap-1.5 border-t border-border px-3 py-2">
+      <div className="flex items-center gap-1 border-t border-border px-2.5 py-1.5">
         <Button
           variant="secondary"
           size="sm"
@@ -64,20 +64,24 @@ export function ReviewCard({ item }: { item: ListItem }) {
         </Button>
         <Button
           variant="ghost"
-          size="sm"
+          size="icon-sm"
+          title="Re-summarize"
+          aria-label="Re-summarize"
           onClick={() => resummarize.mutate({})}
           disabled={busy}
         >
-          <RefreshCw className="size-3.5" /> Re-summarize
+          <RefreshCw className="size-3.5" />
         </Button>
         <Button
           variant="ghost"
-          size="sm"
-          className="ml-auto text-fg-subtle"
+          size="icon-sm"
+          className="ml-auto text-fg-subtle hover:text-accent"
+          title="Dismiss from inbox"
+          aria-label="Dismiss from inbox"
           onClick={() => action.mutate({ id: item.id, action: "dismiss" })}
           disabled={busy}
         >
-          <X className="size-3.5" /> Dismiss
+          <X className="size-3.5" />
         </Button>
       </div>
     </div>
