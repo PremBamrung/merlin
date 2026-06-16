@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ChevronLeft,
+  ChevronRight,
   ExternalLink,
   RefreshCw,
   MoreHorizontal,
@@ -13,10 +14,17 @@ import {
   Search,
   Play,
 } from "lucide-react";
-import { useItem, useUpdateItem, useDeleteItem, useClearSummary } from "@/hooks/useItems";
+import {
+  useItem,
+  useUpdateItem,
+  useDeleteItem,
+  useClearSummary,
+  useAdjacentItems,
+} from "@/hooks/useItems";
 import { useResummarize, useRetry } from "@/hooks/useIngest";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CopyButton } from "@/components/common/CopyButton";
 import {
   Popover,
   PopoverContent,
@@ -50,6 +58,7 @@ import {
   thousands,
   compactNumber,
   relDate,
+  readingTime,
   thumbnailUrl,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -93,6 +102,28 @@ function Reader({
   const [titleDraft, setTitleDraft] = useState(item.title ?? "");
   const [confirmDel, setConfirmDel] = useState(false);
   const [lenOpen, setLenOpen] = useState(false);
+  const [tab, setTab] = useState<"summary" | "transcript">("summary");
+
+  const { prev, next } = useAdjacentItems(item.id);
+
+  // ←/→ walk to the adjacent library item (suppressed while typing).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable))
+        return;
+      if (e.key === "ArrowLeft" && prev) {
+        e.preventDefault();
+        navigate(`/library/${prev.id}`);
+      } else if (e.key === "ArrowRight" && next) {
+        e.preventDefault();
+        navigate(`/library/${next.id}`);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [prev, next, navigate]);
 
   const isFailed = item.status === "failed";
   const isYouTube = item.source_type === "youtube";
@@ -110,6 +141,7 @@ function Reader({
     formatDuration(item.duration),
     item.detected_language?.toUpperCase(),
     item.word_count ? `${thousands(item.word_count)} words` : null,
+    readingTime(item.word_count) || null,
   ].filter(Boolean);
 
   const saveTitle = () => {
@@ -131,14 +163,40 @@ function Reader({
 
   return (
     <div className="space-y-6">
-      {/* Top bar: back + actions */}
+      {/* Top bar: back + adjacent-item pager + actions */}
       <div className="flex items-center justify-between gap-3">
-        <Link
-          to="/library"
-          className="inline-flex items-center gap-1 text-[13px] text-fg-muted transition-colors hover:text-fg"
-        >
-          <ChevronLeft className="size-4" /> Library
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/library"
+            className="inline-flex items-center gap-1 text-[13px] text-fg-muted transition-colors hover:text-fg"
+          >
+            <ChevronLeft className="size-4" /> Library
+          </Link>
+          {(prev || next) && (
+            <div className="ml-1 flex items-center">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={!prev}
+                onClick={() => prev && navigate(`/library/${prev.id}`)}
+                aria-label="Previous item"
+                title={prev ? `← ${prev.title ?? "Previous"}` : undefined}
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={!next}
+                onClick={() => next && navigate(`/library/${next.id}`)}
+                aria-label="Next item"
+                title={next ? `→ ${next.title ?? "Next"}` : undefined}
+              >
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          )}
+        </div>
 
         <div className="flex items-center gap-2">
           {watchUrl && (
@@ -262,13 +320,25 @@ function Reader({
             </div>
           )}
 
-          <Tabs defaultValue="summary" className="mt-7">
-            <TabsList>
-              <TabsTrigger value="summary">Summary</TabsTrigger>
-              <TabsTrigger value="transcript" disabled={!item.raw_content}>
-                Transcript
-              </TabsTrigger>
-            </TabsList>
+          <Tabs
+            value={tab}
+            onValueChange={(v) => setTab(v as "summary" | "transcript")}
+            className="mt-7"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <TabsList>
+                <TabsTrigger value="summary">Summary</TabsTrigger>
+                <TabsTrigger value="transcript" disabled={!item.raw_content}>
+                  Transcript
+                </TabsTrigger>
+              </TabsList>
+              {tab === "summary" && item.summary && (
+                <CopyButton text={item.summary} label="Copy" />
+              )}
+              {tab === "transcript" && item.raw_content && (
+                <CopyButton text={item.raw_content} label="Copy" />
+              )}
+            </div>
 
             <TabsContent value="summary" className="pt-6">
               {item.summary ? (

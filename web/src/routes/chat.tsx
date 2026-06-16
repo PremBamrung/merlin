@@ -7,6 +7,8 @@ import {
   RotateCw,
   SlidersHorizontal,
   MessageSquare,
+  Plus,
+  X,
 } from "lucide-react";
 import { useChatStream, type ChatTurn } from "@/hooks/useChatStream";
 import { useTags, useSourceTypes } from "@/hooks/useMeta";
@@ -17,6 +19,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Markdown } from "@/components/common/Markdown";
+import { CopyButton } from "@/components/common/CopyButton";
 import { CitationCard } from "@/components/chat/CitationCard";
 import type { ChatFilters } from "@/lib/api/endpoints";
 import { cn } from "@/lib/utils";
@@ -29,7 +32,7 @@ const STARTERS = [
 const FOLLOWUPS = ["Why?", "Counterpoints?", "Give me an example", "Summarize key points"];
 
 export default function ChatRoute() {
-  const { messages, isStreaming, send, regenerate, stop } = useChatStream();
+  const { messages, isStreaming, send, regenerate, stop, reset } = useChatStream();
   const [params, setParams] = useSearchParams();
   const [input, setInput] = useState("");
   const [filters, setFilters] = useState<ChatFilters>({});
@@ -70,12 +73,24 @@ export default function ChatRoute() {
       {/* Header */}
       <div className="flex items-center justify-between pb-4">
         <h1 className="text-[24px] font-semibold">Chat</h1>
-        <FilterBar filters={filters} setFilters={setFilters} active={filtersActive} />
+        <div className="flex items-center gap-2">
+          {!isIdle && (
+            <Button variant="ghost" size="sm" onClick={reset} disabled={isStreaming}>
+              <Plus className="size-3.5" /> New chat
+            </Button>
+          )}
+          <FilterBar filters={filters} setFilters={setFilters} active={filtersActive} />
+        </div>
       </div>
 
       {/* Messages */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl space-y-8 pb-6">
+        <div
+          className={cn(
+            "mx-auto max-w-3xl pb-6",
+            isIdle ? "flex min-h-full flex-col justify-center" : "space-y-8",
+          )}
+        >
           {isIdle ? (
             <IdleState onPick={(q) => send(q, normalizeFilters(filters))} />
           ) : (
@@ -96,6 +111,9 @@ export default function ChatRoute() {
 
       {/* Composer */}
       <div className="border-t border-border pt-4">
+        {filtersActive > 0 && (
+          <ActiveFilterChips filters={filters} setFilters={setFilters} />
+        )}
         <div className="mx-auto flex max-w-3xl items-end gap-2">
           <textarea
             value={input}
@@ -135,6 +153,69 @@ function normalizeFilters(f: ChatFilters): ChatFilters {
     source_types: f.source_types?.length ? f.source_types : null,
     tags: f.tags?.length ? f.tags : null,
   };
+}
+
+/** Active chat filters as removable chips, shown above the composer. */
+function ActiveFilterChips({
+  filters,
+  setFilters,
+}: {
+  filters: ChatFilters;
+  setFilters: (f: ChatFilters) => void;
+}) {
+  const sources = filters.source_types ?? [];
+  const tags = filters.tags ?? [];
+  const removeSource = (name: string) =>
+    setFilters({ ...filters, source_types: sources.filter((x) => x !== name) });
+  const removeTag = (name: string) =>
+    setFilters({ ...filters, tags: tags.filter((x) => x !== name) });
+
+  return (
+    <div className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-1.5">
+      <span className="eyebrow text-fg-subtle">Filtered to</span>
+      {sources.map((s) => (
+        <Chip key={`s-${s}`} onRemove={() => removeSource(s)} className="capitalize">
+          {s}
+        </Chip>
+      ))}
+      {tags.map((t) => (
+        <Chip key={`t-${t}`} onRemove={() => removeTag(t)} mono>
+          #{t}
+        </Chip>
+      ))}
+      <button
+        onClick={() => setFilters({})}
+        className="text-[12px] text-fg-subtle underline-offset-2 hover:text-fg hover:underline"
+      >
+        Clear
+      </button>
+    </div>
+  );
+}
+
+function Chip({
+  children,
+  onRemove,
+  mono,
+  className,
+}: {
+  children: React.ReactNode;
+  onRemove: () => void;
+  mono?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      onClick={onRemove}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-subtle px-2.5 py-1 text-[11px] text-accent",
+        mono && "font-mono",
+        className,
+      )}
+    >
+      {children} <X className="size-3" />
+    </button>
+  );
 }
 
 function Message({
@@ -209,6 +290,7 @@ function Message({
           <Button variant="ghost" size="sm" onClick={onRegenerate} disabled={isStreaming}>
             <RotateCw className="size-3.5" /> Regenerate
           </Button>
+          <CopyButton text={turn.content} label="Copy" />
           <span className="text-border-strong">·</span>
           {FOLLOWUPS.map((f) => (
             <button

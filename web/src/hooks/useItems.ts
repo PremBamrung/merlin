@@ -12,6 +12,8 @@ import {
   clearSummary,
   type ItemQuery,
   type Item,
+  type ItemList,
+  type ListItem,
 } from "@/lib/api/endpoints";
 import type { components } from "@/lib/api/schema";
 import { keys } from "@/lib/queryKeys";
@@ -34,6 +36,30 @@ export function useItem(id: string | undefined) {
     queryFn: () => getItem(id!),
     enabled: !!id,
   });
+}
+
+/**
+ * Prev/next neighbours of an item, read from whichever Library list page is
+ * already cached (the grid the user came from). No extra request: if the item
+ * isn't in a cached page, both are null and the Reader simply hides the arrows.
+ */
+export function useAdjacentItems(id: string): {
+  prev: ListItem | null;
+  next: ListItem | null;
+} {
+  const qc = useQueryClient();
+  const lists = qc.getQueriesData<ItemList>({ queryKey: keys.items() });
+  for (const [, data] of lists) {
+    const items = data?.items;
+    if (!items) continue;
+    const idx = items.findIndex((it) => it.id === id);
+    if (idx === -1) continue;
+    return {
+      prev: idx > 0 ? items[idx - 1] : null,
+      next: idx < items.length - 1 ? items[idx + 1] : null,
+    };
+  }
+  return { prev: null, next: null };
 }
 
 /** Optimistic PATCH for tags/title (§5). Rolls back on error. */
