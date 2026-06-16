@@ -32,7 +32,7 @@ Merlin is a **Python package** for knowledge management from multiple sources. T
 - Limited test coverage
 - Some code duplication in example frontend
 - Missing error handling in some areas
-- Incomplete source integrations (Reddit stub)
+- Incomplete source integrations (Reddit stub)  
 - Configuration management could be improved
 - Package API documentation needed
 
