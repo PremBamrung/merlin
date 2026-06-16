@@ -1,7 +1,5 @@
 import {
   ResponsiveContainer,
-  AreaChart,
-  Area,
   BarChart,
   Bar,
   PieChart,
@@ -20,11 +18,12 @@ import {
   useChannelCount,
 } from "@/hooks/useInsights";
 import { StatTile } from "@/components/common/StatTile";
+import { CalendarHeatmap } from "@/components/insights/CalendarHeatmap";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
-import { thousands, relDate } from "@/lib/format";
+import { thousands } from "@/lib/format";
 
 const COLORS = {
   accent: "#ff4b4b",
@@ -112,10 +111,6 @@ export default function InsightsRoute() {
   const total = statusData.reduce((s, r) => s + r.count, 0);
   const failed = statusData.find((r) => r.name === "failed")?.count ?? 0;
   const mostInDay = Math.max(0, ...(timeline.data ?? []).map((p) => p.count));
-  const timelineData = (timeline.data ?? []).map((p) => ({
-    date: relDate(p.date),
-    count: p.count,
-  }));
 
   const isEmpty = !loading && total === 0;
 
@@ -155,42 +150,7 @@ export default function InsightsRoute() {
 
           {/* Timeline */}
           <ChartCard title="Ingest activity" loading={loading}>
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={timelineData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                <defs>
-                  <linearGradient id="fillAccent" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={COLORS.accent} stopOpacity={0.35} />
-                    <stop offset="100%" stopColor={COLORS.accent} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke={COLORS.grid} vertical={false} />
-                <XAxis
-                  dataKey="date"
-                  stroke={COLORS.axis}
-                  tick={{ fontSize: 11, fill: COLORS.axis }}
-                  tickLine={false}
-                  axisLine={{ stroke: COLORS.grid }}
-                  minTickGap={24}
-                />
-                <YAxis
-                  stroke={COLORS.axis}
-                  tick={{ fontSize: 11, fill: COLORS.axis }}
-                  tickLine={false}
-                  axisLine={false}
-                  allowDecimals={false}
-                  width={44}
-                />
-                <Tooltip content={<ChartTooltip />} cursor={{ stroke: COLORS.border }} />
-                <Area
-                  type="monotone"
-                  dataKey="count"
-                  name="items"
-                  stroke={COLORS.accent}
-                  strokeWidth={2}
-                  fill="url(#fillAccent)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            <CalendarHeatmap data={timeline.data ?? []} />
           </ChartCard>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -229,14 +189,14 @@ export default function InsightsRoute() {
 
             {/* Status donut */}
             <ChartCard title="Status breakdown" loading={loading}>
-              <ResponsiveContainer width="100%" height={320}>
+              <ResponsiveContainer width="100%" height={232}>
                 <PieChart>
                   <Pie
                     data={statusData}
                     dataKey="count"
                     nameKey="name"
-                    innerRadius={70}
-                    outerRadius={110}
+                    innerRadius={52}
+                    outerRadius={84}
                     paddingAngle={2}
                     stroke={COLORS.surface}
                   >
