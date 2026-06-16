@@ -1,3 +1,19 @@
+# ── Stage 1: build the React SPA (web/) ──────────────────────────────────────
+# Produces web/dist, which the FastAPI app serves at / (same origin, no CORS).
+# Node 22 satisfies Vite 8's engine requirement. node_modules is .dockerignored,
+# so deps are installed fresh from the lockfile here, not copied from the host.
+FROM node:22-slim AS web-build
+WORKDIR /web
+
+# Install deps in their own cached layer (keyed on the manifest + lock).
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+
+# Build the bundle (tsc -b && vite build → web/dist).
+COPY web/ ./
+RUN npm run build
+
+# ── Stage 2: Python runtime (FastAPI + core) ─────────────────────────────────
 FROM python:3.11-slim
 
 # uv binary (dependency manager)
@@ -24,13 +40,15 @@ RUN uv sync --frozen
 
 # Application code. The FastAPI layer (api/) and the core library (merlin/) are
 # the v3 runtime; streamlit/ is the archived "engine room" (still runnable via
-# the `streamlit` compose profile). The built React SPA (web/dist) is mounted by
-# api/ at / when present — add a `COPY web/dist/ ./web/dist/` line once it exists.
+# the `streamlit` compose profile).
 COPY merlin/ ./merlin/
 COPY api/ ./api/
 COPY streamlit/ ./streamlit/
 COPY scripts/ ./scripts/
 COPY alembic.ini ./
+
+# The React SPA built in stage 1. api/main.py mounts this at / when present.
+COPY --from=web-build /web/dist/ ./web/dist/
 
 # Persistent dirs (mounted as volumes in compose)
 RUN mkdir -p /app/logs /app/data
