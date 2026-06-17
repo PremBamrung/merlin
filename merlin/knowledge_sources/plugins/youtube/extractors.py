@@ -140,9 +140,36 @@ class SubtitleExtractor:
             transcript = None
             detected_language = None
 
+            # Detect the video's *original* spoken language from the auto-generated
+            # (ASR) transcript, which YouTube tags with the language actually spoken.
+            # This is independent of the caller's preferred-language list, so a
+            # French video that also ships English subtitles is still detected as
+            # French instead of whichever language sits first in `languages`.
+            original_language = None
+            first_available = None
+            for transcript_item in transcript_list:
+                if first_available is None:
+                    first_available = transcript_item.language_code
+                if transcript_item.is_generated:
+                    original_language = transcript_item.language_code
+                    break
+            original_language = original_language or first_available
+            if original_language:
+                logger.info(f"Detected original spoken language: {original_language}")
+
+            # Fetch in the original language first (read it as spoken), then fall
+            # back to the caller's preferred languages.
+            fetch_languages = list(languages)
+            if original_language:
+                fetch_languages = [original_language] + [
+                    lang for lang in languages if lang != original_language
+                ]
+
             # First, try to find manually created transcript in specified languages
             try:
-                transcript = transcript_list.find_manually_created_transcript(languages)
+                transcript = transcript_list.find_manually_created_transcript(
+                    fetch_languages
+                )
                 detected_language = transcript.language_code
                 logger.info(
                     f"Found manually created transcript in language: {detected_language}"
@@ -150,7 +177,9 @@ class SubtitleExtractor:
             except:
                 # If no manual transcript, try auto-generated in specified languages
                 try:
-                    transcript = transcript_list.find_generated_transcript(languages)
+                    transcript = transcript_list.find_generated_transcript(
+                        fetch_languages
+                    )
                     detected_language = transcript.language_code
                     logger.info(
                         f"Found auto-generated transcript in requested languages: {detected_language}"
@@ -298,10 +327,14 @@ class SubtitleExtractor:
                 f"Successfully extracted subtitles in {duration:.2f}s (language: {detected_language})"
             )
 
-            # Return both subtitles and detected language code
+            # Return both subtitles and detected language code. Prefer the
+            # original spoken language (ASR-detected) over whichever transcript we
+            # ended up fetching, so the summary language follows what the video is
+            # actually in — not an alternate-language subtitle track.
             return {
                 "subtitles": result,
-                "language_code": detected_language
+                "language_code": original_language
+                or detected_language
                 or "en",  # Default to "en" if somehow None
             }
         except Exception as e:
