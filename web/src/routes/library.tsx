@@ -7,6 +7,7 @@ import {
   ChevronDown,
   X,
   Rows3,
+  Star,
   Library as LibraryIcon,
 } from "lucide-react";
 import { useItems } from "@/hooks/useItems";
@@ -59,6 +60,7 @@ export default function LibraryRoute() {
   const sort = params.get("sort") ?? "newest";
   const page = Math.max(1, Number(params.get("page") ?? 1));
   const tags = params.getAll("tags");
+  const savedOnly = params.get("saved") === "true";
 
   // Local, debounced search box that writes back to the URL.
   const [searchDraft, setSearchDraft] = useState(search);
@@ -92,11 +94,12 @@ export default function LibraryRoute() {
       source_type: sourceType || undefined,
       sort,
       tags: tags.length ? tags : undefined,
+      saved: savedOnly || undefined,
       page,
       per_page: PER_PAGE,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [search, sourceType, sort, page, tags.join(",")],
+    [search, sourceType, sort, page, tags.join(","), savedOnly],
   );
 
   const q = useItems(query);
@@ -104,7 +107,7 @@ export default function LibraryRoute() {
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "Newest";
 
-  const hasFilters = !!(search || sourceType || tags.length);
+  const hasFilters = !!(search || sourceType || tags.length || savedOnly);
   const items = q.data?.items ?? [];
 
   const goToPage = (p: number) => {
@@ -115,7 +118,7 @@ export default function LibraryRoute() {
 
   // Reset keyboard focus whenever the result set changes (render-time pattern,
   // matching the search box above — no effect, no cascading render).
-  const resultSig = `${search}|${sourceType}|${sort}|${page}|${tags.join(",")}`;
+  const resultSig = `${search}|${sourceType}|${sort}|${page}|${tags.join(",")}|${savedOnly}`;
   const [prevSig, setPrevSig] = useState(resultSig);
   if (resultSig !== prevSig) {
     setPrevSig(resultSig);
@@ -241,6 +244,20 @@ export default function LibraryRoute() {
         >
           YouTube
         </Chip>
+        <button
+          onClick={() =>
+            update({ saved: savedOnly ? undefined : "true", page: undefined })
+          }
+          aria-pressed={savedOnly}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
+            savedOnly
+              ? "border-accent-border bg-accent-subtle text-accent"
+              : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
+          )}
+        >
+          <Star className={cn("size-3.5", savedOnly && "fill-accent")} /> Saved
+        </button>
         {tags.map((t) => (
           <button
             key={t}

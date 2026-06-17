@@ -19,6 +19,8 @@ export type ItemQuery = {
   source_type?: string;
   status?: string;
   tags?: string[];
+  read?: boolean;
+  saved?: boolean;
   sort?: string;
   page?: number;
   per_page?: number;
@@ -41,6 +43,20 @@ export const deleteItem = (id: string) => client.delete<void>(`/api/items/${id}`
 
 export const clearSummary = (id: string) =>
   client.post<void>(`/api/items/${id}/clear-summary`);
+
+// --- Feed: read / saved state ---------------------------------------------
+export const markRead = (id: string) => client.post<ListItem>(`/api/items/${id}/read`);
+export const markUnread = (id: string) =>
+  client.post<ListItem>(`/api/items/${id}/unread`);
+export const saveItem = (id: string) => client.post<ListItem>(`/api/items/${id}/save`);
+export const unsaveItem = (id: string) =>
+  client.post<ListItem>(`/api/items/${id}/unsave`);
+
+export const getUnreadCount = () =>
+  client.get<components["schemas"]["CountResponse"]>("/api/items/unread-count");
+
+export const markAllRead = () =>
+  client.post<components["schemas"]["CountResponse"]>("/api/items/read-all");
 
 export const getTags = () => client.get<NameCount[]>("/api/tags");
 export const getSourceTypes = () => client.get<NameCount[]>("/api/source-types");
@@ -66,18 +82,11 @@ export const getTasks = (limit = 10) =>
 
 export const getTask = (id: string) => client.get<Task>(`/api/tasks/${id}`);
 
-// --- Inbox / Digest --------------------------------------------------------
+// --- Inbox / Digest: failed-ingest management (the Feed replaced review) ----
 export type Inbox = components["schemas"]["InboxResponse"];
-export type DigestAction = "keep" | "dismiss";
 
 export const getInbox = (limit = 50) =>
   client.get<Inbox>("/api/digest", { limit });
-
-export const digestAction = (id: string, action: DigestAction) =>
-  client.post<components["schemas"]["DigestActionResponse"]>(
-    `/api/digest/${id}/action`,
-    { action },
-  );
 
 export const retryFailed = () =>
   client.post<components["schemas"]["RetryFailedResponse"]>("/api/digest/retry-failed");

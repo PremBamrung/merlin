@@ -2,14 +2,14 @@ import { NavLink } from "react-router-dom";
 import {
   Home,
   Library,
-  Inbox,
+  Layers,
   MessageSquare,
   BarChart3,
   MonitorPlay,
   type LucideIcon,
 } from "lucide-react";
 import { useSourceTypes, useLibraryCount } from "@/hooks/useMeta";
-import { useInbox } from "@/hooks/useDigest";
+import { useUnreadCount } from "@/hooks/useFeed";
 import { thousands } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -17,8 +17,8 @@ type NavItem = { to: string; label: string; icon: LucideIcon; end?: boolean };
 
 const WORKSPACE: NavItem[] = [
   { to: "/", label: "Today", icon: Home, end: true },
+  { to: "/feed", label: "Feed", icon: Layers },
   { to: "/library", label: "Library", icon: Library },
-  { to: "/inbox", label: "Inbox", icon: Inbox },
   { to: "/chat", label: "Chat", icon: MessageSquare },
   { to: "/insights", label: "Insights", icon: BarChart3 },
 ];
@@ -83,8 +83,7 @@ export function Sidebar({
 }) {
   const sourceTypes = useSourceTypes();
   const libraryCount = useLibraryCount();
-  const inbox = useInbox();
-  const failedCount = inbox.data?.counts.failed ?? 0;
+  const unread = useUnreadCount();
 
   return (
     <aside
@@ -109,11 +108,10 @@ export function Sidebar({
               count={
                 item.to === "/library"
                   ? libraryCount.data
-                  : item.to === "/inbox" && failedCount > 0
-                    ? failedCount
+                  : item.to === "/feed"
+                    ? unread.data || undefined
                     : undefined
               }
-              alert={item.to === "/inbox" && failedCount > 0}
             />
           ))}
         </div>

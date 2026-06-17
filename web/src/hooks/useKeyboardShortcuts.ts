@@ -18,10 +18,10 @@ function inEditable(el: EventTarget | null): boolean {
 // `g` then one of these navigates (PATTERNS §9).
 const GO: Record<string, string> = {
   t: "/",
+  f: "/feed",
   l: "/library",
   c: "/chat",
   i: "/insights",
-  n: "/inbox", // reserved (Tier 1)
 };
 
 /** Global, app-level shortcuts. ⌘K lives in CommandPalette; this covers the rest. */

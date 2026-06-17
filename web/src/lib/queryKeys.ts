@@ -9,6 +9,10 @@ export const keys = {
   tasks: () => ["tasks"] as const,
   task: (id: string) => ["task", id] as const,
   inbox: () => ["inbox"] as const,
+  // The Feed queue is its own key (NOT keys.items) so marking-read never
+  // invalidates/refetches it mid-session — cards stay put for swipe-back.
+  feed: () => ["feed"] as const,
+  unreadCount: () => ["unread-count"] as const,
   insights: (k: string) => ["insights", k] as const,
   health: () => ["health"] as const,
 };

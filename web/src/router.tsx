@@ -6,7 +6,7 @@ import TodayRoute from "@/routes/today";
 import LibraryRoute from "@/routes/library";
 import ReaderRoute from "@/routes/reader";
 import ChatRoute from "@/routes/chat";
-import InboxRoute from "@/routes/inbox";
+import FeedRoute from "@/routes/feed";
 
 // Insights pulls in Recharts — lazy-load it so it stays out of the main bundle.
 const InsightsRoute = lazy(() => import("@/routes/insights"));
@@ -17,10 +17,10 @@ export const router = createBrowserRouter([
     element: <AppShell />,
     children: [
       { index: true, element: <TodayRoute /> },
+      { path: "feed", element: <FeedRoute /> },
       { path: "library", element: <LibraryRoute /> },
       { path: "library/:id", element: <ReaderRoute /> },
       { path: "chat", element: <ChatRoute /> },
-      { path: "inbox", element: <InboxRoute /> },
       {
         path: "insights",
         element: (

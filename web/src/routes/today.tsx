@@ -6,6 +6,7 @@ import { useActiveTasks } from "@/store/tasks";
 import { useUi } from "@/store/ui";
 import { Omnibox } from "@/components/ingest/Omnibox";
 import { TaskRow } from "@/components/ingest/TaskRow";
+import { NeedsAttention } from "@/components/today/NeedsAttention";
 import { ItemGrid } from "@/components/items/ItemGrid";
 import { StatTile } from "@/components/common/StatTile";
 import { CardGridSkeleton, StatTilesSkeleton } from "@/components/common/Skeletons";
@@ -98,6 +99,9 @@ export default function TodayRoute() {
           }
         />
       )}
+
+      {/* Failed ingests needing retry/clear (inherited from the old Inbox) */}
+      <NeedsAttention />
 
       {/* Ingesting (live) */}
       {activeIds.length > 0 && (

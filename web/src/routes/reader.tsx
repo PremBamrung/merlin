@@ -56,11 +56,10 @@ import {
   tsToSeconds,
   formatDuration,
   thousands,
-  compactNumber,
-  relDate,
   readingTime,
   thumbnailUrl,
 } from "@/lib/format";
+import { detailRows } from "@/lib/itemDetails";
 import { cn } from "@/lib/utils";
 
 const LENGTHS = ["short", "medium", "long"] as const;
@@ -469,24 +468,6 @@ function Reader({
       </Dialog>
     </div>
   );
-}
-
-/** Key/value rows for the reader's Details rail (empties dropped). */
-function detailRows(item: Item): [string, string][] {
-  const rows: [string, string][] = [["Source", item.source_type.toUpperCase()]];
-  const channel = item.channel ?? item.author;
-  if (channel) rows.push(["Channel", channel]);
-  const dur = formatDuration(item.duration);
-  if (dur) rows.push(["Length", dur]);
-  if (item.detected_language)
-    rows.push(["Language", item.detected_language.toUpperCase()]);
-  if (item.word_count) rows.push(["Words", thousands(item.word_count)]);
-  if (item.views != null) rows.push(["Views", compactNumber(item.views)]);
-  if (item.summary_length) rows.push(["Summary", item.summary_length]);
-  if (item.llm_model) rows.push(["Model", item.llm_model]);
-  if (item.published_at) rows.push(["Published", relDate(item.published_at)]);
-  if (item.ingested_at) rows.push(["Added", relDate(item.ingested_at)]);
-  return rows;
 }
 
 /** Transcript tab — searchable, monospace-ish raw content. */

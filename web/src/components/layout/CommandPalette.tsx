@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Home,
   Library,
-  Inbox,
+  Layers,
   MessageSquare,
   BarChart3,
   Plus,
@@ -19,8 +19,8 @@ import { StatusDot } from "@/components/common/StatusDot";
 
 const ROUTES = [
   { to: "/", label: "Today", icon: Home },
+  { to: "/feed", label: "Feed", icon: Layers },
   { to: "/library", label: "Library", icon: Library },
-  { to: "/inbox", label: "Inbox", icon: Inbox },
   { to: "/chat", label: "Chat", icon: MessageSquare },
   { to: "/insights", label: "Insights", icon: BarChart3 },
 ];
