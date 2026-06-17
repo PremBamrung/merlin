@@ -119,7 +119,9 @@ export default function FeedRoute() {
   const drag = useRef<{ x: number; y: number; axis: "" | "x" | "y" } | null>(null);
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (e.pointerType === "mouse" && e.button !== 0) return;
+    // Mouse uses native text selection (so you can copy the summary); desktop
+    // navigates via the ‹ › buttons / arrow keys. Only touch & pen swipe.
+    if (e.pointerType === "mouse") return;
     drag.current = { x: e.clientX, y: e.clientY, axis: "" };
   };
   const onPointerMove = (e: React.PointerEvent) => {
@@ -207,12 +209,14 @@ export default function FeedRoute() {
         {/* Card stack */}
         <div
           className={cn(
-            "min-h-0 flex-1 touch-pan-y select-none will-change-transform",
+            "min-h-0 flex-1 touch-pan-y will-change-transform",
             // Smooth snap when settled; no transition mid-drag. Honors
             // prefers-reduced-motion via the motion-reduce variant.
+            // select-none only while actively swiping (touch) — keeps the
+            // summary selectable/copyable at rest.
             dragX === 0
               ? "transition-transform duration-200 ease-out motion-reduce:transition-none"
-              : "transition-none",
+              : "select-none transition-none",
           )}
           style={{ transform: `translateX(${dragX}px)` }}
           onPointerDown={onPointerDown}
