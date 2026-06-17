@@ -80,6 +80,9 @@ class ListItem(BaseModel):
     word_count: int | None = None
     status: str | None = None
     error_message: str | None = None
+    # Consumption state (Feed) — ISO timestamps; null = unread / not saved
+    read_at: str | None = None
+    saved_at: str | None = None
     # YouTube-specific — null for non-youtube sources
     channel: str | None = None
     views: int | None = None

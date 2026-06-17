@@ -13,8 +13,10 @@ from merlin.services import library
 
 from ..errors import not_found
 from ..schemas import (
+    CountResponse,
     Item,
     ItemListResponse,
+    ListItem,
     NameCount,
     UpdateItemRequest,
 )
@@ -28,6 +30,8 @@ def list_items(
     source_type: str | None = None,
     status: str | None = None,
     tags: list[str] | None = Query(default=None),
+    read: bool | None = Query(default=None),
+    saved: bool | None = Query(default=None),
     sort: str = "newest",
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=20, ge=1, le=100),
@@ -37,10 +41,22 @@ def list_items(
         source_type=source_type,
         status=status,
         tags=tags,
+        read=read,
+        saved=saved,
         sort=sort,
         page=page,
         per_page=per_page,
     )
+
+
+@router.get("/items/unread-count", response_model=CountResponse)
+def unread_count():
+    return {"count": library.count_unread()}
+
+
+@router.post("/items/read-all", response_model=CountResponse)
+def mark_all_read():
+    return {"count": library.mark_all_read()}
 
 
 @router.get("/items/{item_id}", response_model=Item)
@@ -73,6 +89,38 @@ def clear_summary(item_id: str):
     if not library.clear_summary(item_id):
         raise not_found("Item not found.")
     return Response(status_code=204)
+
+
+@router.post("/items/{item_id}/read", response_model=ListItem)
+def mark_read(item_id: str):
+    item = library.set_read(item_id, True)
+    if item is None:
+        raise not_found("Item not found.")
+    return item
+
+
+@router.post("/items/{item_id}/unread", response_model=ListItem)
+def mark_unread(item_id: str):
+    item = library.set_read(item_id, False)
+    if item is None:
+        raise not_found("Item not found.")
+    return item
+
+
+@router.post("/items/{item_id}/save", response_model=ListItem)
+def save_item(item_id: str):
+    item = library.set_saved(item_id, True)
+    if item is None:
+        raise not_found("Item not found.")
+    return item
+
+
+@router.post("/items/{item_id}/unsave", response_model=ListItem)
+def unsave_item(item_id: str):
+    item = library.set_saved(item_id, False)
+    if item is None:
+        raise not_found("Item not found.")
+    return item
 
 
 @router.get("/tags", response_model=list[NameCount])

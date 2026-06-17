@@ -61,6 +61,11 @@ class KnowledgeItem(Base):
     )  # pending|processing|completed|failed
     error_message = Column(Text)
 
+    # Consumption state (Feed) — nullable timestamps, not booleans, so we keep
+    # *when* it happened for free. read_at IS NULL ⇔ unread; saved_at the ★ flag.
+    read_at = Column(DateTime)
+    saved_at = Column(DateTime)
+
     # Relationships
     youtube_metadata = relationship(
         "YouTubeMetadata",
@@ -77,6 +82,8 @@ class KnowledgeItem(Base):
         Index("ix_knowledge_source", "source_type", "source_id", unique=True),
         Index("ix_knowledge_status", "status"),
         Index("ix_knowledge_ingested", "ingested_at"),
+        Index("ix_knowledge_read", "read_at"),
+        Index("ix_knowledge_saved", "saved_at"),
     )
 
 

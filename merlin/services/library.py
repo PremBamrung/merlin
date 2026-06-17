@@ -34,6 +34,9 @@ def serialize_item(item, include_content: bool = False) -> dict:
         "word_count": item.word_count,
         "status": item.status,
         "error_message": item.error_message,
+        # Consumption state (Feed)
+        "read_at": item.read_at.isoformat() if item.read_at else None,
+        "saved_at": item.saved_at.isoformat() if item.saved_at else None,
         # YouTube-specific (nullable for non-youtube sources)
         "channel": meta.channel if meta else None,
         "views": meta.views if meta else None,
@@ -54,6 +57,8 @@ def list_items(
     status: str | None = None,
     search: str | None = None,
     tags: list[str] | None = None,
+    read: bool | None = None,
+    saved: bool | None = None,
     page: int = 1,
     per_page: int = 20,
     sort: str = "newest",
@@ -65,6 +70,8 @@ def list_items(
             status=status,
             search=search,
             tags=tags,
+            read=read,
+            saved=saved,
             page=page,
             page_size=per_page,
             sort=sort,
@@ -118,6 +125,42 @@ def clear_summary(item_id: str) -> bool:
         if ok:
             session.commit()
         return ok
+
+
+def set_read(item_id: str, read: bool) -> dict | None:
+    """Mark an item read/unread. Returns the updated item dict, or None."""
+    with SessionFactory() as session:
+        item = KnowledgeItemRepository.set_read(session, item_id, read)
+        if not item:
+            return None
+        result = serialize_item(item)
+        session.commit()
+        return result
+
+
+def set_saved(item_id: str, saved: bool) -> dict | None:
+    """Star/un-star an item. Returns the updated item dict, or None."""
+    with SessionFactory() as session:
+        item = KnowledgeItemRepository.set_saved(session, item_id, saved)
+        if not item:
+            return None
+        result = serialize_item(item)
+        session.commit()
+        return result
+
+
+def count_unread() -> int:
+    """Number of completed, not-yet-read items — the Feed queue size."""
+    with SessionFactory() as session:
+        return KnowledgeItemRepository.count_unread(session)
+
+
+def mark_all_read() -> int:
+    """Mark every completed unread item read. Returns how many were updated."""
+    with SessionFactory() as session:
+        n = KnowledgeItemRepository.mark_all_read(session)
+        session.commit()
+        return n
 
 
 def ingest_timeline() -> list[dict]:
