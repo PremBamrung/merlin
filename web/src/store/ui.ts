@@ -13,6 +13,9 @@ type UiState = {
   addPrefill: string;
   openAdd: (prefill?: string) => void;
   setAddOpen: (open: boolean) => void;
+  // Mobile navigation drawer (only rendered below the `md` breakpoint)
+  navOpen: boolean;
+  setNavOpen: (open: boolean) => void;
   // Library view prefs (persisted)
   density: Density;
   view: LibraryView;
@@ -33,6 +36,9 @@ export const useUi = create<UiState>()(
       addPrefill: "",
       openAdd: (prefill = "") => set({ addOpen: true, addPrefill: prefill }),
       setAddOpen: (open) => set({ addOpen: open }),
+
+      navOpen: false,
+      setNavOpen: (open) => set({ navOpen: open }),
 
       density: "cozy",
       view: "grid",

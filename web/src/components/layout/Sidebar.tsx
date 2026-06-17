@@ -29,16 +29,19 @@ function Item({
   item,
   count,
   alert,
+  onNavigate,
 }: {
   item: NavItem;
   count?: number;
   alert?: boolean;
+  onNavigate?: () => void;
 }) {
   const Icon = item.icon;
   return (
     <NavLink
       to={item.to}
       end={item.end}
+      onClick={onNavigate}
       className={({ isActive }) =>
         cn(
           "group relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors",
@@ -71,14 +74,25 @@ function Item({
   );
 }
 
-export function Sidebar() {
+export function Sidebar({
+  className,
+  onNavigate,
+}: {
+  className?: string;
+  onNavigate?: () => void;
+}) {
   const sourceTypes = useSourceTypes();
   const libraryCount = useLibraryCount();
   const inbox = useInbox();
   const failedCount = inbox.data?.counts.failed ?? 0;
 
   return (
-    <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-border bg-surface/40">
+    <aside
+      className={cn(
+        "flex h-full w-[240px] shrink-0 flex-col border-r border-border bg-surface/40",
+        className,
+      )}
+    >
       <div className="flex h-14 items-center gap-2 px-5">
         <span className="text-accent">✦</span>
         <span className="text-[15px] font-semibold tracking-tight">Merlin</span>
@@ -91,6 +105,7 @@ export function Sidebar() {
             <Item
               key={item.to}
               item={item}
+              onNavigate={onNavigate}
               count={
                 item.to === "/library"
                   ? libraryCount.data
@@ -109,6 +124,7 @@ export function Sidebar() {
             {sourceTypes.data!.map((s) => (
               <Item
                 key={s.name}
+                onNavigate={onNavigate}
                 item={{
                   to: `/library?source_type=${s.name}`,
                   label: s.name.charAt(0).toUpperCase() + s.name.slice(1),
