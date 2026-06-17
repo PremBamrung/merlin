@@ -44,7 +44,7 @@ function thisWeek(timeline: { date: string; count: number }[] | undefined): numb
 }
 
 export default function TodayRoute() {
-  const recent = useItems({ sort: "newest", per_page: 12 });
+  const recent = useItems({ sort: "newest", per_page: 21 });
   const timeline = useTimeline();
   const activeIds = useActiveTasks((s) => s.activeIds);
   const openAdd = useUi((s) => s.openAdd);
@@ -59,25 +59,26 @@ export default function TodayRoute() {
         <p className="eyebrow">
           {today()} · {recent.isLoading ? "…" : `${thousands(total)} SOURCES`}
         </p>
-        <div className="flex max-w-[1200px] flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex-1 space-y-5">
             <h1 className="text-[30px] font-semibold leading-tight">{greeting()}</h1>
             <Omnibox className="max-w-2xl" />
           </div>
 
           {!isFresh && (
-            <div className="grid shrink-0 grid-cols-2 gap-3 lg:w-[300px]">
+            <div className="grid shrink-0 grid-cols-2 gap-3 lg:w-[300px] xl:w-[360px]">
               {timeline.isLoading || recent.isLoading ? (
                 <div className="col-span-2">
                   <StatTilesSkeleton count={2} />
                 </div>
               ) : (
                 <>
-                  <StatTile label="Total" value={thousands(total)} />
+                  <StatTile label="Total" value={thousands(total)} big />
                   <StatTile
                     label="This week"
                     value={thousands(thisWeek(timeline.data))}
                     accent
+                    big
                   />
                 </>
               )}
@@ -137,7 +138,7 @@ export default function TodayRoute() {
           </div>
 
           {recent.isLoading ? (
-            <CardGridSkeleton count={8} />
+            <CardGridSkeleton count={12} />
           ) : recent.isError ? (
             <ErrorState error={recent.error} onRetry={() => recent.refetch()} />
           ) : (

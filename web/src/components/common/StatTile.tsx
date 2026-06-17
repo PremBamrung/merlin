@@ -9,19 +9,23 @@ export function StatTile({
   hint,
   className,
   accent,
+  big,
 }: {
   label: string;
   value: ReactNode;
   hint?: string;
   className?: string;
   accent?: boolean;
+  /** Larger number on wide screens (Today hero metrics). */
+  big?: boolean;
 }) {
   return (
-    <Card className={cn("p-5", className)}>
+    <Card className={cn("p-5", big && "xl:p-6", className)}>
       <p className="eyebrow">{label}</p>
       <p
         className={cn(
-          "mt-2 text-[28px] font-semibold leading-none tabular-nums",
+          "mt-2 font-semibold leading-none tabular-nums",
+          big ? "text-[28px] 2xl:text-[36px]" : "text-[28px]",
           accent ? "text-accent" : "text-fg",
         )}
       >
