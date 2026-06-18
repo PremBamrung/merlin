@@ -23,6 +23,16 @@ from merlin.db.repositories.tasks import BackgroundTaskRepository
 from merlin.knowledge_sources.plugins.youtube.extractors import VideoExtractor
 from merlin.knowledge_sources.registry import registry
 
+# Supported summary lengths. "medium" was retired; legacy items may still have
+# it stored, so normalise any unsupported value back to "short".
+_SUMMARY_LENGTHS = ("short", "long")
+
+
+def _normalize_summary_length(length: str | None) -> str:
+    """Coerce a (possibly legacy/None) summary length to a supported value."""
+    return length if length in _SUMMARY_LENGTHS else "short"
+
+
 # ------------------------------------------------------------------
 # on_complete callback — runs in the worker thread after a successful ingest
 # ------------------------------------------------------------------
@@ -142,7 +152,7 @@ def resummarize(
             channel = item.author
             meta = item.youtube_metadata
             detected = (meta.detected_language if meta else "") or ""
-            length = summary_length or item.summary_length or "short"
+            length = _normalize_summary_length(summary_length or item.summary_length)
         if not raw_text:
             raise ValueError("No stored transcript to re-summarise")
 
@@ -218,7 +228,7 @@ def retry(
         meta = item.youtube_metadata
         video_id = meta.video_id if meta else None
         detected = (meta.detected_language or "").split("-")[0] if meta else None
-        summary_length = summary_length or item.summary_length or "short"
+        summary_length = _normalize_summary_length(summary_length or item.summary_length)
 
     langs = languages or [lang for lang in (detected, "en") if lang]
 

@@ -10,7 +10,7 @@ import streamlit as st
 from ui.state import clear_caches
 from ui.util import ts_to_seconds, youtube_url
 
-_LENGTHS = ["short", "medium", "long"]
+_LENGTHS = ["short", "long"]
 
 
 def _close() -> None:

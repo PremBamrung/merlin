@@ -1,4 +1,5 @@
 from datetime import datetime
+import re
 from typing import Generator
 
 from langchain_core.prompts import PromptTemplate
@@ -18,137 +19,163 @@ class VideoSummarizer:
         self._llm = llm
         TEMPLATE_SHORT = """Given the subtitles of a Youtube video, create a short summary that includes:
 
-1. Overview (2 sentences max)
-   - First sentence: Summary of what is discussed in the video
-   - Second sentence: Must answer the key questions raised in the video - mention specific causes, parties, entities, outcomes, or conclusions discussed (e.g., "The decline is attributed to **policy failures** and voter migration to the **PQ and Liberals**, with recovery unlikely before 2026")
-   - Use **markdown bold formatting** to highlight important keywords, themes, parties, entities, or concepts
+## Overview (2 sentences max)
+- First sentence: Summary of what is discussed in the video
+- Second sentence: Must answer the key questions raised in the video - mention specific causes, parties, entities, outcomes, or conclusions discussed (e.g., "The decline is attributed to **policy failures** and voter migration to the **PQ and Liberals**, with recovery unlikely before 2026")
+- Use **markdown bold formatting** to highlight important keywords, themes, parties, entities, or concepts
 
-2. Main Key Points:
-   - List up to 10 most important points from the video (this is the highest limit; use fewer points if the content can be adequately summarized with less)
-   - Order points by importance, not chronologically
-   - Each point should be brief (1-2 lines max) and provide insight, knowledge, or useful information gained from watching the video
-   - Focus on actionable insights and key takeaways, not just an enumeration of topics discussed
-   - Use **markdown bold formatting** to highlight important keywords, themes, or concepts in each point
-   - Avoid verbose explanations; be direct and concise
+## Main Key Points
+- List up to 10 most important points from the video (this is the highest limit; use fewer points if the content can be adequately summarized with less)
+- Format the points as a numbered list (1., 2., 3., ...), ordered by importance, not chronologically
+- Lead each point with the insight, not the topic; avoid introductory phrases ("The video shows that...", "According to...")
+- Be specific - name entities, cite numbers, state conclusions; never vaguely describe what the video "discusses" or "explores"
+- Each point should be brief (1-2 lines max) and provide insight, knowledge, or useful information gained from watching the video
+- Focus on actionable insights and key takeaways, not just an enumeration of topics discussed
+- Use **markdown bold formatting** to highlight important keywords, themes, or concepts in each point
+- Avoid verbose explanations; be direct and concise
 
-Examples of good key points:
-- "**CAQ projected to lose all seats** due to policy failures and voter migration to PQ and Liberals"
-- "**First-past-the-post system** may distort seat allocation, with PQ potentially winning majority with <40% vote"
-- "**Legault's leadership** is central to CAQ identity, making leadership change difficult"
+Rules:
+- Write the summary body in {lang}
+- Keep the section headers ("## Overview", "## Main Key Points") in English even when the body is written in another language
+- Begin the response directly with the "## Overview" header - do not write any introductory sentence, preamble, or sign-off; output only the summary itself
 
-Examples of bad key points (too verbose):
-- "The CAQ is facing an unprecedented political crisis, with polls suggesting it could lose every seat in the provincial legislature, a stark reversal from its previous landslide victory"
-- "Recent by-elections have confirmed the CAQ's decline, with the party suffering major vote losses and finishing far behind rivals, even in former strongholds"
+Two examples of the expected output (note how each begins directly with "## Overview", keeps English headers, and numbers the key points):
 
-Write the summary in {lang}. Keep it concise and focused on the essentials. Use markdown formatting for emphasis.
+### Example 1 (English) - "8 Myths About Espresso Everyone Still Believes" by Lance Hedrick
 
-Video titled "{title}" from the channel "{channel}"
+## Overview
+**Lance Hedrick** dismantles eight espresso myths held by enthusiasts and reinforced by online communities. The core finding: popular rules like nine bars of pressure, always-fresh beans, and expensive grinders are largely misconceptions - better espresso comes from understanding variables and personal taste rather than fixed formulas.
 
-Subtitles: {subtitles}
+## Main Key Points
+1. **Nine bars of pressure is not required** - optimal pressure depends on the coffee and target outcome; lower pressure frequently performs better
+2. **Crema is not a quality indicator** - it reflects roast level and CO2 off-gassing, not extraction quality; dark roasts produce more crema regardless of flavour
+3. **Fresh beans can produce worse shots** - optimal rest time varies by roast; too-fresh beans yield harsh, unbalanced espresso
+4. **Expensive grinders are not inherently better** - grinder choice should match flavour preference; budget grinders can outperform premium ones for certain profiles
+5. **Higher extraction yield is not better flavour** - optimal range is typically **18-19%**; pushing higher often adds bitterness without sweetness
+6. **Channeling is physically unavoidable** - perfectly even extraction is impossible; visual cues from naked portafilters mislead more than they guide
+7. **Online espresso advice is mostly anecdotal** - personal experimentation is more reliable than community consensus
 
-# Answer (maintain the numbered structure in the response): """
+### Example 2 (French) - "Si vos discussions entre amis sont de moins en moins riches, c'est à cause de la 'catch up culture'" by LeHuffPost
 
-        TEMPLATE_MEDIUM = """Given the subtitles of a Youtube video, create a medium-length summary that includes:
+## Overview
+La vidéo examine la **"catch up culture"**, un phénomène où les amitiés se réduisent à des échanges superficiels de nouvelles sans expériences partagées. Ce déclin est attribué à la **priorité donnée à la vie de couple et de famille**, à l'**illusion de proximité entretenue par les réseaux sociaux**, et à l'absence croissante d'activités vécues ensemble.
 
-1. Overview (2-3 sentences)
-   - First sentence: Summary of what is discussed in the video
-   - Second sentence: Must answer the key questions raised in the video - mention specific causes, parties, entities, outcomes, or conclusions discussed
-   - Use **markdown bold formatting** to highlight important keywords, themes, parties, entities, or concepts
+## Main Key Points
+1. La **"catch up culture"** désigne des amitiés figées dans le rattrapage d'actualités, sans progression ni vécu commun
+2. Concept popularisé par **Mitchel Elman** dans *Bad Friend* - l'ami qu'on voit rarement devient un quasi-étranger
+3. Les **réseaux sociaux** créent une illusion de connexion qui se substitue aux vraies interactions sans les remplacer réellement
+4. La **vie de couple et les responsabilités familiales** réduisent mécaniquement le temps disponible pour les amitiés
+5. Les échanges se concentrent sur les **nouvelles positives** au détriment des conversations profondes ou difficiles
+6. Remède proposé : remplacer les mises à jour par des **expériences et émotions partagées en temps réel**
 
-2. Main Topics:
-   - Extract and list key topics discussed
-   - Include timestamps where each topic starts
-   - Organize topics hierarchically if possible
-
-3. Key Points:
-   - Include 5-8 key points with brief explanations (2-3 lines each)
-   - Include relevant timestamps where applicable
-   - Each point should provide insight, knowledge, or useful information gained from watching the video
-   - Focus on actionable insights and key takeaways, not just an enumeration of topics discussed
-   - Use **markdown bold formatting** to highlight important keywords, themes, or concepts in each point
-   - Balance conciseness with sufficient context for understanding
-
-4. Important Quotes:
-   - Notable statements with timestamps
-   - Include speaker attribution if available
-   - Use **markdown bold formatting** for emphasis on key quotes
-
-5. Technical Details (if applicable):
-   - Specific technical information
-   - Definitions or explanations
-   - Code examples or technical concepts
-   - Use **markdown bold formatting** to highlight technical terms and concepts
-
-Write the summary in {lang}. Focus on clarity and structure. Use markdown formatting for emphasis throughout.
+Now produce the summary for the actual video below. Write the body in {lang}. Use markdown formatting for emphasis.
 
 Video titled "{title}" from the channel "{channel}"
 
 Subtitles: {subtitles}
 
-# Answer (maintain the numbered structure in the response): """
+# Answer (begin directly with "## Overview"; use the English headers "## Overview" and "## Main Key Points"; number the key points; do not number the headers themselves): """
 
         TEMPLATE_LONG = """Given the subtitles of a Youtube video, create a comprehensive, in-depth summary that includes:
 
-1. Overview (3-5 sentences)
-   - First sentence: Summary of what is discussed in the video
-   - Second sentence: Must answer the key questions raised in the video - mention specific causes, parties, entities, outcomes, or conclusions discussed
-   - Additional sentences: Main purpose, theme, context, and overall significance or impact
-   - Use **markdown bold formatting** to highlight important keywords, themes, parties, entities, or concepts
+## Overview (3-5 sentences)
+- First sentence: Summary of what is discussed in the video
+- Second sentence: Must answer the key questions raised in the video - mention specific causes, parties, entities, outcomes, or conclusions discussed
+- Additional sentences: Main purpose, theme, context, and overall significance or impact
+- Use **markdown bold formatting** to highlight important keywords, themes, parties, entities, or concepts
 
-2. Main Topics:
-   - Extract and list all key topics discussed in detail
-   - Include timestamps where each topic starts
-   - Organize topics hierarchically with sub-topics
-   - Explain the relationship between topics
+## Main Topics
+- Extract and list all key topics discussed in detail
+- Include timestamps where each topic starts
+- Organize topics hierarchically with sub-topics
+- Explain the relationship between topics
 
-3. Key Points:
-   - Provide 10-15 comprehensive points with supporting context, examples, and explanations (3-5 lines each)
-   - Include relevant timestamps where applicable
-   - Each point should provide deep insight, knowledge, or useful information gained from watching the video
-   - Focus on actionable insights and key takeaways, not just an enumeration of topics discussed
-   - Explain the reasoning behind key arguments
-   - Use **markdown bold formatting** to highlight important keywords, themes, or concepts in each point
+## Key Points
+- Format the points as a numbered list (1., 2., 3., ...), ordered by importance, not chronologically
+- Provide 10-15 comprehensive points with supporting context, examples, and explanations (3-5 lines each)
+- Include relevant timestamps where applicable
+- Each point should provide deep insight, knowledge, or useful information gained from watching the video
+- Focus on actionable insights and key takeaways, not just an enumeration of topics discussed
+- Explain the reasoning behind key arguments
+- Use **markdown bold formatting** to highlight important keywords, themes, or concepts in each point
 
-4. Important Quotes:
-   - Notable statements with timestamps
-   - Include speaker attribution if available
-   - Explain the context and significance of each quote
-   - Use **markdown bold formatting** for emphasis on key quotes
+## Important Quotes
+- Notable statements with timestamps
+- Include speaker attribution if available
+- Explain the context and significance of each quote
+- Use **markdown bold formatting** for emphasis on key quotes
 
-5. Technical Details (if applicable):
-   - Comprehensive technical information
-   - Detailed definitions or explanations
-   - Code examples or technical concepts with context
-   - Step-by-step explanations where relevant
-   - Use **markdown bold formatting** to highlight technical terms and concepts
+## Technical Details (if applicable)
+- Comprehensive technical information
+- Detailed definitions or explanations
+- Code examples or technical concepts with context
+- Step-by-step explanations where relevant
+- Use **markdown bold formatting** to highlight technical terms and concepts
 
-6. Analysis and Insights:
-   - Deeper analysis of the content with focus on insights and knowledge gained
-   - Connections between different points
-   - Implications and applications
-   - Critical evaluation where appropriate
-   - Use **markdown bold formatting** to highlight key insights
+## Analysis and Insights
+- Go beyond summarising: connect points the video does not link explicitly
+- Identify the assumptions the argument depends on, and whether they hold
+- Note tensions, counterarguments, or things left unaddressed
+- Explain why this matters in a broader context
+- Use **markdown bold formatting** to highlight key insights
 
-7. Additional Context:
-   - Background information relevant to understanding the video
-   - Related concepts or prerequisites
-   - Further reading or resources mentioned
+## Takeaways
+- 3-5 concrete, actionable conclusions a reader can apply or investigate further
+- The "so what" for someone who will not watch the video - not a restatement of the key points
 
-Write the summary in {lang}. Provide comprehensive detail, context, and analysis. Use markdown formatting for emphasis throughout.
+Rules:
+- Write the summary body in {lang}
+- Keep all section headers ("## Overview", "## Main Topics", "## Key Points", ...) in English even when the body is written in another language
+- Begin the response directly with the "## Overview" header - do not write any introductory sentence, preamble, or sign-off; output only the summary itself
+
+Example of the expected output (French body, English headers, numbered key points; here "## Important Quotes" and "## Technical Details" are omitted because they were not applicable - include them when the content warrants):
+
+### Example (French) - "Le sucre est-il vraiment addictif ? Ce que dit la science" by ScienceEtonnante
+
+## Overview
+**ScienceEtonnante** examine si le sucre est addictif au sens clinique du terme, en confrontant les études sur le rat aux données humaines. La conclusion est nuancée : **le sucre active bien les circuits de récompense dopaminergiques**, mais les critères d'une addiction comparable à l'alcool ou aux opioïdes ne sont pas remplis chez l'humain dans des conditions normales d'accès. L'épisode est particulièrement utile pour démêler ce que les études sur le rat prouvent réellement de ce qu'on leur fait dire dans la presse grand public.
+
+## Main Topics
+- **Les circuits dopaminergiques de la récompense** [02:15]
+- **Les études sur le rat et leurs protocoles** [06:40]
+- **Les critères cliniques d'addiction (DSM)** [11:20]
+- **Le cadrage médiatique de la "sugar addiction"** [16:05]
+- **Le rôle de l'environnement alimentaire** [20:30]
+
+## Key Points
+1. **Le sucre active la dopamine - mais comme tout aliment palatable, pas comme une drogue** [02:15]
+   Les études d'imagerie montrent une libération de dopamine dans le noyau accumbens lors de la consommation de sucre. Cet effet est partagé par l'exercice, le sexe et la plupart des aliments caloriques - il ne suffit pas à qualifier d'addiction.
+2. **Les études sur le rat en restriction ne sont pas transposables directement à l'humain** [06:40]
+   Les rats rendus "dépendants" l'étaient dans des protocoles de restriction puis d'accès intermittent, une condition qui induit des comportements compulsifs pour presque n'importe quel aliment. En accès libre, ces comportements disparaissent presque totalement.
+3. **Les critères DSM d'addiction ne sont pas remplis pour le sucre chez l'humain** [11:20]
+   Tolérance, sevrage physique, perte de contrôle malgré les conséquences : en conditions normales, le sucre ne satisfait pas ces critères de façon robuste. Certains rapports de perte de contrôle relèvent de la restriction cognitive plutôt que d'une dépendance neurobiologique.
+4. **La "sugar addiction" est en partie un phénomène culturel et médiatique** [16:05]
+   Le cadrage addictif a émergé dans les années 2000-2010, amplifié par des études mal interprétées et des intérêts commerciaux (régimes, compléments "détox"). Ce cadrage peut paradoxalement aggraver les comportements alimentaires en renforçant la restriction puis la perte de contrôle.
+5. **Le vrai problème est l'environnement alimentaire, pas la substance** [20:30]
+   Les aliments ultra-transformés combinent sucre, sel, gras et texture pour maximiser la palatabilité et réduire les signaux de satiété. C'est la combinaison et l'accessibilité qui posent problème, pas le sucre isolément.
+
+## Analysis and Insights
+- La vidéo distingue bien études animales et humaines, mais sous-explore les **différences individuelles** : les personnes ayant des antécédents de TCA ou de restriction sévère montrent des patterns proches de l'addiction que le cadre "normal" ne capture pas.
+- Le recadrage "environnement plutôt que substance" est solide, mais peut être instrumentalisé par l'industrie agro-alimentaire pour déresponsabiliser les produits ultra-transformés - une tension que la vidéo ne soulève pas.
+- La question "est-ce addictif ?" est peut-être mal posée : **"quelles conditions rendent la consommation incontrôlable ?"** serait plus opérationnelle pour la prévention.
+
+## Takeaways
+- Éviter le mot "addiction" pour une surconsommation de sucre hors contexte clinique : le terme pathologise un comportement souvent mieux expliqué par l'environnement alimentaire.
+- Si vous vous sentez "accro" au sucre, examinez d'abord vos schémas de restriction : la privation intermittente induit la compulsion, pas la neurobiologie du sucre.
+- Méfiez-vous des études sur le rat citées sans le protocole (restriction vs accès libre) - c'est le signe d'une interprétation à vérifier.
+- Agir sur l'environnement (accessibilité des aliments ultra-transformés) est plus efficace que de "résister au sucre" par la seule volonté.
+
+Now produce the summary for the actual video below. Write the body in {lang}. Use markdown formatting for emphasis throughout.
 
 Video titled "{title}" from the channel "{channel}"
 
 Subtitles: {subtitles}
 
-# Answer (maintain the numbered structure in the response): """
+# Answer (begin directly with "## Overview"; use English markdown headers ("## Overview", "## Main Topics", "## Key Points", ...) for the sections, with the Key Points as a numbered list; do not number the headers themselves): """
 
         self.templates = {
             "short": PromptTemplate(
                 template=TEMPLATE_SHORT,
-                input_variables=["subtitles", "lang", "title", "channel"],
-            ),
-            "medium": PromptTemplate(
-                template=TEMPLATE_MEDIUM,
                 input_variables=["subtitles", "lang", "title", "channel"],
             ),
             "long": PromptTemplate(
@@ -166,7 +193,7 @@ Subtitles: {subtitles}
         return self._llm
 
     def extract_topics_and_timestamps(
-        self, summary_text: str, summary_length: str = "medium"
+        self, summary_text: str, summary_length: str = "short"
     ) -> tuple[dict, dict]:
         """Extract topics and timestamps from the summary text."""
         topics = {}
@@ -174,8 +201,8 @@ Subtitles: {subtitles}
 
         # For short summaries, extract from "Main Key Points" section
         if summary_length == "short":
-            if "2. Main Key Points:" in summary_text:
-                key_points_section = summary_text.split("2. Main Key Points:")[1]
+            if "## Main Key Points" in summary_text:
+                key_points_section = summary_text.split("## Main Key Points")[1]
                 key_point_lines = [
                     line.strip()
                     for line in key_points_section.split("\n")
@@ -183,19 +210,36 @@ Subtitles: {subtitles}
                 ]
 
                 for line in key_point_lines:
-                    if "-" in line or "•" in line:
-                        # Handle both "-" and "•" bullet points
+                    point = None
+                    # Numbered list items ("1. ...") are the expected format
+                    match = re.match(r"^\d+[.)]\s+(.*)", line)
+                    if match:
+                        point = match.group(1).strip()
+                    elif "-" in line or "•" in line:
+                        # Tolerate "-"/"•" bullets if the model falls back to them
                         bullet_char = "-" if "-" in line else "•"
                         point = line.split(bullet_char, 1)[1].strip()
-                        # Look for timestamp in the point line
-                        if "[" in point and "]" in point:
-                            timestamp = point[point.find("[") + 1 : point.find("]")]
-                            point = point.split("[")[0].strip()
-                            topics[point] = timestamp
-                            timestamps[timestamp] = point
+
+                    # Look for timestamp in the point line
+                    if point and "[" in point and "]" in point:
+                        timestamp = point[point.find("[") + 1 : point.find("]")]
+                        point = point.split("[")[0].strip()
+                        topics[point] = timestamp
+                        timestamps[timestamp] = point
         else:
-            # For medium and long summaries, extract from "Main Topics" section
-            if "2. Main Topics:" in summary_text:
+            # For long summaries, extract from the "Main Topics" section.
+            # Current long summaries use markdown headers ("## Main Topics");
+            # the numbered branch ("2. Main Topics:") is a fallback for legacy
+            # summaries produced by the old numbered templates.
+            topics_section = None
+            if "## Main Topics" in summary_text:
+                topics_section = summary_text.split("## Main Topics")[1]
+                # Cut at the next markdown section header, if present.
+                for next_header in ("## Key Points", "## Important Quotes"):
+                    if next_header in topics_section:
+                        topics_section = topics_section.split(next_header)[0]
+                        break
+            elif "2. Main Topics:" in summary_text:
                 if "3. Key Points:" in summary_text:
                     topics_section = summary_text.split("2. Main Topics:")[1].split(
                         "3. Key Points:"
@@ -206,6 +250,7 @@ Subtitles: {subtitles}
                     if "4. Important Quotes:" in topics_section:
                         topics_section = topics_section.split("4. Important Quotes:")[0]
 
+            if topics_section:
                 topic_lines = [
                     line.strip() for line in topics_section.split("\n") if line.strip()
                 ]
@@ -245,9 +290,9 @@ Subtitles: {subtitles}
         normalized_length = summary_length.lower()
         if normalized_length not in self.templates:
             logger.warning(
-                f"Unknown summary length '{summary_length}', defaulting to 'medium'"
+                f"Unknown summary length '{summary_length}', defaulting to 'short'"
             )
-            normalized_length = "medium"
+            normalized_length = "short"
 
         prompt_template = self.templates[normalized_length]
         llm_chain = prompt_template | self.llm
@@ -288,7 +333,7 @@ Subtitles: {subtitles}
         title: str,
         channel: str,
         lang: str = "english",
-        summary_length: str = "medium",
+        summary_length: str = "short",
         streaming: bool = False,
     ) -> Generator[str, None, None] | tuple[str, dict, dict]:
         """Generate a summary of the video content.
@@ -332,9 +377,9 @@ Subtitles: {subtitles}
         normalized_length = summary_length.lower()
         if normalized_length not in self.templates:
             logger.warning(
-                f"Unknown summary length '{summary_length}', defaulting to 'medium'"
+                f"Unknown summary length '{summary_length}', defaulting to 'short'"
             )
-            normalized_length = "medium"
+            normalized_length = "short"
 
         prompt_template = self.templates[normalized_length]
         llm_chain = prompt_template | self.llm

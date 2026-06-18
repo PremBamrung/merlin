@@ -13,7 +13,7 @@ import { useUi } from "@/store/ui";
 import { useIngestYouTube } from "@/hooks/useIngest";
 import { cn } from "@/lib/utils";
 
-const LENGTHS = ["short", "medium", "long"] as const;
+const LENGTHS = ["short", "long"] as const;
 const COMMON_LANGS = ["en", "fr", "es", "de", "it", "pt", "ja", "ko", "zh", "ru"];
 
 export function AddSourceDialog() {

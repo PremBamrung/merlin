@@ -47,7 +47,7 @@ class KnowledgeItem(Base):
     # Content
     raw_content = Column(Text)  # full transcript / article text
     summary = Column(Text)
-    summary_length = Column(String(20))  # short | medium | long
+    summary_length = Column(String(20))  # short | long  (legacy rows may be "medium")
 
     # Organisation
     tags = Column(Text)  # JSON array string: ["ai","python"]

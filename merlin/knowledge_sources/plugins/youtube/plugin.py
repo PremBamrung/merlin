@@ -86,7 +86,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             },
             "summary_length": {
                 "type": "string",
-                "enum": ["short", "medium", "long"],
+                "enum": ["short", "long"],
                 "title": "Summary length",
                 "default": "short",
             },
@@ -117,8 +117,8 @@ class YouTubePlugin(KnowledgeSourcePlugin):
         if not self.can_handle(raw_input):
             errors.append("Not a valid YouTube URL")
         length = options.get("summary_length", "short")
-        if length not in ("short", "medium", "long"):
-            errors.append("summary_length must be one of: short, medium, long")
+        if length not in ("short", "long"):
+            errors.append("summary_length must be one of: short, long")
         return errors
 
     def ingest(self, request: IngestRequest) -> IngestResult:

@@ -58,7 +58,7 @@ from them, so keep router responses byte-compatible with these dicts.
   "published_at": "2025-…T…Z",   // nullable ISO
   "ingested_at": "2026-…T…Z",    // nullable ISO; drives "Newest" sort
   "summary": "…markdown…",       // nullable until summarised
-  "summary_length": "short",     // short | medium | long
+  "summary_length": "short",     // short | long
   "tags": ["ai", "python"],      // parsed JSON array
   "topics": { "…": "…" },        // parsed JSON object
   "llm_model": "deepseek/…",     // nullable

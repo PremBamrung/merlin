@@ -62,7 +62,7 @@ import {
 import { detailRows } from "@/lib/itemDetails";
 import { cn } from "@/lib/utils";
 
-const LENGTHS = ["short", "medium", "long"] as const;
+const LENGTHS = ["short", "long"] as const;
 
 export default function ReaderRoute() {
   const { id = "" } = useParams();

@@ -7,7 +7,7 @@ from ui.components.task_panel import task_panel
 from ui.state import clear_caches
 
 _LANG_CODES = sorted(LANGUAGE_MAP.keys(), key=lambda c: LANGUAGE_MAP[c])
-_LENGTHS = ["short", "medium", "long"]
+_LENGTHS = ["short", "long"]
 
 
 def _fmt_lang(code: str) -> str:

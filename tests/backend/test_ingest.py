@@ -22,7 +22,7 @@ def test_ingest_youtube_returns_task_id(client, monkeypatch):
         json={
             "url": "https://youtu.be/abc",
             "languages": ["en", "fr"],
-            "summary_length": "medium",
+            "summary_length": "long",
         },
     )
     assert resp.status_code == 200
@@ -30,7 +30,7 @@ def test_ingest_youtube_returns_task_id(client, monkeypatch):
     assert captured == {
         "url": "https://youtu.be/abc",
         "languages": ["en", "fr"],
-        "summary_length": "medium",
+        "summary_length": "long",
     }
 
 
