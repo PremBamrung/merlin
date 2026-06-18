@@ -25,14 +25,12 @@ class VideoSummarizer:
 - Use **markdown bold formatting** to highlight important keywords, themes, parties, entities, or concepts
 
 ## Main Key Points
-- List up to 10 most important points from the video (this is the highest limit; use fewer points if the content can be adequately summarized with less)
 - Format the points as a numbered list (1., 2., 3., ...), ordered by importance, not chronologically
-- Lead each point with the insight, not the topic; avoid introductory phrases ("The video shows that...", "According to...")
-- Be specific - name entities, cite numbers, state conclusions; never vaguely describe what the video "discusses" or "explores"
-- Each point should be brief (1-2 lines max) and provide insight, knowledge, or useful information gained from watching the video
-- Focus on actionable insights and key takeaways, not just an enumeration of topics discussed
-- Use **markdown bold formatting** to highlight important keywords, themes, or concepts in each point
-- Avoid verbose explanations; be direct and concise
+- Begin every point with a **bold takeaway phrase** (about 3-8 words) that states the insight itself - not the topic or the entity. A reader skimming only the bold leads should grasp the gist of the video
+- The leading bold phrase is mandatory and must come first in the point; any additional bold inside the point is optional - do NOT bold an entity or term at the start in place of the insight
+- After the bold lead, add a short clause (1-2 lines max) with the specifics: name entities, cite numbers, state conclusions; never vaguely describe what the video "discusses" or "explores"
+- Avoid introductory phrases ("The video shows that...", "According to...") and verbose explanations; be direct and concise
+- Include only points that each carry a distinct, important insight; use up to 10 points, but only as many as the content genuinely warrants. Never pad with thin or repetitive points to reach a number - fewer strong points beat ten weak ones
 
 Rules:
 - Write the summary body in {lang}
@@ -61,12 +59,12 @@ Two examples of the expected output (note how each begins directly with "## Over
 La vidéo examine la **"catch up culture"**, un phénomène où les amitiés se réduisent à des échanges superficiels de nouvelles sans expériences partagées. Ce déclin est attribué à la **priorité donnée à la vie de couple et de famille**, à l'**illusion de proximité entretenue par les réseaux sociaux**, et à l'absence croissante d'activités vécues ensemble.
 
 ## Main Key Points
-1. La **"catch up culture"** désigne des amitiés figées dans le rattrapage d'actualités, sans progression ni vécu commun
-2. Concept popularisé par **Mitchel Elman** dans *Bad Friend* - l'ami qu'on voit rarement devient un quasi-étranger
-3. Les **réseaux sociaux** créent une illusion de connexion qui se substitue aux vraies interactions sans les remplacer réellement
-4. La **vie de couple et les responsabilités familiales** réduisent mécaniquement le temps disponible pour les amitiés
-5. Les échanges se concentrent sur les **nouvelles positives** au détriment des conversations profondes ou difficiles
-6. Remède proposé : remplacer les mises à jour par des **expériences et émotions partagées en temps réel**
+1. **Les amitiés se figent dans le rattrapage d'actualités** - la "catch up culture" remplace le vécu commun par de simples mises à jour, sans progression
+2. **Un ami qu'on voit rarement devient un quasi-étranger** - concept popularisé par **Mitchel Elman** dans *Bad Friend*
+3. **Les réseaux sociaux donnent une fausse impression de proximité** - ils se substituent aux vraies interactions sans jamais les remplacer
+4. **La vie de couple et de famille érode mécaniquement le temps d'amitié** - les responsabilités réduisent les occasions de se voir
+5. **Les échanges se limitent aux bonnes nouvelles** - au détriment des conversations profondes ou difficiles
+6. **Le remède est de partager des expériences en temps réel** - plutôt que d'échanger des mises à jour a posteriori
 
 Now produce the summary for the actual video below. Write the body in {lang}. Use markdown formatting for emphasis.
 
@@ -92,12 +90,11 @@ Subtitles: {subtitles}
 
 ## Key Points
 - Format the points as a numbered list (1., 2., 3., ...), ordered by importance, not chronologically
-- Provide 10-15 comprehensive points with supporting context, examples, and explanations (3-5 lines each)
-- Include relevant timestamps where applicable
-- Each point should provide deep insight, knowledge, or useful information gained from watching the video
+- Begin every point with a **bold takeaway phrase** that states the insight itself - not the topic or the entity. A reader skimming only the bold leads should grasp the gist of the video. The leading bold is mandatory and comes first; do NOT bold an entity or term at the start in place of the insight
+- After the bold lead, give supporting context, examples, and explanations (3-5 lines), with relevant timestamps where applicable
+- Each point should provide deep insight, knowledge, or useful information gained from watching the video, and explain the reasoning behind key arguments
 - Focus on actionable insights and key takeaways, not just an enumeration of topics discussed
-- Explain the reasoning behind key arguments
-- Use **markdown bold formatting** to highlight important keywords, themes, or concepts in each point
+- Provide up to 10-15 comprehensive points, but only as many as the content genuinely warrants; never pad with thin or repetitive points to reach a number
 
 ## Important Quotes
 - Notable statements with timestamps
