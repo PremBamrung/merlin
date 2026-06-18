@@ -49,6 +49,8 @@ class ChatMessage(BaseModel):
 class ChatFilters(BaseModel):
     source_types: list[str] | None = None
     tags: list[str] | None = None
+    # Scope the chat to a single item, using its full transcript (no RAG).
+    item_id: str | None = None
 
 
 class ChatRequest(BaseModel):
