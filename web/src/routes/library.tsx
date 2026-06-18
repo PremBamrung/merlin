@@ -8,6 +8,7 @@ import {
   X,
   Rows3,
   Star,
+  FileText,
   Library as LibraryIcon,
 } from "lucide-react";
 import { useItems } from "@/hooks/useItems";
@@ -31,6 +32,7 @@ import { cn } from "@/lib/utils";
 
 const PER_PAGE = 24;
 const SORTS = [
+  { value: "relevance", label: "Relevance" },
   { value: "newest", label: "Newest" },
   { value: "oldest", label: "Oldest" },
   { value: "longest", label: "Longest" },
@@ -61,13 +63,24 @@ export default function LibraryRoute() {
   const page = Math.max(1, Number(params.get("page") ?? 1));
   const tags = params.getAll("tags");
   const savedOnly = params.get("saved") === "true";
+  const searchTranscripts = params.get("search_transcripts") === "true";
 
   // Local, debounced search box that writes back to the URL.
   const [searchDraft, setSearchDraft] = useState(search);
   const debouncedSearch = useDebounced(searchDraft, 250);
   useEffect(() => {
     if (debouncedSearch === search) return;
-    update({ search: debouncedSearch || undefined, page: undefined });
+    const next: Record<string, string | undefined> = {
+      search: debouncedSearch || undefined,
+      page: undefined,
+    };
+    // Auto-rank by relevance when a query appears, and restore Newest when it's
+    // cleared — but never override a sort the user picked explicitly.
+    if (debouncedSearch && sort === "newest") next.sort = "relevance";
+    else if (!debouncedSearch && sort === "relevance") next.sort = undefined;
+    // The transcript toggle is only meaningful while searching — reset on clear.
+    if (!debouncedSearch) next.search_transcripts = undefined;
+    update(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch]);
   // Keep the box in sync when the URL changes externally (e.g. back button) —
@@ -95,11 +108,12 @@ export default function LibraryRoute() {
       sort,
       tags: tags.length ? tags : undefined,
       saved: savedOnly || undefined,
+      search_transcripts: searchTranscripts || undefined,
       page,
       per_page: PER_PAGE,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [search, sourceType, sort, page, tags.join(","), savedOnly],
+    [search, sourceType, sort, page, tags.join(","), savedOnly, searchTranscripts],
   );
 
   const q = useItems(query);
@@ -118,7 +132,7 @@ export default function LibraryRoute() {
 
   // Reset keyboard focus whenever the result set changes (render-time pattern,
   // matching the search box above — no effect, no cascading render).
-  const resultSig = `${search}|${sourceType}|${sort}|${page}|${tags.join(",")}|${savedOnly}`;
+  const resultSig = `${search}|${sourceType}|${sort}|${page}|${tags.join(",")}|${savedOnly}|${searchTranscripts}`;
   const [prevSig, setPrevSig] = useState(resultSig);
   if (resultSig !== prevSig) {
     setPrevSig(resultSig);
@@ -258,6 +272,26 @@ export default function LibraryRoute() {
         >
           <Star className={cn("size-3.5", savedOnly && "fill-accent")} /> Saved
         </button>
+        {search && (
+          <button
+            onClick={() =>
+              update({
+                search_transcripts: searchTranscripts ? undefined : "true",
+                page: undefined,
+              })
+            }
+            aria-pressed={searchTranscripts}
+            title="Also match words spoken inside the video transcript"
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
+              searchTranscripts
+                ? "border-accent-border bg-accent-subtle text-accent"
+                : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
+            )}
+          >
+            <FileText className="size-3.5" /> Search transcripts
+          </button>
+        )}
         {tags.map((t) => (
           <button
             key={t}

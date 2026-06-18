@@ -24,6 +24,7 @@ export type ItemQuery = {
   sort?: string;
   page?: number;
   per_page?: number;
+  search_transcripts?: boolean;
 };
 
 export type ItemStatus = "queued" | "processing" | "completed" | "failed" | "pending";
