@@ -84,6 +84,84 @@ def test_chat_passes_history_and_filters(client, monkeypatch):
     assert _frames(resp.text)[0] == {"type": "citations", "citations": []}
 
 
+def test_chat_passes_item_id_filter(client, monkeypatch):
+    """The new single-item scope flows through schema → router → service."""
+    captured = {}
+
+    def fake_answer(question, history, filters):
+        captured.update(filters=filters)
+        return iter(["ok"]), []
+
+    monkeypatch.setattr("merlin.services.chat.answer", fake_answer)
+
+    resp = client.post(
+        "/api/chat",
+        json={"question": "what's the gist?", "filters": {"item_id": "item-1"}},
+    )
+    assert resp.status_code == 200
+    assert captured["filters"] == {"item_id": "item-1"}
+
+
+def test_answer_item_chat_uses_transcript_and_skips_retrieval(monkeypatch):
+    """item_id chat stuffs the full transcript and never touches the retriever."""
+    from merlin.config import settings
+    from merlin.services import chat as chat_service
+
+    monkeypatch.setattr(
+        "merlin.services.library.get_item",
+        lambda _id: {
+            "source_type": "youtube",
+            "title": "DJI moats",
+            "channel": "Some Channel",
+            "summary": "A short overview.",
+            "raw_content": "UNIQUE_TRANSCRIPT_TOKEN the speaker explains the moat.",
+        },
+    )
+
+    def boom(*a, **k):  # retriever must not be called on the item path
+        raise AssertionError("retriever should not run for item chat")
+
+    monkeypatch.setattr(chat_service._retriever, "retrieve", boom)
+
+    captured = {}
+
+    class FakeChunk:
+        def __init__(self, content):
+            self.content = content
+
+    class FakeLLM:
+        def stream(self, messages):
+            captured["messages"] = messages
+            yield FakeChunk("answer")
+
+    monkeypatch.setattr(settings, "llm", FakeLLM())
+
+    tokens, citations = chat_service.answer(
+        "what's the moat?", [], {"item_id": "item-1"}
+    )
+    out = "".join(tokens)
+
+    assert out == "answer"
+    assert citations == []  # already on the item — no self-citation
+    system = captured["messages"][0]
+    assert system["role"] == "system"
+    assert "UNIQUE_TRANSCRIPT_TOKEN" in system["content"]
+    assert "A short overview." in system["content"]
+
+
+def test_answer_item_chat_missing_item_raises(monkeypatch):
+    from merlin.services import chat as chat_service
+
+    monkeypatch.setattr("merlin.services.library.get_item", lambda _id: None)
+
+    try:
+        chat_service.answer("q", [], {"item_id": "nope"})
+    except ValueError as exc:
+        assert "not found" in str(exc).lower()
+    else:
+        raise AssertionError("expected ValueError for missing item")
+
+
 def test_chat_retrieval_valueerror_emits_error_frame(client, monkeypatch):
     def boom(question, history, filters):
         raise ValueError("bad filter")
