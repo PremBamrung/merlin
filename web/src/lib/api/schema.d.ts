@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/items/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark All Read */
+        post: operations["mark_all_read_api_items_read_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/items/{item_id}": {
         parameters: {
             query?: never;
@@ -458,6 +475,8 @@ export interface components {
             source_types?: string[] | null;
             /** Tags */
             tags?: string[] | null;
+            /** Item Id */
+            item_id?: string | null;
         };
         /** ChatMessage */
         ChatMessage: {
@@ -789,6 +808,7 @@ export interface operations {
                 sort?: string;
                 page?: number;
                 per_page?: number;
+                search_transcripts?: boolean;
             };
             header?: never;
             path?: never;
@@ -817,6 +837,26 @@ export interface operations {
         };
     };
     unread_count_api_items_unread_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CountResponse"];
+                };
+            };
+        };
+    };
+    mark_all_read_api_items_read_all_post: {
         parameters: {
             query?: never;
             header?: never;

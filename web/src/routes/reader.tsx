@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ChevronLeft,
@@ -13,6 +13,7 @@ import {
   Pencil,
   Search,
   Play,
+  MessageSquare,
 } from "lucide-react";
 import {
   useItem,
@@ -47,6 +48,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Markdown } from "@/components/common/Markdown";
 import { TagInput } from "@/components/items/TagInput";
+import { ItemChat } from "@/components/chat/ItemChat";
 import { TaskRow } from "@/components/ingest/TaskRow";
 import { ReaderSkeleton } from "@/components/common/Skeletons";
 import { ErrorState } from "@/components/common/ErrorState";
@@ -161,7 +163,7 @@ function Reader({
     retry.mutate({}, { onSuccess: ({ task_id }) => setResumTask(task_id) });
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-[1600px] space-y-6">
       {/* Top bar: back + adjacent-item pager + actions */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -254,10 +256,12 @@ function Reader({
         </div>
       </div>
 
-      {/* Body: a capped reading column + a context rail (thumbnail/details/topics) */}
-      <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
-        {/* Reading column — fills available width (rail bounds it on the right) */}
-        <div className="min-w-0">
+      {/* Body: header + tabs form the reading column; a context rail holds the
+          thumbnail/details/topics. On mobile the rail sits between the header
+          and the summary (order-2) so the video is seen before reading. */}
+      <div className="grid grid-cols-1 gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        {/* Header — title, meta, tags, progress/failed state */}
+        <div className="order-1 min-w-0 lg:order-none lg:col-start-1 lg:row-start-1">
           {editingTitle ? (
             <Input
               autoFocus
@@ -318,11 +322,13 @@ function Reader({
               />
             </div>
           )}
+        </div>
 
+        {/* Tabs — summary (with chat) + transcript */}
+        <div className="order-3 min-w-0 lg:order-none lg:col-start-1 lg:row-start-2">
           <Tabs
             value={tab}
             onValueChange={(v) => setTab(v as "summary" | "transcript")}
-            className="mt-7"
           >
             <div className="flex items-center justify-between gap-3">
               <TabsList>
@@ -339,14 +345,36 @@ function Reader({
               )}
             </div>
 
-            <TabsContent value="summary" className="pt-6">
-              {item.summary ? (
-                <Markdown>{item.summary}</Markdown>
-              ) : (
-                <p className="text-[14px] text-fg-muted">
-                  No summary yet.{" "}
-                  {!isFailed && "Use Re-summarize to generate one."}
-                </p>
+            {/* Summary + chat. Stacked on narrow; side-by-side at 2xl so the
+                chat fills the otherwise-empty reading column on wide displays. */}
+            <TabsContent
+              value="summary"
+              className="grid grid-cols-1 gap-8 pt-6 2xl:grid-cols-[minmax(0,75ch)_minmax(360px,1fr)] 2xl:items-start 2xl:gap-10"
+            >
+              <div className="min-w-0 max-w-[75ch]">
+                {item.summary ? (
+                  <Markdown>{item.summary}</Markdown>
+                ) : (
+                  <p className="text-[14px] text-fg-muted">
+                    No summary yet.{" "}
+                    {!isFailed && "Use Re-summarize to generate one."}
+                  </p>
+                )}
+              </div>
+
+              {(item.raw_content || item.summary) && (
+                <div className="min-w-0 max-w-[70ch] 2xl:max-w-none">
+                  <div className="mb-3 flex items-center gap-2">
+                    <MessageSquare className="size-3.5 text-fg-subtle" />
+                    <p className="eyebrow">Ask about this item</p>
+                  </div>
+                  {/* key={item.id} → ephemeral: navigating items resets the chat. */}
+                  <ItemChat
+                    key={item.id}
+                    itemId={item.id}
+                    className="2xl:sticky 2xl:top-20 2xl:h-[calc(100vh-9rem)]"
+                  />
+                </div>
               )}
             </TabsContent>
 
@@ -356,8 +384,9 @@ function Reader({
           </Tabs>
         </div>
 
-        {/* Context rail — thumbnail, details, topics */}
-        <aside className="space-y-6 lg:sticky lg:top-20 lg:self-start">
+        {/* Context rail — thumbnail, details, topics. order-2 puts it above the
+            summary on mobile; on desktop it's the right column spanning both rows. */}
+        <aside className="order-2 space-y-6 lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:sticky lg:top-20 lg:self-start">
           {thumb && (
             <a
               href={watchUrl ?? thumb}
@@ -470,26 +499,47 @@ function Reader({
   );
 }
 
-/** Transcript tab — searchable, monospace-ish raw content. */
+/**
+ * Group transcript text into short paragraphs. Subtitle transcripts arrive as
+ * one unbroken blob (no newlines), so we sentence-split and bundle ~3 sentences
+ * per block. Splitting into many blocks lets `content-visibility:auto` skip the
+ * off-screen ones, which is what keeps a 70k-char transcript from janking the
+ * tab on mount.
+ */
+function splitParagraphs(text: string): string[] {
+  const clean = text.replace(/\r\n/g, "\n").trim();
+  if (!clean) return [];
+  const out: string[] = [];
+  for (const segment of clean.split(/\n+/)) {
+    const sentences = segment.split(/(?<=[.!?…])\s+/);
+    for (let i = 0; i < sentences.length; i += 3) {
+      const para = sentences.slice(i, i + 3).join(" ").trim();
+      if (para) out.push(para);
+    }
+  }
+  return out.length ? out : [clean];
+}
+
+/** Transcript tab — searchable raw content, chunked for cheap rendering. */
 function Transcript({ text }: { text: string }) {
   const [filter, setFilter] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const q = filter.trim().toLowerCase();
+
+  const paragraphs = useMemo(() => splitParagraphs(text), [text]);
 
   useEffect(() => {
-    if (!filter || !ref.current) return;
+    if (!q || !ref.current) return;
     const mark = ref.current.querySelector("mark");
     mark?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [filter]);
+  }, [q]);
 
   if (!text)
     return <p className="text-[14px] text-fg-muted">No transcript available.</p>;
 
-  const lines = text.split("\n");
-  const q = filter.trim().toLowerCase();
-
   return (
     <div className="space-y-3">
-      <div className="relative max-w-[70ch]">
+      <div className="relative max-w-[75ch]">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle" />
         <Input
           value={filter}
@@ -500,14 +550,19 @@ function Transcript({ text }: { text: string }) {
       </div>
       <div
         ref={ref}
-        className="max-h-[70vh] max-w-[70ch] space-y-2 overflow-y-auto rounded-[10px] border border-border bg-surface p-4 text-[13.5px] leading-relaxed text-fg/85"
+        className="max-h-[70vh] max-w-[75ch] overflow-y-auto rounded-[10px] border border-border bg-surface p-4 text-[13.5px] leading-relaxed text-fg/85"
       >
-        {lines.map((line, i) => {
-          if (!line.trim()) return <div key={i} className="h-2" />;
-          const hit = q && line.toLowerCase().includes(q);
+        {paragraphs.map((para, i) => {
+          const hit = q && para.toLowerCase().includes(q);
           return (
-            <p key={i} className={cn(hit && "rounded bg-accent-subtle/60")}>
-              {hit ? <Highlight text={line} term={q} /> : line}
+            <p
+              key={i}
+              className={cn(
+                "mb-3 [contain-intrinsic-size:auto_4rem] [content-visibility:auto] last:mb-0",
+                hit && "rounded bg-accent-subtle/60 px-1",
+              )}
+            >
+              {hit ? <Highlight text={para} term={q} /> : para}
             </p>
           );
         })}
