@@ -104,3 +104,124 @@ def test_source_types_endpoint(client, make_item):
     make_item(source_id="a2", source_type="article")
     rows = {r["name"]: r["count"] for r in client.get("/api/source-types").json()}
     assert rows == {"youtube": 1, "article": 1}
+
+
+# --- search -------------------------------------------------------------- #
+
+
+def test_search_punctuation_does_not_500(client, make_item):
+    """Special chars used to hit the FTS5 MATCH parser → unhandled 500.
+
+    They must now degrade to a clean 200 with no matches.
+    """
+    make_item(title="Intro to programming")
+    for q in ("C++", '"', "react.js", "a:b", "("):
+        resp = client.get("/api/items", params={"search": q})
+        assert resp.status_code == 200, f"query {q!r} should not 500"
+        assert resp.json()["total"] == 0
+
+
+def test_search_prefix_matches_partial_word(client, make_item):
+    """Typing a partial word finds the item (FTS prefix query)."""
+    make_item(title="Attention Is All You Need", summary="About transformers.")
+    body = client.get("/api/items", params={"search": "transfor"}).json()
+    assert body["total"] == 1
+    assert body["items"][0]["title"] == "Attention Is All You Need"
+
+
+def test_search_relevance_ranks_title_match_first(client, make_item):
+    """With sort=relevance, the title hit outranks a body-only mention."""
+    make_item(
+        source_id="body",
+        title="Cooking basics",
+        summary="An aside that mentions transformers once.",
+        raw_content="transformers",
+    )
+    make_item(
+        source_id="title",
+        title="Transformers explained",
+        summary="Deep dive.",
+        raw_content="Deep dive into the architecture.",
+    )
+    body = client.get(
+        "/api/items", params={"search": "transformers", "sort": "relevance"}
+    ).json()
+    assert body["total"] == 2
+    assert body["items"][0]["title"] == "Transformers explained"
+
+
+def test_search_relevance_without_query_falls_back(client, make_item):
+    """sort=relevance with no query is meaningless → newest order, no error."""
+    make_item(source_id="a", title="First")
+    make_item(source_id="b", title="Second")
+    resp = client.get("/api/items", params={"sort": "relevance"})
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 2
+
+
+def test_search_excludes_transcripts_by_default(client, make_item):
+    """Default scope is title/summary/tags; a transcript-only term is hidden
+    unless the search_transcripts toggle is on."""
+    make_item(
+        title="Cooking basics",
+        summary="A nice recipe.",
+        raw_content="a deep dive into kubernetes orchestration internals",
+    )
+    # "kubernetes" only appears in the transcript → no match by default.
+    assert (
+        client.get("/api/items", params={"search": "kubernetes"}).json()["total"] == 0
+    )
+    # ...but the toggle opens the transcript up.
+    body = client.get(
+        "/api/items", params={"search": "kubernetes", "search_transcripts": "true"}
+    ).json()
+    assert body["total"] == 1
+
+
+def test_search_prefix_matches_word_start_not_mid_word(client, make_item):
+    """Prefix matching hits word starts, not arbitrary substrings.
+
+    "ai" matches the word "AI" / a word starting with it, but not the "ai"
+    buried in "again"/"bargain".
+    """
+    make_item(source_id="a", title="AI fundamentals", summary="Intro.", tags=["tech"])
+    make_item(
+        source_id="b",
+        title="Bargain hunting again",
+        summary="Deals.",
+        tags=["shopping"],
+    )
+    body = client.get("/api/items", params={"search": "ai"}).json()
+    assert body["total"] == 1
+    assert body["items"][0]["title"] == "AI fundamentals"
+
+
+def test_search_matches_tag(client, make_item):
+    """Search also matches an exact tag (e.g. the "ai" tag)."""
+    make_item(source_id="a", title="Untagged-word title", tags=["ai", "python"])
+    make_item(source_id="b", title="Other", tags=["cooking"])
+    body = client.get("/api/items", params={"search": "ai"}).json()
+    assert body["total"] == 1
+    assert body["items"][0]["title"] == "Untagged-word title"
+
+
+def test_search_fuzzy_rescues_typo_when_no_exact_match(client, make_item):
+    """A typo with zero exact hits falls back to fuzzy title matching."""
+    make_item(source_id="a", title="ESP32 Dev Board Guide")
+    make_item(source_id="b", title="Cooking basics")
+    body = client.get("/api/items", params={"search": "ep32"}).json()
+    assert body["total"] == 1
+    assert body["items"][0]["title"] == "ESP32 Dev Board Guide"
+
+
+def test_search_no_fuzzy_when_exact_match_exists(client, make_item):
+    """Fuzzy only fires on zero exact hits — exact queries stay precise.
+
+    The fuzzy-similar neighbour must NOT be pulled in when an exact prefix hit
+    already exists.
+    """
+    make_item(source_id="a", title="kubernetes guide")
+    make_item(source_id="b", title="kubernetidox notes")
+    body = client.get("/api/items", params={"search": "kubernetes"}).json()
+    assert body["total"] == 1
+    assert body["items"][0]["title"] == "kubernetes guide"

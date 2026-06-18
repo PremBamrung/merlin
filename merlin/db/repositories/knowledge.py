@@ -4,11 +4,82 @@ All methods are synchronous; session is passed in (FastAPI Depends pattern).
 """
 
 from datetime import UTC, datetime
+import difflib
+import re
 
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from merlin.db.models import KnowledgeItem, YouTubeMetadata
+
+# Fuzzy fallback only runs when an exact search finds nothing and is reserved
+# for queries long enough that a close match is meaningful (avoids "ai"-style
+# noise). Similarity is difflib's ratio; ~0.72 catches single-char typos
+# ("ep32"→"esp32") without matching unrelated words.
+_FUZZY_MIN_LEN = 4
+_FUZZY_THRESHOLD = 0.72
+
+_WORD_RE = re.compile(r"\w+", re.UNICODE)
+
+
+def _searchable_tokens(search: str) -> list[str]:
+    """Whitespace tokens that carry at least one alphanumeric char."""
+    return [t for t in search.split() if any(c.isalnum() for c in t)]
+
+
+def _build_fts_match(search: str, include_transcript: bool) -> str | None:
+    """Turn raw user input into a safe FTS5 prefix MATCH query.
+
+    Each token becomes a quoted prefix term (``"tok"*``): the quotes neutralise
+    FTS5 syntax characters (so ``C++`` or a stray quote can't raise a syntax
+    error), and the trailing ``*`` makes it match as you type. Unless
+    ``include_transcript`` is set, the match is scoped to title/summary/tags
+    with a column filter (the transcript column ``raw_content`` is excluded) —
+    parentheses are required so the filter applies to *every* term, not just the
+    first. Returns ``None`` when no usable token remains.
+    """
+    terms: list[str] = []
+    for raw in _searchable_tokens(search):
+        escaped = raw.replace('"', '""')
+        terms.append(f'"{escaped}"*')
+    if not terms:
+        return None
+    joined = " ".join(terms)
+    if include_transcript:
+        return joined
+    return f"{{title summary tags}} : ({joined})"
+
+
+def _fuzzy_match_ids(
+    candidates: list[tuple[str, str | None]], tokens: list[str]
+) -> list[str]:
+    """Rank candidate (id, title) pairs by fuzzy similarity to the query tokens.
+
+    Each query token must find a sufficiently similar *word* in the title; the
+    item's score is the weakest such per-token match (so every token has to land
+    somewhere). Returns ids whose score clears the threshold, best first.
+    """
+    q_tokens = [t.lower() for t in tokens]
+    scored: list[tuple[float, str]] = []
+    for item_id, title in candidates:
+        if not title:
+            continue
+        words = [w.lower() for w in _WORD_RE.findall(title)]
+        if not words:
+            continue
+        per_token = [
+            max(
+                (difflib.SequenceMatcher(None, qt, w).ratio() for w in words),
+                default=0.0,
+            )
+            for qt in q_tokens
+        ]
+        score = min(per_token)
+        if score >= _FUZZY_THRESHOLD:
+            scored.append((score, item_id))
+    scored.sort(key=lambda s: s[0], reverse=True)
+    return [item_id for _, item_id in scored]
 
 
 class KnowledgeItemRepository:
@@ -46,12 +117,15 @@ class KnowledgeItemRepository:
         page: int = 1,
         page_size: int = 20,
         sort: str = "newest",
+        search_transcripts: bool = False,
     ) -> tuple[list[KnowledgeItem], int]:
         """Return (items, total_count) with optional filters.
 
         read/saved: None = no filter; True/False match presence of the
         corresponding timestamp (read_at / saved_at).
-        sort: newest | oldest | longest | title
+        sort: newest | oldest | longest | title | relevance
+        search_transcripts: when True, search also matches full transcript text
+        (raw_content); otherwise search is scoped to title/summary/tags.
         """
         q = session.query(KnowledgeItem)
 
@@ -75,21 +149,61 @@ class KnowledgeItemRepository:
             # Each tag must appear somewhere in the JSON tags string
             for tag in tags:
                 q = q.filter(KnowledgeItem.tags.contains(tag))
+        # Keyword search. `ordered_ids` is the match set in best-first order
+        # (bm25, or fuzzy similarity for the fallback) — used directly when
+        # sort="relevance", or as an `IN (...)` filter for the other sorts.
+        ordered_ids: list[str] | None = None
         if search:
-            # FTS5 search via subquery
-            fts_ids = session.execute(
-                text(
-                    "SELECT ki.id FROM knowledge_items ki "
-                    "JOIN knowledge_fts fts ON ki.rowid = fts.rowid "
-                    "WHERE knowledge_fts MATCH :q"
-                ),
-                {"q": search},
-            ).fetchall()
-            ids = [row[0] for row in fts_ids]
-            if ids:
-                q = q.filter(KnowledgeItem.id.in_(ids))
-            else:
+            fts_match = _build_fts_match(search, search_transcripts)
+            if fts_match is None:
                 return [], 0
+            try:
+                # Weighted bm25 over (title, summary, raw_content, tags): a
+                # title/summary hit outranks a passing transcript mention.
+                rows = session.execute(
+                    text(
+                        "SELECT ki.id FROM knowledge_items ki "
+                        "JOIN knowledge_fts fts ON ki.rowid = fts.rowid "
+                        "WHERE knowledge_fts MATCH :q "
+                        "ORDER BY bm25(knowledge_fts, 10.0, 4.0, 1.0, 4.0)"
+                    ),
+                    {"q": fts_match},
+                ).fetchall()
+            except OperationalError:
+                # Malformed FTS expression — degrade to "no matches", no 500.
+                return [], 0
+            ordered_ids = [row[0] for row in rows]
+            if not ordered_ids:
+                # No exact hit — try a fuzzy pass over titles to rescue typos
+                # (e.g. "ep32" → "esp32"), but only for long-enough queries.
+                tokens = _searchable_tokens(search)
+                if sum(len(t) for t in tokens) >= _FUZZY_MIN_LEN:
+                    candidates = q.with_entities(
+                        KnowledgeItem.id, KnowledgeItem.title
+                    ).all()
+                    ordered_ids = _fuzzy_match_ids(candidates, tokens)
+                if not ordered_ids:
+                    return [], 0
+            q = q.filter(KnowledgeItem.id.in_(ordered_ids))
+
+        # Relevance ranking only applies when there's an active search. With no
+        # query, "relevance" is meaningless → fall through to the newest default.
+        if sort == "relevance" and ordered_ids is not None:
+            # Restrict the FTS match order to ids that pass the other filters,
+            # then paginate by rank in Python (IN(...) doesn't preserve order).
+            allowed = {row[0] for row in q.with_entities(KnowledgeItem.id).all()}
+            final_ids = [i for i in ordered_ids if i in allowed]
+            total = len(final_ids)
+            page_ids = final_ids[(page - 1) * page_size : page * page_size]
+            if not page_ids:
+                return [], total
+            by_id = {
+                it.id: it
+                for it in session.query(KnowledgeItem)
+                .filter(KnowledgeItem.id.in_(page_ids))
+                .all()
+            }
+            return [by_id[i] for i in page_ids if i in by_id], total
 
         order_by = {
             "newest": KnowledgeItem.ingested_at.desc(),

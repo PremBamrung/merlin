@@ -62,6 +62,7 @@ def list_items(
     page: int = 1,
     per_page: int = 20,
     sort: str = "newest",
+    search_transcripts: bool = False,
 ) -> dict:
     with SessionFactory() as session:
         items, total = KnowledgeItemRepository.list_all(
@@ -75,6 +76,7 @@ def list_items(
             page=page,
             page_size=per_page,
             sort=sort,
+            search_transcripts=search_transcripts,
         )
         return {
             "items": [serialize_item(i) for i in items],
