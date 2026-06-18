@@ -161,6 +161,9 @@ notebooks/
 *.db-wal
 *.db-shm
 
+# Summary-prompt QC artifacts (local baselines + reports from scripts/summary_qc.py)
+summary_qc/
+
 # Node.js (frontend)
 node_modules/
 
