@@ -16,12 +16,13 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from merlin.bootstrap import register_plugins
 from merlin.knowledge_sources.registry import registry
 
-from .errors import install_error_handlers
+from .errors import install_error_handlers, not_found
 from .routers import chat, inbox, ingest, insights, items
 from .schemas import HealthResponse
 
@@ -71,10 +72,47 @@ def create_app() -> FastAPI:
     def health():
         return {"status": "ok", "source_types": registry.source_types()}
 
-    # Serve the built SPA when present (prod). Mounted last so /api/* wins.
-    # `html=True` makes client-side routes fall back to index.html.
+    # Serve the built SPA when present (prod, same origin → no CORS). A plain
+    # StaticFiles(html=True) mount only serves index.html for the *root* request,
+    # so a full reload of a deep client route (/feed, /library/:id) would 404.
+    # Instead: serve content-addressed assets directly, and fall back to the SPA
+    # shell for client-side routes via the catch-all below.
     if _WEB_DIST.is_dir():
-        app.mount("/", StaticFiles(directory=str(_WEB_DIST), html=True), name="web")
+        index_html = _WEB_DIST / "index.html"
+
+        # Hashed build assets: StaticFiles 404s a missing file rather than
+        # masking it with the shell, and handles content types / range / etags.
+        app.mount(
+            "/assets",
+            StaticFiles(directory=str(_WEB_DIST / "assets")),
+            name="assets",
+        )
+
+        # Catch-all (registered after the routers + the /assets mount, so both
+        # win). include_in_schema=False keeps it out of the generated TS client.
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def spa(full_path: str):
+            # An unknown /api/* route that fell through → genuine JSON 404,
+            # never the HTML shell.
+            if full_path == "api" or full_path.startswith("api/"):
+                raise not_found()
+            # A real root-level file (favicon.svg, icons.svg, …) → serve as-is,
+            # guarded against path traversal.
+            candidate = (_WEB_DIST / full_path).resolve()
+            if (
+                full_path
+                and candidate.is_file()
+                and candidate.is_relative_to(_WEB_DIST)
+            ):
+                return FileResponse(candidate)
+            # A missing path that names a file (has an extension) → real 404, so
+            # a broken asset reference surfaces clearly instead of returning the
+            # shell with a 200 (which then fails as "Unexpected token <").
+            if "." in full_path.rsplit("/", 1)[-1]:
+                raise not_found()
+            # Anything else (extensionless client route, or "/") → the SPA shell,
+            # served uncached so a deploy isn't masked by a stale bundle.
+            return FileResponse(index_html, headers={"Cache-Control": "no-cache"})
 
     return app
 
