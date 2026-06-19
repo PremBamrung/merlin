@@ -93,6 +93,7 @@ class ListItem(BaseModel):
     videos_count: int | str | None = None
     thumbnail_url: str | None = None
     detected_language: str | None = None
+    description: str | None = None
     timestamps: dict = Field(default_factory=dict)
 
 

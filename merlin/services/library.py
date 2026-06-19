@@ -45,6 +45,7 @@ def serialize_item(item, include_content: bool = False) -> dict:
         "videos_count": meta.videos_count if meta else None,
         "thumbnail_url": meta.thumbnail_url if meta else None,
         "detected_language": meta.detected_language if meta else None,
+        "description": meta.description if meta else None,
         "timestamps": _parse_json(meta.timestamps, {}) if meta else {},
     }
     if include_content:

@@ -36,6 +36,7 @@ Rules:
 - Write the summary body in {lang}
 - Keep the section headers ("## Overview", "## Main Key Points") in English even when the body is written in another language
 - Begin the response directly with the "## Overview" header - do not write any introductory sentence, preamble, or sign-off; output only the summary itself
+- If a video description is provided below, use it for supporting context (names, links, chapters, claims the creator makes), but treat the subtitles as the ground truth and ignore promotional or sponsor boilerplate in the description
 
 Two examples of the expected output (note how each begins directly with "## Overview", keeps English headers, and numbers the key points):
 
@@ -69,7 +70,7 @@ La vidéo examine la **"catch up culture"**, un phénomène où les amitiés se 
 Now produce the summary for the actual video below. Write the body in {lang}. Use markdown formatting for emphasis.
 
 Video titled "{title}" from the channel "{channel}"
-
+{description_block}
 Subtitles: {subtitles}
 
 # Answer (begin directly with "## Overview"; use the English headers "## Overview" and "## Main Key Points"; number the key points; do not number the headers themselves): """
@@ -124,6 +125,7 @@ Rules:
 - Write the summary body in {lang}
 - Keep all section headers ("## Overview", "## Main Topics", "## Key Points", ...) in English even when the body is written in another language
 - Begin the response directly with the "## Overview" header - do not write any introductory sentence, preamble, or sign-off; output only the summary itself
+- If a video description is provided below, use it for supporting context (names, links, chapters, claims the creator makes), but treat the subtitles as the ground truth and ignore promotional or sponsor boilerplate in the description
 
 Example of the expected output (French body, English headers, numbered key points; here "## Important Quotes" and "## Technical Details" are omitted because they were not applicable - include them when the content warrants):
 
@@ -165,7 +167,7 @@ Example of the expected output (French body, English headers, numbered key point
 Now produce the summary for the actual video below. Write the body in {lang}. Use markdown formatting for emphasis throughout.
 
 Video titled "{title}" from the channel "{channel}"
-
+{description_block}
 Subtitles: {subtitles}
 
 # Answer (begin directly with "## Overview"; use English markdown headers ("## Overview", "## Main Topics", "## Key Points", ...) for the sections, with the Key Points as a numbered list; do not number the headers themselves): """
@@ -173,13 +175,42 @@ Subtitles: {subtitles}
         self.templates = {
             "short": PromptTemplate(
                 template=TEMPLATE_SHORT,
-                input_variables=["subtitles", "lang", "title", "channel"],
+                input_variables=[
+                    "subtitles",
+                    "lang",
+                    "title",
+                    "channel",
+                    "description_block",
+                ],
             ),
             "long": PromptTemplate(
                 template=TEMPLATE_LONG,
-                input_variables=["subtitles", "lang", "title", "channel"],
+                input_variables=[
+                    "subtitles",
+                    "lang",
+                    "title",
+                    "channel",
+                    "description_block",
+                ],
             ),
         }
+
+    # Cap the description fed into the prompt — descriptions can be enormous
+    # (timestamps, affiliate links, sponsor blurbs); a few thousand chars is
+    # plenty of grounding context without crowding out the transcript.
+    _DESCRIPTION_CHAR_CAP = 4000
+
+    def _build_description_block(self, description: str | None) -> str:
+        """Render the optional description block; empty string when blank."""
+        text = (description or "").strip()
+        if not text:
+            return ""
+        if len(text) > self._DESCRIPTION_CHAR_CAP:
+            text = text[: self._DESCRIPTION_CHAR_CAP] + "\n[description truncated]"
+        return (
+            "\nVideo description (supporting context — the subtitles are the "
+            f"ground truth):\n{text}\n"
+        )
 
     @property
     def llm(self):
@@ -271,6 +302,7 @@ Subtitles: {subtitles}
         channel: str,
         lang: str,
         summary_length: str,
+        description: str | None = None,
     ) -> tuple[str, dict, dict]:
         """Generate a non-streaming summary of the video content.
 
@@ -298,6 +330,7 @@ Subtitles: {subtitles}
             "lang": lang,
             "title": title,
             "channel": channel,
+            "description_block": self._build_description_block(description),
         }
 
         try:
@@ -332,6 +365,7 @@ Subtitles: {subtitles}
         lang: str = "english",
         summary_length: str = "short",
         streaming: bool = False,
+        description: str | None = None,
     ) -> Generator[str, None, None] | tuple[str, dict, dict]:
         """Generate a summary of the video content.
 
@@ -348,11 +382,11 @@ Subtitles: {subtitles}
         """
         if streaming:
             return self._summarize_streaming(
-                subtitles, title, channel, lang, summary_length
+                subtitles, title, channel, lang, summary_length, description
             )
         else:
             return self._summarize_non_streaming(
-                subtitles, title, channel, lang, summary_length
+                subtitles, title, channel, lang, summary_length, description
             )
 
     def _summarize_streaming(
@@ -362,6 +396,7 @@ Subtitles: {subtitles}
         channel: str,
         lang: str,
         summary_length: str,
+        description: str | None = None,
     ) -> Generator[str, None, None]:
         """Generate a streaming summary of the video content."""
         start_time = datetime.now()
@@ -385,6 +420,7 @@ Subtitles: {subtitles}
             "lang": lang,
             "title": title,
             "channel": channel,
+            "description_block": self._build_description_block(description),
         }
 
         try:

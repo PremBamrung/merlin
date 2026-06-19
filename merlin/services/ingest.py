@@ -12,6 +12,7 @@ import json
 import uuid
 
 from merlin.config import settings
+from merlin.core.logging import logger
 from merlin.core.task_queue import task_queue
 from merlin.db.engine import SessionFactory
 from merlin.db.models import KnowledgeItem
@@ -31,6 +32,20 @@ _SUMMARY_LENGTHS = ("short", "long")
 def _normalize_summary_length(length: str | None) -> str:
     """Coerce a (possibly legacy/None) summary length to a supported value."""
     return length if length in _SUMMARY_LENGTHS else "short"
+
+
+def _missing_youtube_fields(meta) -> list[str]:
+    """Self-heal gap list: which grounding fields the stored metadata lacks.
+
+    Old items predate fields we add later (e.g. `description`). The redo path
+    does a cheap, metadata-only fetch when this is non-empty, so re-summarising
+    an old item backfills whatever a newer feature needs. Add new fields here as
+    they're introduced — that's all it takes for old items to self-heal.
+    """
+    if meta is None:
+        return ["description"]
+    checks = {"description": meta.description}
+    return [k for k, v in checks.items() if v in (None, "")]
 
 
 # ------------------------------------------------------------------
@@ -152,9 +167,34 @@ def resummarize(
             channel = item.author
             meta = item.youtube_metadata
             detected = (meta.detected_language if meta else "") or ""
+            video_id = meta.video_id if meta else None
+            description = (meta.description if meta else None) or ""
+            missing = _missing_youtube_fields(meta)
             length = _normalize_summary_length(summary_length or item.summary_length)
         if not raw_text:
             raise ValueError("No stored transcript to re-summarise")
+
+        # Self-heal: if the stored metadata is missing grounding fields a newer
+        # feature needs (e.g. description), do ONE cheap metadata-only fetch —
+        # no subtitle/audio re-download — and fill just the gaps. Degrade
+        # gracefully: a failed fetch never blocks the re-summarise.
+        healed: dict[str, str] = {}
+        if missing and video_id:
+            report(25, "Fetching missing video details…")
+            try:
+                url = f"https://www.youtube.com/watch?v={video_id}"
+                info = VideoExtractor.extract_video_info(url) or {}
+            except Exception as exc:  # pragma: no cover - network failure path
+                logger.warning(
+                    "Self-heal metadata fetch failed for %s: %s", video_id, exc
+                )
+                info = {}
+            field_sources = {"description": info.get("description", "")}
+            for field in missing:
+                value = field_sources.get(field)
+                if value:
+                    healed[field] = value
+            description = healed.get("description") or description
 
         report(40, "Generating summary…")
         plugin = registry.get("youtube")
@@ -164,9 +204,7 @@ def resummarize(
         # video's own detected language so a re-summarise of a French video
         # reads in French rather than falling back to English.
         langs = languages or [
-            lang
-            for lang in (detected.split("-")[0].lower(), "en", "fr")
-            if lang
+            lang for lang in (detected.split("-")[0].lower(), "en", "fr") if lang
         ]
         summary, topics, timestamps = plugin.resummarize(
             raw_text=raw_text,
@@ -175,6 +213,7 @@ def resummarize(
             detected_language=detected,
             user_languages=langs,
             summary_length=length,
+            description=description,
         )
 
         report(90, "Saving to knowledge base…")
@@ -191,6 +230,9 @@ def resummarize(
             item.ingested_at = datetime.now(UTC)  # bump to top of "Newest"
             if item.youtube_metadata is not None:
                 item.youtube_metadata.timestamps = json.dumps(timestamps)
+                # Persist any fields filled by the self-heal fetch above.
+                for field, value in healed.items():
+                    setattr(item.youtube_metadata, field, value)
             BackgroundTaskRepository.set_completed(
                 session,
                 task_id,
@@ -228,7 +270,9 @@ def retry(
         meta = item.youtube_metadata
         video_id = meta.video_id if meta else None
         detected = (meta.detected_language or "").split("-")[0] if meta else None
-        summary_length = _normalize_summary_length(summary_length or item.summary_length)
+        summary_length = _normalize_summary_length(
+            summary_length or item.summary_length
+        )
 
     langs = languages or [lang for lang in (detected, "en") if lang]
 

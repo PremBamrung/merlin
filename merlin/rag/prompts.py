@@ -71,6 +71,10 @@ def format_item_context(item: dict) -> str:
     if item.get("summary"):
         parts.append(f"\nSUMMARY:\n{item['summary']}")
 
+    description = (item.get("description") or "").strip()
+    if description:
+        parts.append(f"\nVIDEO DESCRIPTION:\n{description}")
+
     transcript = (item.get("raw_content") or "").strip()
     if transcript:
         if len(transcript) > _TRANSCRIPT_CHAR_CAP:

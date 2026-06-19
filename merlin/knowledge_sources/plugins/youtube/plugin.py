@@ -172,6 +172,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             lang=summary_lang,
             summary_length=summary_length,
             streaming=False,
+            description=video_info.get("description", ""),
         )
 
         request.report(90, "Saving to knowledge base…")
@@ -218,6 +219,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
                 "timestamps": json.dumps(timestamps),
                 "detected_language": detected_language,
                 "thumbnail_url": thumbnail_url,
+                "description": video_info.get("description", ""),
             },
         )
 
@@ -229,12 +231,15 @@ class YouTubePlugin(KnowledgeSourcePlugin):
         detected_language: str,
         user_languages: list[str],
         summary_length: str,
+        description: str | None = None,
     ) -> tuple[str, dict, dict]:
         """Re-summarise an already-ingested video from its stored transcript.
 
-        No YouTube/Groq/yt-dlp access — the transcript and metadata are already
-        persisted, so this only re-runs the summariser (e.g. to change the
-        summary length or language). Returns (summary, topics, timestamps).
+        No subtitle/audio re-download — the transcript is already persisted, so
+        this only re-runs the summariser (e.g. to change the summary length or
+        language). `description` is the (possibly self-healed) video description
+        the caller wants to ground the summary with. Returns
+        (summary, topics, timestamps).
         """
         summary_lang = self._pick_summary_language(
             detected_language or "", user_languages
@@ -246,6 +251,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             lang=summary_lang,
             summary_length=summary_length,
             streaming=False,
+            description=description,
         )
 
     # ------------------------------------------------------------------

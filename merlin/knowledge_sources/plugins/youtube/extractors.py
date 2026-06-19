@@ -79,6 +79,15 @@ class VideoExtractor:
             # Get channel info
             channel_info = ChannelExtractor.extract_channel_info(yt.channel_url)
 
+            # Video description. The InnerTube player response is the reliable
+            # source (videoDetails.shortDescription); yt.description scrapes the
+            # watch page and frequently returns None, so use it only as fallback.
+            description = ""
+            try:
+                description = yt.vid_info["videoDetails"]["shortDescription"] or ""
+            except Exception:
+                description = getattr(yt, "description", "") or ""
+
             result = {
                 "title": yt.title,
                 "channel": yt.author,
@@ -87,6 +96,7 @@ class VideoExtractor:
                 "duration": formatted_duration,
                 "subscribers": channel_info.get("subscribers", "N/A"),
                 "videos": channel_info.get("videos", "N/A"),
+                "description": description,
             }
 
             duration = (datetime.now() - start_time).total_seconds()
