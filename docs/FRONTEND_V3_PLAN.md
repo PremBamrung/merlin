@@ -1,8 +1,12 @@
 # Frontend v3 — Design & Build Plan
 
-> Status: **proposal / reference** (no code yet). Supersedes the abandoned v2
-> React frontend and the current Streamlit UI as the *intended* daily-driver
-> surface. Streamlit stays as the "engine room" until v3 reaches parity.
+> Status: **Tier 0 shipped & cut over** (last reviewed 2026-06-19). v3 (FastAPI
+> `api/` + React `web/`) is now the **daily driver**; Streamlit is archived under
+> `streamlit/` as the "engine room." Tier 1 is mostly done but pivoted (the Inbox
+> became the **Feed**); **Tier 2 — semantic search + the Karpathy wiki layer, the
+> stated moat — has not started.** See **§0.5 Current status** for the honest
+> map of what's built vs. what this plan originally proposed. The tier/build-order
+> sections below are annotated with ✅/🟡/❌ but otherwise preserve the original intent.
 
 ## 0. Context — what this has to serve
 
@@ -37,6 +41,51 @@ service, or it doesn't ship.** Nav grows as features become real — never ahead
   v3 fixes that with vertical slices + a generated typed API client.
 - **Screen real estate**: must fill a 32" 4K display, not left-hug (a specific
   v2 failure). Content max-widths, real layout.
+
+---
+
+## 0.5 Current status (reviewed 2026-06-19)
+
+The prime directive held: everything that shipped is fully wired — no
+placeholders. But momentum went into **deepening Tier 0/1 consumption** (Feed,
+per-item chat, search/summary quality) rather than crossing into **Tier 2, which
+this plan calls "the soul / the moat."** That work is still entirely unbuilt.
+
+**Tier status:**
+
+| Tier | State |
+|---|---|
+| **Tier 0** (Today, Library, Reader, Add-source, Chat) | ✅ **Done & cut over.** v3 is the daily driver. |
+| **Tier 1** (Inbox/Digest, Insights) | 🟡 **Insights ✅. Inbox pivoted → Feed** (see below). |
+| **Tier 2** (semantic search, wiki layer, more sources) | ❌ **Not started.** `embeddings` still unused; no `wiki_updater`/graph; YouTube remains the only plugin. |
+
+**The Inbox → Feed pivot.** The Tier-1 triage Inbox was built, then **retired and
+replaced by the Feed** — a swipe-to-read queue of *unread* items. New state on
+`knowledge_items`: `read_at` (NULL ⇔ unread) + `saved_at` (★), via migration
+`003`. The old `digest_actions` table, `api/routers/inbox.py`, and
+`merlin/services/digest.py` still exist but are **orphaned** (safe to drop). Plan:
+`docs/FRONTEND_V3_FEED_PLAN.md`.
+
+**Built on top of Tier 0, not in the original plan** (scope that accreted —
+mostly YouTube/consumption depth, all core-level, no new tier):
+
+- **Description grounding** — `youtube_metadata.description` (migration `004`);
+  summaries *and* chat are grounded in the video description.
+- **Per-item chat** — `chat.answer()` takes `filters.item_id` to chat against one
+  item's full transcript (no FTS, no citations); surfaced as a Reader tab.
+- **Self-heal on re-summarize** — detects YouTube metadata fields old items lack
+  and does a cheap metadata-only refetch to backfill them.
+- **Library search overhaul** — relevance ranking, fuzzy fallback, transcript
+  toggle. **Summary-prompt revamp** — dropped the "medium" tier (short/long only;
+  legacy values coerced). **Language handling** — detect original spoken language;
+  summarize in the languages the user understands.
+- **UI polish** (consistent with §5, just undocumented): ⌘K command palette,
+  `g`-prefix keyboard shortcuts, mobile drawer/responsive layout, persisted
+  density + grid/list prefs, optimistic mutations.
+
+**Next push** is Tier 2 — the differentiator (semantic search + the compounding
+`[[wikilinked]]` wiki). A new source plugin (Reddit) is *planned* but unbuilt
+(`docs/REDDIT_SOURCE_PLAN.md`).
 
 ---
 
@@ -144,34 +193,42 @@ Everything in Tier 0 already exists in `merlin.services` — the router is glue.
 
 ## 4. Feature tiers — each a complete vertical slice
 
-### Tier 0 — a pretty, *complete* app from services that already exist
+> Annotated 2026-06-19: ✅ done · 🟡 partial/pivoted · ❌ not started.
+
+### Tier 0 — ✅ DONE — a pretty, *complete* app from services that already exist
 
 (Zero new backend logic ⇒ nothing can be a placeholder.)
 
-1. **Today** — omnibox (paste URL → ingest, or type → chat), live stats,
-   recently-added grid, **live ingest progress (SSE)**.
-2. **Library** — grid/list, FTS5 search, sort, tag filter, density, pagination.
-3. **Reader** — markdown summary, **timestamped topics → YouTube deep-links**,
-   transcript, edit tags/title, **re-summarize** (built already), retry, delete.
-4. **Add source** — language list + length picker + task tracking.
-5. **Chat** — streaming RAG, citations, follow-ups, source/tag filters.
+1. ✅ **Today** — omnibox (paste URL → ingest, or type → chat), live stats,
+   recently-added grid, **live ingest progress (SSE)** + a "Needs attention" strip.
+2. ✅ **Library** — grid/list, FTS5 search, sort, tag filter, density, pagination
+   (+ later: relevance ranking, fuzzy fallback, transcript-search toggle).
+3. ✅ **Reader** — markdown summary, **timestamped topics → YouTube deep-links**,
+   transcript, edit tags/title, **re-summarize**, retry, delete (+ later:
+   per-item chat tab, clear-summary, prev/next nav).
+4. ✅ **Add source** — language list + length picker + task tracking.
+5. ✅ **Chat** — streaming RAG, citations, follow-ups, source/tag filters.
 
-### Tier 1 — small backend additions, high payoff
+### Tier 1 — 🟡 mostly done, one pivot
 
-6. **Inbox / Digest** — the triage queue from the old UI, *wired*: recently
-   ingested → keep / re-summarize / tag / dismiss (`digest_actions` +
-   `background_tasks` exist). "Send digest to email."
-7. **Insights** — port Plotly charts to Recharts (timeline heatmap, top channels,
-   status donut).
+6. 🟡 **Inbox / Digest → PIVOTED to the Feed.** The triage queue was built then
+   retired; the **Feed** (swipe-to-read queue of unread items, `read_at`/`saved_at`
+   state, migration `003`) replaced it. `digest_actions` + `inbox.py` + `digest.py`
+   are now orphaned. Email digest never built. See `FRONTEND_V3_FEED_PLAN.md`.
+7. ✅ **Insights** — Plotly charts ported to Recharts (timeline heatmap, top
+   channels, status donut).
 
-### Tier 2 — the soul (real backend work, the moat)
+### Tier 2 — ❌ NOT STARTED — the soul (real backend work, the moat)
 
-8. **Semantic search** — backfill the unused `embeddings` table (sqlite-vec or
-   pgvector); hybrid retrieval → better chat *and* a meaningful graph.
-9. **Karpathy wiki layer** — `wiki_updater` on every ingest; `[[wikilinked]]`
+8. ❌ **Semantic search** — backfill the unused `embeddings` table (sqlite-vec or
+   pgvector); hybrid retrieval → better chat *and* a meaningful graph. *(Table
+   still empty/unused.)*
+9. ❌ **Karpathy wiki layer** — `wiki_updater` on every ingest; `[[wikilinked]]`
    pages; **interactive React Flow graph**; backlinks; contradiction detection;
-   "what changed in my wiki" digest.
-10. **More sources** — article/PDF/podcast plugins (model already source-agnostic).
+   "what changed in my wiki" digest. *(Nothing built; React Flow not yet a dep.)*
+10. ❌ **More sources** — article/PDF/podcast plugins (model already
+    source-agnostic). *(Reddit planned in `REDDIT_SOURCE_PLAN.md`, not built;
+    YouTube still the only plugin.)*
 
 ---
 
@@ -192,19 +249,19 @@ Lean into the v2 look the owner liked; make it fill the screen and feel alive.
 
 ## 6. Build order
 
-| Step | What | Proves |
-|---|---|---|
-| 1 | `api/` FastAPI: items list/get, ingest, SSE task progress | backend skin |
-| 2 | `openapi-typescript` → typed client | no contract drift |
-| 3 | `web/` scaffold: Vite+TS+Tailwind+shadcn+Router+Query; shell (sidebar + Cmd-K) | the chrome |
-| 4 | **Library + Reader, fully wired** | the whole pattern, end to end |
-| 5 | Today + Chat (SSE) | streaming + dashboard |
-| 6 | Add-source flow + task panel | ingest loop closed → **Tier 0 done, cut over** |
-| 7 | Inbox/Digest + Insights | Tier 1 |
-| 8+ | Embeddings → wiki layer → graph → new sources | Tier 2 |
+| Step | What | Proves | Status |
+|---|---|---|---|
+| 1 | `api/` FastAPI: items list/get, ingest, SSE task progress | backend skin | ✅ |
+| 2 | `openapi-typescript` → typed client | no contract drift | ✅ |
+| 3 | `web/` scaffold: Vite+TS+Tailwind+shadcn+Router+Query; shell (sidebar + Cmd-K) | the chrome | ✅ |
+| 4 | **Library + Reader, fully wired** | the whole pattern, end to end | ✅ |
+| 5 | Today + Chat (SSE) | streaming + dashboard | ✅ |
+| 6 | Add-source flow + task panel | ingest loop closed → **Tier 0 done, cut over** | ✅ **cut over** |
+| 7 | ~~Inbox/Digest~~ → **Feed** + Insights | Tier 1 | 🟡 Insights ✅; Inbox pivoted to Feed |
+| 8+ | Embeddings → wiki layer → graph → new sources | Tier 2 | ❌ **not started ← next push** |
 
-**Coexistence:** keep Streamlit running unchanged; build `web/` alongside; make
-v3 the daily driver only at **Tier-0 parity** (step 6), never before.
+**Coexistence:** Streamlit is archived under `streamlit/`, still runnable as the
+engine room; `web/` is the daily driver as of **Tier-0 parity** (step 6, done).
 
 ---
 
