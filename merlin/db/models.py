@@ -104,6 +104,7 @@ class YouTubeMetadata(Base):
     timestamps = Column(Text)  # JSON: {"topic": "00:01:23"}
     detected_language = Column(String(20))
     thumbnail_url = Column(String(512))
+    description = Column(Text)  # video description (grounds summary + chat)
 
     knowledge_item = relationship("KnowledgeItem", back_populates="youtube_metadata")
 
