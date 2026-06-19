@@ -88,6 +88,7 @@ def make_item():
         topics = overrides.pop("topics", {"Overview": "00:00:00"})
         timestamps = overrides.pop("timestamps", {"Overview": 0})
         channel = overrides.pop("channel", "Test Channel")
+        description = overrides.pop("description", None)
 
         item = KnowledgeItem(
             id=item_id,
@@ -122,6 +123,7 @@ def make_item():
                     videos_count="803",
                     thumbnail_url="https://img.example/thumb.jpg",
                     detected_language="en",
+                    description=description,
                     timestamps=json.dumps(timestamps),
                 )
             )
