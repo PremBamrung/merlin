@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowUp, Square, Sparkles } from "lucide-react";
 import { useAgentChat, type ChatFilters } from "@/hooks/useAgentChat";
+import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { Button } from "@/components/ui/button";
 import { Message } from "@/components/chat/Message";
 import { cn } from "@/lib/utils";
@@ -25,13 +26,9 @@ export function ItemChat({
 }) {
   const { messages, isStreaming, send, regenerate, stop } = useAgentChat();
   const [input, setInput] = useState("");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const { scrollRef, bottomRef } = useStickToBottom(messages);
 
   const filters = useMemo<ChatFilters>(() => ({ item_id: itemId }), [itemId]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages]);
 
   const submit = () => {
     const q = input.trim();
@@ -50,7 +47,7 @@ export function ItemChat({
       )}
     >
       {/* Thread */}
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-4">
         {isIdle ? (
           <div className="flex h-full flex-col items-center justify-center gap-5 text-center">
             <div className="flex size-11 items-center justify-center rounded-full bg-accent-subtle text-accent">

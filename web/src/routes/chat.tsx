@@ -20,6 +20,7 @@ import {
   RotateCw,
 } from "lucide-react";
 import { useAgentChat, type ChatFilters } from "@/hooks/useAgentChat";
+import { useStickToBottom } from "@/hooks/useStickToBottom";
 import {
   saveChatThread,
   useChatThread,
@@ -156,7 +157,6 @@ function ChatConversation({
   const [params, setParams] = useSearchParams();
   const [input, setInput] = useState("");
   const [filters, setFilters] = useState<ChatFilters>({});
-  const bottomRef = useRef<HTMLDivElement>(null);
   const sentPrefill = useRef(false);
 
   // Client-driven persistence — best-effort; a failed write must never disrupt
@@ -174,6 +174,10 @@ function ChatConversation({
 
   const { messages, status, isStreaming, error, send, regenerate, stop } =
     useAgentChat({ id: threadId, initialMessages, onFinish: persist });
+
+  // Follow the stream to the bottom only while the user is already pinned there,
+  // so scrolling up to re-read isn't interrupted by incoming tokens.
+  const { scrollRef, bottomRef } = useStickToBottom(messages);
 
   // Persist as soon as a turn STARTS (status flips to "submitted"), not just at
   // the end — so the thread + the user's message are saved immediately and the
@@ -199,11 +203,6 @@ function ChatConversation({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Auto-scroll on new content.
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages]);
 
   const submit = () => {
     const q = input.trim();
@@ -258,7 +257,7 @@ function ChatConversation({
       </div>
 
       {/* Messages */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         <div
           className={cn(
             "w-full px-4 pb-6 sm:px-6",
