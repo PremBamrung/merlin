@@ -210,6 +210,50 @@ def test_request_limit_is_enforced(client, monkeypatch, make_item):
     assert types  # something was streamed, the request didn't hang
 
 
+def _search_until_budget(answer: str):
+    """A model that keeps searching until a tool refuses (budget exhausted),
+    then answers — mirrors a cooperative model honouring the wind-down."""
+    from pydantic_ai.models.function import DeltaToolCall, FunctionModel
+
+    def _saw_refusal(messages) -> bool:
+        return any(
+            "budget" in str(getattr(p, "content", "")).lower()
+            for m in messages
+            for p in getattr(m, "parts", [])
+            if getattr(p, "part_kind", "") == "tool-return"
+        )
+
+    async def stream_fn(messages, info):
+        if _saw_refusal(messages):  # a tool told us to stop → wrap up
+            yield answer
+        else:
+            yield {
+                0: DeltaToolCall(
+                    name="search_library",
+                    json_args=json.dumps({"query": "moat"}),
+                    tool_call_id=f"call-{len(messages)}",
+                )
+            }
+
+    return FunctionModel(stream_function=stream_fn)
+
+
+def test_budget_forces_graceful_answer_instead_of_error(client, monkeypatch, make_item):
+    """Past the search budget the tools refuse and the model answers from what it
+    has — the turn ends with text + finish, NOT an UsageLimitExceeded error."""
+    make_item(title="moaty", summary="moat")
+    monkeypatch.setattr("merlin.config.settings.chat_max_requests", 1)
+
+    _patch_model(monkeypatch, _search_until_budget("Best answer so far."))
+
+    resp = client.post("/api/chat", json=_chat_body("keep searching"))
+    types = _sse_types(resp.text)
+    assert "text-delta" in types  # produced a real answer
+    assert "finish" in types
+    assert "error" not in types  # graceful wind-down, not UsageLimitExceeded
+    assert "Best answer so far." in resp.text
+
+
 # --------------------------------------------------------------------------- #
 # Used-vs-viewed citation split (inline [#id] markers)
 # --------------------------------------------------------------------------- #

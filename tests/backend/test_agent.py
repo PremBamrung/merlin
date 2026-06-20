@@ -111,8 +111,9 @@ def test_browse_and_meta_tools(make_item):
     assert "item(s) match" in out
     assert "One" in out and "Two" in out
 
-    assert "ai" in list_tags()
-    assert "youtube" in list_source_types()
+    # list_tags/list_source_types now take ctx (for the per-turn budget guard).
+    assert "ai" in list_tags(Ctx(None))  # type: ignore[arg-type]
+    assert "youtube" in list_source_types(Ctx(None))  # type: ignore[arg-type]
 
 
 def test_full_agent_run_with_scripted_model(make_item):
