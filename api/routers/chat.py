@@ -38,6 +38,11 @@ router = APIRouter(prefix="/api", tags=["chat"])
 # Match the AI SDK v6 client; the adapter also supports v5.
 _SDK_VERSION = 6
 
+# Extra model-requests allowed beyond `chat_max_requests` for the agent to emit
+# its final answer after the tools start refusing (see merlin.rag.agent). Keeps
+# the graceful wind-down from being cut off by the hard `request_limit`.
+_BUDGET_GRACE = 3
+
 # Proxy/buffering headers so the SSE stream isn't buffered by an intermediary
 # (nginx/Cloudflare) and reaches the browser token-by-token. Never GZip this.
 _NO_BUFFER_HEADERS = {
@@ -155,14 +160,20 @@ async def chat(request: Request) -> Response:
         )
         return _apply_stream_headers(response)
 
-    # Library-wide agentic chat.
+    # Library-wide agentic chat. Once the agent spends its `chat_max_requests`
+    # search budget the tools start refusing and the agent is told to answer from
+    # what it has (see merlin.rag.agent), so a long search ends with a graceful
+    # answer. `request_limit` sits a few steps above the budget: a hard backstop
+    # that also gives the model room to produce that final answer.
     deps = chat_service.deps_from_filters(filters)
     response = await VercelAIAdapter.dispatch_request(
         request,
         agent=chat_service.agent,
         deps=deps,
         model=model,
-        usage_limits=UsageLimits(request_limit=settings.chat_max_requests),
+        usage_limits=UsageLimits(
+            request_limit=settings.chat_max_requests + _BUDGET_GRACE
+        ),
         on_complete=_citations_emitter(deps),
         sdk_version=_SDK_VERSION,
     )

@@ -43,8 +43,11 @@ class Settings(BaseSettings):
     # The chosen model MUST support tool-calling (a reasoning model surfaces a
     # `reasoning` part in the UI; a standard one shows only the tool trace).
     chat_model: str = ""
-    # Hard cap on agent model-requests per chat turn (loop/runaway guard).
-    chat_max_requests: int = 8
+    # Per-turn budget of agent model-requests. On the final allowed request the
+    # tools are withdrawn and the model is told to answer from what it has (see
+    # merlin.rag.agent) — so a long search ends with a graceful answer, not an
+    # error. Also the hard loop/runaway guard.
+    chat_max_requests: int = 20
 
     @property
     def chat_model_name(self) -> str:

@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 
 from pydantic_ai import Agent, RunContext
 
+from merlin.config import settings
 from merlin.db.engine import get_db
 from merlin.rag.prompts import AGENT_SYSTEM_PROMPT
 from merlin.rag.retriever import HybridRetriever, RetrievedChunk
@@ -88,6 +89,40 @@ TITLE_SYSTEM_PROMPT = (
 title_agent = Agent(system_prompt=TITLE_SYSTEM_PROMPT)
 
 
+# --------------------------------------------------------------------------- #
+# Per-turn search budget — graceful wind-down instead of a hard error.
+#
+# `run_step` is the 1-based index of the model request about to be made. Once the
+# model has used `chat_max_requests` tool-calling steps, every tool starts
+# *refusing* (returning a wrap-up instruction instead of doing work) and an
+# instruction reinforces it, so a long, fruitless search ends with a real answer
+# ("I couldn't find that in your library") instead of an UsageLimitExceeded
+# error. We keep the tools registered (rather than withdrawing them) on purpose:
+# some models emit raw tool-call markup as text when no tools are offered, which
+# would leak into the answer. The route sets `request_limit` a few steps above
+# `chat_max_requests` as a hard backstop and to give the model room to comply.
+# --------------------------------------------------------------------------- #
+
+_BUDGET_REFUSAL = (
+    "Search budget for this turn is exhausted — do not call any more tools. "
+    "Write your final answer NOW using only what you have already gathered. If "
+    "your library doesn't actually cover the question, say so plainly; it's fine "
+    "not to have found an answer. Do not guess or invent sources."
+)
+
+
+def _over_budget(ctx: RunContext[ChatDeps]) -> bool:
+    # `run_step` is always present on a real RunContext; default 0 keeps the tools
+    # callable from unit tests that pass a minimal ctx stand-in.
+    return getattr(ctx, "run_step", 0) > settings.chat_max_requests
+
+
+@agent.instructions
+def budget_notice(ctx: RunContext[ChatDeps]) -> str:
+    """Once over budget, tell the model to wrap up with what it has."""
+    return _BUDGET_REFUSAL if _over_budget(ctx) else ""
+
+
 @agent.tool
 def search_library(
     ctx: RunContext[ChatDeps],
@@ -102,6 +137,8 @@ def search_library(
     `tags` narrow the search; omit them to use the chat's active filters. Each
     result shows the item id, title, source, and a matching excerpt.
     """
+    if _over_budget(ctx):
+        return _BUDGET_REFUSAL
     try:
         limit = max(1, min(limit, _MAX_SEARCH_LIMIT))
         with get_db() as db:
@@ -128,6 +165,8 @@ def get_item(ctx: RunContext[ChatDeps], item_id: str) -> str:
     Use after `search_library`/`browse_library` when a specific item is clearly
     relevant and you need more than the search snippet.
     """
+    if _over_budget(ctx):
+        return _BUDGET_REFUSAL
     try:
         item = library.get_item(item_id)
         if item is None:
@@ -151,6 +190,8 @@ def browse_library(
     by default (`sort` may be "newest" or "oldest"). Also reports the total
     count matching the filter.
     """
+    if _over_budget(ctx):
+        return _BUDGET_REFUSAL
     try:
         limit = max(1, min(limit, _MAX_BROWSE_LIMIT))
         result = library.list_items(
@@ -169,9 +210,11 @@ def browse_library(
         return f"browse_library failed: {exc}"
 
 
-@agent.tool_plain
-def list_tags() -> str:
+@agent.tool
+def list_tags(ctx: RunContext[ChatDeps]) -> str:
     """List the tags used across the library (the available topic vocabulary)."""
+    if _over_budget(ctx):
+        return _BUDGET_REFUSAL
     try:
         tags = library.list_tags()[:_MAX_TAGS]
         if not tags:
@@ -181,9 +224,11 @@ def list_tags() -> str:
         return f"list_tags failed: {exc}"
 
 
-@agent.tool_plain
-def list_source_types() -> str:
+@agent.tool
+def list_source_types(ctx: RunContext[ChatDeps]) -> str:
     """List what kinds of content exist in the library, with counts."""
+    if _over_budget(ctx):
+        return _BUDGET_REFUSAL
     try:
         types = library.list_source_types()
         if not types:
