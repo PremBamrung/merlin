@@ -41,22 +41,16 @@ class UpdateItemRequest(BaseModel):
     title: str | None = None
 
 
-class ChatMessage(BaseModel):
-    role: str  # "user" | "assistant"
-    content: str
-
-
+# Chat speaks the Vercel AI SDK data-stream protocol (the route reads the raw
+# AI SDK message body via `Request`), so there is no ChatRequest model. These
+# two document the *extra* `filters` field the client adds to that body and the
+# shape of each item in the `data-citations` part the server emits — kept for
+# reference and to mirror the frontend types (not wired into a route).
 class ChatFilters(BaseModel):
     source_types: list[str] | None = None
     tags: list[str] | None = None
     # Scope the chat to a single item, using its full transcript (no RAG).
     item_id: str | None = None
-
-
-class ChatRequest(BaseModel):
-    question: str
-    history: list[ChatMessage] = Field(default_factory=list)
-    filters: ChatFilters | None = None
 
 
 # --------------------------------------------------------------------------- #
