@@ -43,7 +43,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Message } from "@/components/chat/Message";
 import { keys } from "@/lib/queryKeys";
-import { cn } from "@/lib/utils";
+import { cn, randomId } from "@/lib/utils";
 
 const STARTERS = [
   "What are the recurring themes across my library?",
@@ -67,7 +67,7 @@ export default function ChatRoute() {
   // The active thread id always exists: from the URL, or a fresh client id for
   // a new conversation (the thread row is created lazily on its first turn, so
   // no empty threads accumulate).
-  const [fallbackId] = useState<string>(() => crypto.randomUUID());
+  const [fallbackId] = useState<string>(() => randomId());
   const activeId = params.get("thread") ?? fallbackId;
 
   // Canonicalise the URL so a refresh keeps the same thread and the sidebar can
@@ -86,7 +86,7 @@ export default function ChatRoute() {
     setSidebarOpen(false);
   };
   const newChat = () => {
-    setParams({ thread: crypto.randomUUID() });
+    setParams({ thread: randomId() });
     setSidebarOpen(false);
   };
 
