@@ -67,6 +67,8 @@ def _clean_tables(_migrate_temp_db):
             "youtube_metadata",
             "embeddings",
             "knowledge_items",
+            "chat_messages",
+            "chat_threads",
         ):
             conn.execute(text(f"DELETE FROM {table}"))
 
