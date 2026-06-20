@@ -312,6 +312,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat/threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Chat Threads */
+        get: operations["list_chat_threads_api_chat_threads_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/threads/{thread_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Chat Thread */
+        get: operations["get_chat_thread_api_chat_threads__thread_id__get"];
+        /** Save Chat Thread */
+        put: operations["save_chat_thread_api_chat_threads__thread_id__put"];
+        post?: never;
+        /** Delete Chat Thread */
+        delete: operations["delete_chat_thread_api_chat_threads__thread_id__delete"];
+        options?: never;
+        head?: never;
+        /** Rename Chat Thread */
+        patch: operations["rename_chat_thread_api_chat_threads__thread_id__patch"];
+        trace?: never;
+    };
     "/api/insights/timeline": {
         parameters: {
             query?: never;
@@ -469,6 +506,51 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ChatMessageModel */
+        ChatMessageModel: {
+            /** Id */
+            id?: string | null;
+            /** Role */
+            role: string;
+            /** Parts */
+            parts?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** ChatThreadDetail */
+        ChatThreadDetail: {
+            /** Id */
+            id: string;
+            /** Title */
+            title?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Messages */
+            messages?: components["schemas"]["ChatMessageModel"][];
+        };
+        /**
+         * ChatThreadSummary
+         * @description A row in the chat-history sidebar.
+         */
+        ChatThreadSummary: {
+            /** Id */
+            id: string;
+            /** Title */
+            title?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Message Count
+             * @default 0
+             */
+            message_count: number;
+            /** Preview */
+            preview?: string | null;
+        };
         /** ClearFailedResponse */
         ClearFailedResponse: {
             /** Cleared */
@@ -690,6 +772,11 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** RenameThreadRequest */
+        RenameThreadRequest: {
+            /** Title */
+            title: string;
+        };
         /** ResummarizeRequest */
         ResummarizeRequest: {
             /** Summary Length */
@@ -708,6 +795,23 @@ export interface components {
             summary_length?: string | null;
             /** Languages */
             languages?: string[] | null;
+        };
+        /**
+         * SaveThreadRequest
+         * @description Client-driven persistence: the full ordered message list for the thread.
+         */
+        SaveThreadRequest: {
+            /** Messages */
+            messages?: components["schemas"]["ChatMessageModel"][];
+            /** Title */
+            title?: string | null;
+        };
+        /** SaveThreadResponse */
+        SaveThreadResponse: {
+            /** Id */
+            id: string;
+            /** Title */
+            title?: string | null;
         };
         /** Task */
         Task: {
@@ -1356,6 +1460,156 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_chat_threads_api_chat_threads_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatThreadSummary"][];
+                };
+            };
+        };
+    };
+    get_chat_thread_api_chat_threads__thread_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatThreadDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_chat_thread_api_chat_threads__thread_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveThreadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveThreadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_chat_thread_api_chat_threads__thread_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_chat_thread_api_chat_threads__thread_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameThreadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveThreadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -15,4 +15,7 @@ export const keys = {
   unreadCount: () => ["unread-count"] as const,
   insights: (k: string) => ["insights", k] as const,
   health: () => ["health"] as const,
+  // Chat history (continuable threads): the sidebar list + one opened thread.
+  chatThreads: () => ["chat-threads"] as const,
+  chatThread: (id: string) => ["chat-thread", id] as const,
 };
