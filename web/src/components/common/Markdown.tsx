@@ -1,6 +1,32 @@
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
+
+// Inline citation chips: `linkifyCitationMarkers` rewrites answer markers into
+// `[n](#cite-<item_id>)`; here we render that sentinel href as a small
+// superscript pill linking to the item (client-side, so deep routes don't 404).
+const CITE_PREFIX = "#cite-";
+
+const components: Components = {
+  a({ href, children, title }) {
+    if (href?.startsWith(CITE_PREFIX)) {
+      return (
+        <Link
+          to={`/library/${href.slice(CITE_PREFIX.length)}`}
+          className="ml-0.5 inline-block rounded bg-accent-subtle px-1 align-super text-[10px] font-medium leading-none text-accent !no-underline hover:bg-accent-border"
+        >
+          {children}
+        </Link>
+      );
+    }
+    return (
+      <a href={href} title={title} target="_blank" rel="noreferrer">
+        {children}
+      </a>
+    );
+  },
+};
 
 /**
  * Markdown renderer with prose styling tuned to the design tokens.
@@ -33,7 +59,9 @@ export function Markdown({
         className,
       )}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {children}
+      </ReactMarkdown>
     </div>
   );
 }

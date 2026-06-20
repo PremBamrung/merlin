@@ -15,7 +15,13 @@ import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/common/Markdown";
 import { CopyButton } from "@/components/common/CopyButton";
 import { CitationCard } from "@/components/chat/CitationCard";
-import type { Citation } from "@/hooks/useAgentChat";
+import {
+  CITATIONS_PART,
+  SOURCES_VIEWED_PART,
+  linkifyCitationMarkers,
+  stripCitationMarkers,
+  type Citation,
+} from "@/hooks/useAgentChat";
 import { cn } from "@/lib/utils";
 
 const FOLLOWUPS = ["Why?", "Counterpoints?", "Give me an example", "Summarize key points"];
@@ -68,10 +74,13 @@ export function Message({
   onFollowup: (q: string) => void;
 }) {
   const parts = (message.parts ?? []) as AnyPart[];
-  const textContent = parts
-    .filter((p) => p.type === "text")
-    .map((p) => p.text ?? "")
-    .join("");
+  // Stripped of inline `[#id]` markers — used for the copy action.
+  const textContent = stripCitationMarkers(
+    parts
+      .filter((p) => p.type === "text")
+      .map((p) => p.text ?? "")
+      .join(""),
+  );
 
   if (message.role === "user") {
     return (
@@ -83,9 +92,13 @@ export function Message({
     );
   }
 
-  // Consolidated citations arrive as a `data-citations` part.
+  // Two citation tiers arrive at end-of-turn: items the answer used (Sources)
+  // and items a tool surfaced but the answer didn't cite (Also searched).
   const citations: Citation[] = parts
-    .filter((p) => p.type === "data-citations")
+    .filter((p) => p.type === CITATIONS_PART)
+    .flatMap((p) => p.data?.items ?? []);
+  const alsoViewed: Citation[] = parts
+    .filter((p) => p.type === SOURCES_VIEWED_PART)
     .flatMap((p) => p.data?.items ?? []);
 
   const isThisStreaming = isStreaming && isLast;
@@ -112,7 +125,7 @@ export function Message({
           if (p.type === "text" && p.text) {
             return (
               <div key={i} className="max-w-none">
-                <Markdown>{p.text}</Markdown>
+                <Markdown>{linkifyCitationMarkers(p.text, citations)}</Markdown>
               </div>
             );
           }
@@ -135,6 +148,8 @@ export function Message({
           </div>
         </div>
       )}
+
+      {alsoViewed.length > 0 && <AlsoSearched items={alsoViewed} />}
 
       {showActions && (
         <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -175,6 +190,33 @@ function ReasoningBlock({ text }: { text: string }) {
       {open && (
         <div className="border-t border-border px-3 py-2 text-[12.5px] italic leading-relaxed text-fg-muted">
           {text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Items a tool surfaced but the answer didn't cite — a collapsed disclosure
+ * below the primary Sources grid. */
+function AlsoSearched({ items }: { items: Citation[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-[10px] border border-border bg-surface-2/50">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-[12px] text-fg-muted"
+      >
+        <Search className="size-3.5 text-fg-subtle" />
+        <span className="eyebrow">Also searched ({items.length})</span>
+        <ChevronRight
+          className={cn("ml-auto size-3.5 transition-transform", open && "rotate-90")}
+        />
+      </button>
+      {open && (
+        <div className="grid gap-2 border-t border-border px-3 py-2.5 sm:grid-cols-2">
+          {items.map((c, i) => (
+            <CitationCard key={`${c.item_id}-${i}`} citation={c} index={i} />
+          ))}
         </div>
       )}
     </div>
