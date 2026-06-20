@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { ArrowUpRight } from "lucide-react";
-import type { Citation } from "@/lib/api/client";
+import type { Citation } from "@/hooks/useAgentChat";
 
 export function CitationCard({ citation, index }: { citation: Citation; index: number }) {
   return (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ChevronLeft,
@@ -48,7 +48,10 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Markdown } from "@/components/common/Markdown";
 import { TagInput } from "@/components/items/TagInput";
-import { ItemChat } from "@/components/chat/ItemChat";
+// Lazy so the Vercel AI SDK loads only when a Reader chat is actually shown.
+const ItemChat = lazy(() =>
+  import("@/components/chat/ItemChat").then((m) => ({ default: m.ItemChat })),
+);
 import { TaskRow } from "@/components/ingest/TaskRow";
 import { ReaderSkeleton } from "@/components/common/Skeletons";
 import { ErrorState } from "@/components/common/ErrorState";
@@ -369,11 +372,17 @@ function Reader({
                     <p className="eyebrow">Ask about this item</p>
                   </div>
                   {/* key={item.id} → ephemeral: navigating items resets the chat. */}
-                  <ItemChat
-                    key={item.id}
-                    itemId={item.id}
-                    className="2xl:sticky 2xl:top-20 2xl:h-[calc(100vh-9rem)]"
-                  />
+                  <Suspense
+                    fallback={
+                      <div className="h-[clamp(420px,60vh,720px)] rounded-[10px] border border-border bg-surface" />
+                    }
+                  >
+                    <ItemChat
+                      key={item.id}
+                      itemId={item.id}
+                      className="2xl:sticky 2xl:top-20 2xl:h-[calc(100vh-9rem)]"
+                    />
+                  </Suspense>
                 </div>
               )}
             </TabsContent>

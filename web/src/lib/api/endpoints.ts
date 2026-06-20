@@ -1,7 +1,9 @@
 import { client } from "./client";
 import type { components } from "./schema";
 
-export type { Citation } from "./client";
+// Chat types live with the chat hook (the chat path speaks the Vercel AI SDK
+// protocol, not the generated OpenAPI client).
+export type { Citation, ChatFilters } from "@/hooks/useAgentChat";
 
 // Domain types — sourced from the generated schema, never hand-written (§2).
 export type Item = components["schemas"]["Item"];
@@ -11,8 +13,6 @@ export type Task = components["schemas"]["Task"];
 export type NameCount = components["schemas"]["NameCount"];
 export type TimelinePoint = components["schemas"]["TimelinePoint"];
 export type Health = components["schemas"]["HealthResponse"];
-export type ChatMessage = components["schemas"]["ChatMessage"];
-export type ChatFilters = components["schemas"]["ChatFilters"];
 
 export type ItemQuery = {
   search?: string;

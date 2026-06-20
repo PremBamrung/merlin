@@ -7,20 +7,6 @@ export type ErrorBody = {
   detail?: unknown;
 };
 
-/**
- * Citation (FRONTEND_V3_API.md §2.3). Hand-written, NOT generated: it only ever
- * travels inside the chat SSE stream, which OpenAPI can't describe, so the
- * backend's `Citation` model isn't a response_model and never reaches schema.d.ts.
- * Keep this in sync with `api/sse.py::_serialize_citation`.
- */
-export type Citation = {
-  item_id: string;
-  title: string;
-  source_type: string;
-  snippet: string;
-  score: number;
-};
-
 export class ApiError extends Error {
   code: string;
   detail: unknown;
@@ -90,12 +76,6 @@ export const client = {
 // Use POST for chat (EventSource can't send a body); GET for task progress.
 // --------------------------------------------------------------------------- //
 
-export type ChatFrame =
-  | { type: "citations"; citations: Citation[] }
-  | { type: "token"; text: string }
-  | { type: "done" }
-  | { type: "error"; error: ErrorBody };
-
 export type TaskFrame =
   | { type: "progress"; task: components["schemas"]["Task"] }
   | { type: "complete"; task: components["schemas"]["Task"] }
@@ -126,18 +106,6 @@ async function* sseRaw(
       }
     }
   }
-}
-
-export function chatStream(
-  body: components["schemas"]["ChatRequest"],
-  signal?: AbortSignal,
-): AsyncGenerator<ChatFrame> {
-  return sseRaw("/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  }) as AsyncGenerator<ChatFrame>;
 }
 
 export function taskStream(

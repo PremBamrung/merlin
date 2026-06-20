@@ -9,7 +9,7 @@ import {
   Plus,
   X,
 } from "lucide-react";
-import { useChatStream } from "@/hooks/useChatStream";
+import { useAgentChat, type ChatFilters } from "@/hooks/useAgentChat";
 import { useTags, useSourceTypes } from "@/hooks/useMeta";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +18,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Message } from "@/components/chat/Message";
-import type { ChatFilters } from "@/lib/api/endpoints";
 import { cn } from "@/lib/utils";
 
 const STARTERS = [
@@ -28,7 +27,7 @@ const STARTERS = [
 ];
 
 export default function ChatRoute() {
-  const { messages, isStreaming, send, regenerate, stop, reset } = useChatStream();
+  const { messages, isStreaming, send, regenerate, stop, reset } = useAgentChat();
   const [params, setParams] = useSearchParams();
   const [input, setInput] = useState("");
   const [filters, setFilters] = useState<ChatFilters>({});
@@ -93,10 +92,10 @@ export default function ChatRoute() {
             messages.map((m, i) => (
               <Message
                 key={m.id}
-                turn={m}
+                message={m}
                 isLast={i === messages.length - 1}
                 isStreaming={isStreaming}
-                onRegenerate={regenerate}
+                onRegenerate={() => regenerate(normalizeFilters(filters))}
                 onFollowup={(q) => send(q, normalizeFilters(filters))}
               />
             ))

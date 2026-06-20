@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, Square, Sparkles } from "lucide-react";
-import { useChatStream } from "@/hooks/useChatStream";
+import { useAgentChat, type ChatFilters } from "@/hooks/useAgentChat";
 import { Button } from "@/components/ui/button";
 import { Message } from "@/components/chat/Message";
 import { cn } from "@/lib/utils";
@@ -23,11 +23,11 @@ export function ItemChat({
   itemId: string;
   className?: string;
 }) {
-  const { messages, isStreaming, send, regenerate, stop } = useChatStream();
+  const { messages, isStreaming, send, regenerate, stop } = useAgentChat();
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const filters = { item_id: itemId };
+  const filters = useMemo<ChatFilters>(() => ({ item_id: itemId }), [itemId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -80,10 +80,10 @@ export function ItemChat({
             {messages.map((m, i) => (
               <Message
                 key={m.id}
-                turn={m}
+                message={m}
                 isLast={i === messages.length - 1}
                 isStreaming={isStreaming}
-                onRegenerate={regenerate}
+                onRegenerate={() => regenerate(filters)}
                 onFollowup={(q) => send(q, filters)}
               />
             ))}

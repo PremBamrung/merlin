@@ -469,30 +469,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** ChatFilters */
-        ChatFilters: {
-            /** Source Types */
-            source_types?: string[] | null;
-            /** Tags */
-            tags?: string[] | null;
-            /** Item Id */
-            item_id?: string | null;
-        };
-        /** ChatMessage */
-        ChatMessage: {
-            /** Role */
-            role: string;
-            /** Content */
-            content: string;
-        };
-        /** ChatRequest */
-        ChatRequest: {
-            /** Question */
-            question: string;
-            /** History */
-            history?: components["schemas"]["ChatMessage"][];
-            filters?: components["schemas"]["ChatFilters"] | null;
-        };
         /** ClearFailedResponse */
         ClearFailedResponse: {
             /** Cleared */
@@ -625,6 +601,8 @@ export interface components {
             thumbnail_url?: string | null;
             /** Detected Language */
             detected_language?: string | null;
+            /** Description */
+            description?: string | null;
             /** Timestamps */
             timestamps?: {
                 [key: string]: unknown;
@@ -698,6 +676,8 @@ export interface components {
             thumbnail_url?: string | null;
             /** Detected Language */
             detected_language?: string | null;
+            /** Description */
+            description?: string | null;
             /** Timestamps */
             timestamps?: {
                 [key: string]: unknown;
@@ -1367,11 +1347,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChatRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -1380,15 +1356,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
