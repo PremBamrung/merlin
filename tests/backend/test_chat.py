@@ -47,6 +47,18 @@ def _sse_objects(text: str) -> list[dict]:
     return out
 
 
+def _data_part(text: str, part_type: str) -> list[dict]:
+    """The `data.items` of the first data-part of `part_type` (or [])."""
+    for obj in _sse_objects(text):
+        if obj.get("type") == part_type:
+            return obj.get("data", {}).get("items", [])
+    return []
+
+
+def _ids(items: list[dict]) -> set[str]:
+    return {i["item_id"] for i in items}
+
+
 def _chat_body(text: str, filters: dict | None = None) -> dict:
     """A minimal AI SDK v6 sendMessage body (+ our extra filters field)."""
     body = {
@@ -196,6 +208,115 @@ def test_request_limit_is_enforced(client, monkeypatch, make_item):
     types = _sse_types(resp.text)
     assert "error" in types or "finish" in types
     assert types  # something was streamed, the request didn't hang
+
+
+# --------------------------------------------------------------------------- #
+# Used-vs-viewed citation split (inline [#id] markers)
+# --------------------------------------------------------------------------- #
+
+# Marker-regex-shaped ids (UUIDs), so the model's `[#id]` markers parse.
+_ID1 = "11111111-1111-1111-1111-111111111111"
+_ID2 = "22222222-2222-2222-2222-222222222222"
+_ID3 = "33333333-3333-3333-3333-333333333333"
+
+
+def _three_moat_items(make_item):
+    """Three retrievable items sharing the keyword 'moat', with known ids."""
+    make_item(id=_ID1, title="Alpha edge", source_id="a1", summary="moat one")
+    make_item(id=_ID2, title="Beta castle", source_id="b2", summary="moat two")
+    make_item(id=_ID3, title="Gamma wall", source_id="c3", summary="moat three")
+
+
+def test_markers_split_used_vs_viewed(client, monkeypatch, make_item):
+    """An answer tagging one item with `[#id]` cites only that item; the rest
+    fall to the 'Also searched' (data-sources-viewed) tier."""
+    _three_moat_items(make_item)
+    _patch_model(
+        monkeypatch,
+        _search_then_answer_model("moat", f"Moats matter [#{_ID1}]."),
+    )
+
+    resp = client.post("/api/chat", json=_chat_body("tell me about moats"))
+    assert resp.status_code == 200
+
+    used = _data_part(resp.text, "data-citations")
+    viewed = _data_part(resp.text, "data-sources-viewed")
+    assert _ids(used) == {_ID1}
+    assert _ids(viewed) == {_ID2, _ID3}
+
+
+def test_abbreviated_marker_id_resolves_by_prefix(client, monkeypatch, make_item):
+    """Models often shorten UUIDs (`[#11111111]` for `1111…`); a unique prefix
+    still resolves to the right item."""
+    _three_moat_items(make_item)
+    _patch_model(
+        monkeypatch,
+        _search_then_answer_model("moat", "Moats matter [#11111111]."),
+    )
+
+    resp = client.post("/api/chat", json=_chat_body("moats?"))
+    used = _data_part(resp.text, "data-citations")
+    assert _ids(used) == {_ID1}
+    assert _ids(_data_part(resp.text, "data-sources-viewed")) == {_ID2, _ID3}
+
+
+def test_marker_without_hash_is_matched(client, monkeypatch, make_item):
+    """Models frequently drop the `#`, mirroring the `[id]` shown in tool output;
+    the bare `[id]` form still resolves."""
+    _three_moat_items(make_item)
+    _patch_model(
+        monkeypatch,
+        _search_then_answer_model("moat", "Moats matter [11111111]."),
+    )
+
+    resp = client.post("/api/chat", json=_chat_body("moats?"))
+    used = _data_part(resp.text, "data-citations")
+    assert _ids(used) == {_ID1}
+    assert _ids(_data_part(resp.text, "data-sources-viewed")) == {_ID2, _ID3}
+
+
+def test_no_markers_falls_back_to_title_match(client, monkeypatch, make_item):
+    """No markers → an item whose title appears verbatim is treated as used."""
+    _three_moat_items(make_item)
+    _patch_model(
+        monkeypatch,
+        _search_then_answer_model("moat", "The Beta castle had the widest moat."),
+    )
+
+    resp = client.post("/api/chat", json=_chat_body("which had the widest moat?"))
+    used = _data_part(resp.text, "data-citations")
+    assert _ID2 in _ids(used)
+
+
+def test_no_markers_no_title_match_cites_all_viewed(client, monkeypatch, make_item):
+    """A generic answer with neither markers nor title hits cites every viewed
+    item — the Sources list is never empty when the library was clearly used."""
+    _three_moat_items(make_item)
+    _patch_model(
+        monkeypatch,
+        _search_then_answer_model("moat", "Defensibility comes from many factors."),
+    )
+
+    resp = client.post("/api/chat", json=_chat_body("what makes a business strong?"))
+    used = _data_part(resp.text, "data-citations")
+    assert _ids(used) == {_ID1, _ID2, _ID3}
+    assert _data_part(resp.text, "data-sources-viewed") == []
+
+
+def test_hallucinated_marker_id_is_dropped(client, monkeypatch, make_item):
+    """A marker for an id no tool surfaced is ignored; only real cited ids win."""
+    _three_moat_items(make_item)
+    _patch_model(
+        monkeypatch,
+        _search_then_answer_model(
+            "moat", f"Real [#{_ID1}] and fake [#deadbeefcafe]."
+        ),
+    )
+
+    resp = client.post("/api/chat", json=_chat_body("moats?"))
+    used = _data_part(resp.text, "data-citations")
+    assert _ids(used) == {_ID1}  # deadbeefcafe never appears
+    assert _ids(_data_part(resp.text, "data-sources-viewed")) == {_ID2, _ID3}
 
 
 # --------------------------------------------------------------------------- #
