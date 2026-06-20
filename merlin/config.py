@@ -37,6 +37,20 @@ class Settings(BaseSettings):
     openrouter_model_deployment: str = ""
     openrouter_endpoint: str = "https://openrouter.ai/api/v1"
 
+    # Agentic chat (Pydantic AI). The chat agent runs on OpenRouter independently
+    # of `settings.llm` (the summariser). `chat_model` is an optional override;
+    # it falls back to `openrouter_model_deployment` so no new required config.
+    # The chosen model MUST support tool-calling (a reasoning model surfaces a
+    # `reasoning` part in the UI; a standard one shows only the tool trace).
+    chat_model: str = ""
+    # Hard cap on agent model-requests per chat turn (loop/runaway guard).
+    chat_max_requests: int = 8
+
+    @property
+    def chat_model_name(self) -> str:
+        """Model id for the chat agent — explicit override or OpenRouter default."""
+        return self.chat_model or self.openrouter_model_deployment
+
     # Groq (audio transcription fallback)
     groq_api_key: str = ""
     # Max upload size for Groq's /audio/transcriptions endpoint. Files above
@@ -61,7 +75,6 @@ class Settings(BaseSettings):
     @cached_property
     def llm(self):
         """Lazily create the LLM instance based on active provider."""
-        import time
 
         from langchain_openai import AzureChatOpenAI, ChatOpenAI
 
