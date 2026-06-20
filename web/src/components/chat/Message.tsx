@@ -182,7 +182,7 @@ export function Message({
       {citations.length > 0 && (
         <div className="space-y-2 pt-1">
           <p className="eyebrow">Sources</p>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {citations.map((c, i) => (
               <CitationCard key={`${c.item_id}-${i}`} citation={c} index={i} />
             ))}
@@ -355,7 +355,7 @@ function AlsoSearched({ items }: { items: Citation[] }) {
         />
       </button>
       {open && (
-        <div className="grid gap-2 border-t border-border px-3 py-2.5 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 border-t border-border px-3 py-2.5 sm:grid-cols-2">
           {items.map((c, i) => (
             <CitationCard key={`${c.item_id}-${i}`} citation={c} index={i} />
           ))}
