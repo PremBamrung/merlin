@@ -22,7 +22,16 @@ from pydantic_ai.ui.vercel_ai.response_types import DataChunk
 from pydantic_ai.usage import UsageLimits
 
 from merlin.config import settings
-from merlin.services import chat as chat_service
+from merlin.services import chat as chat_service, chat_history
+
+from ..errors import not_found
+from ..schemas import (
+    ChatThreadDetail,
+    ChatThreadSummary,
+    RenameThreadRequest,
+    SaveThreadRequest,
+    SaveThreadResponse,
+)
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
@@ -158,3 +167,47 @@ async def chat(request: Request) -> Response:
         sdk_version=_SDK_VERSION,
     )
     return _apply_stream_headers(response)
+
+
+# --------------------------------------------------------------------------- #
+# Chat history — continuable threads (library-wide chat only). The Reader's
+# per-item chat is ephemeral and never hits these. Persistence is client-driven:
+# the browser PUTs the full message list at the end of each turn (it holds the
+# exact rendered parts, citations included). See services/chat_history.py.
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/chat/threads", response_model=list[ChatThreadSummary])
+def list_chat_threads():
+    return chat_history.list_threads()
+
+
+@router.get("/chat/threads/{thread_id}", response_model=ChatThreadDetail)
+def get_chat_thread(thread_id: str):
+    thread = chat_history.get_thread(thread_id)
+    if thread is None:
+        raise not_found("Conversation not found.")
+    return thread
+
+
+@router.put("/chat/threads/{thread_id}", response_model=SaveThreadResponse)
+def save_chat_thread(thread_id: str, body: SaveThreadRequest):
+    return chat_history.save_thread(
+        thread_id,
+        [m.model_dump() for m in body.messages],
+        title=body.title,
+    )
+
+
+@router.patch("/chat/threads/{thread_id}", response_model=SaveThreadResponse)
+def rename_chat_thread(thread_id: str, body: RenameThreadRequest):
+    if not chat_history.rename_thread(thread_id, body.title):
+        raise not_found("Conversation not found.")
+    return {"id": thread_id, "title": body.title}
+
+
+@router.delete("/chat/threads/{thread_id}", status_code=204)
+def delete_chat_thread(thread_id: str):
+    if not chat_history.delete_thread(thread_id):
+        raise not_found("Conversation not found.")
+    return Response(status_code=204)

@@ -53,6 +53,28 @@ class ChatFilters(BaseModel):
     item_id: str | None = None
 
 
+# Chat-history (continuable threads). A message's `parts` are the Vercel AI SDK
+# `UIMessage` parts stored verbatim (arbitrary shapes per part type), so they're
+# modelled loosely as a list of dicts rather than a discriminated union.
+class ChatMessageModel(BaseModel):
+    id: str | None = None
+    role: str
+    parts: list[dict] = Field(default_factory=list)
+
+
+class SaveThreadRequest(BaseModel):
+    """Client-driven persistence: the full ordered message list for the thread."""
+
+    messages: list[ChatMessageModel] = Field(default_factory=list)
+    # Optional explicit title (e.g. a rename folded into a save); when omitted the
+    # server generates one on the first turn.
+    title: str | None = None
+
+
+class RenameThreadRequest(BaseModel):
+    title: str
+
+
 # --------------------------------------------------------------------------- #
 # Responses
 # --------------------------------------------------------------------------- #
@@ -126,6 +148,31 @@ class Citation(BaseModel):
     source_type: str
     snippet: str
     score: float = 0.0
+
+
+class ChatThreadSummary(BaseModel):
+    """A row in the chat-history sidebar."""
+
+    id: str
+    title: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    message_count: int = 0
+    # First user message, shown when `title` is still NULL.
+    preview: str | None = None
+
+
+class ChatThreadDetail(BaseModel):
+    id: str
+    title: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    messages: list[ChatMessageModel] = Field(default_factory=list)
+
+
+class SaveThreadResponse(BaseModel):
+    id: str
+    title: str | None = None
 
 
 class NameCount(BaseModel):
