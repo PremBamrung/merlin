@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Plus,
   X,
+  Menu,
   PanelLeft,
   MoreHorizontal,
   Pencil,
@@ -28,6 +29,7 @@ import {
   type ChatThreadSummary,
 } from "@/hooks/useChatThreads";
 import { useTags, useSourceTypes } from "@/hooks/useMeta";
+import { useUi } from "@/store/ui";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -91,7 +93,7 @@ export default function ChatRoute() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem-4rem)]">
+    <div className="flex h-full min-h-0">
       <ThreadSidebar
         activeId={activeId}
         open={sidebarOpen}
@@ -102,7 +104,6 @@ export default function ChatRoute() {
       <ChatPane
         key={activeId}
         threadId={activeId}
-        onNewChat={newChat}
         onOpenSidebar={() => setSidebarOpen(true)}
       />
     </div>
@@ -114,11 +115,9 @@ export default function ChatRoute() {
  * applied at mount). */
 function ChatPane({
   threadId,
-  onNewChat,
   onOpenSidebar,
 }: {
   threadId: string;
-  onNewChat: () => void;
   onOpenSidebar: () => void;
 }) {
   const { data, isLoading } = useChatThread(threadId);
@@ -137,7 +136,6 @@ function ChatPane({
     <ChatConversation
       threadId={threadId}
       initialMessages={data.messages as unknown as UIMessage[]}
-      onNewChat={onNewChat}
       onOpenSidebar={onOpenSidebar}
     />
   );
@@ -146,15 +144,15 @@ function ChatPane({
 function ChatConversation({
   threadId,
   initialMessages,
-  onNewChat,
   onOpenSidebar,
 }: {
   threadId: string;
   initialMessages: UIMessage[];
-  onNewChat: () => void;
   onOpenSidebar: () => void;
 }) {
   const qc = useQueryClient();
+  const openAdd = useUi((s) => s.openAdd);
+  const setNavOpen = useUi((s) => s.setNavOpen);
   const [params, setParams] = useSearchParams();
   const [input, setInput] = useState("");
   const [filters, setFilters] = useState<ChatFilters>({});
@@ -218,35 +216,44 @@ function ChatConversation({
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between pb-4">
-        <div className="flex items-center gap-2">
+      {/* Header. On desktop the global topbar already shows the "Chat" title, so
+          this row carries only Filters. On mobile the topbar is hidden, so this
+          row also owns the title + the panel/new-chat/add-source controls. */}
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5 md:border-0 md:px-6 md:py-4">
+        <div className="flex items-center gap-1 md:hidden">
+          {/* App nav (Today/Feed/…) — the global topbar that normally hosts this
+              hamburger is hidden on the Chat route on mobile. */}
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden"
+            onClick={() => setNavOpen(true)}
+            aria-label="Open navigation"
+          >
+            <Menu className="size-5" />
+          </Button>
+          {/* Conversations (this chat's thread list). */}
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onOpenSidebar}
             aria-label="Conversations"
           >
             <PanelLeft className="size-4" />
           </Button>
-          <h1 className="text-[24px] font-semibold">Chat</h1>
+          <h1 className="text-[17px] font-semibold">Chat</h1>
         </div>
-        <div className="flex items-center gap-2">
-          {/* The sidebar owns "New chat" on desktop; surface it here only on
-              mobile (where the sidebar is collapsed behind the panel toggle). */}
-          {!isIdle && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="md:hidden"
-              onClick={onNewChat}
-              disabled={isStreaming}
-            >
-              <Plus className="size-3.5" /> New chat
-            </Button>
-          )}
+        <div className="flex items-center gap-2 md:ml-auto">
           <FilterBar filters={filters} setFilters={setFilters} active={filtersActive} />
+          {/* Add-source lives in the global topbar, which is hidden on mobile for
+              this route — surface it here so it stays reachable. */}
+          <Button
+            size="icon"
+            className="md:hidden"
+            onClick={() => openAdd()}
+            aria-label="Add source"
+          >
+            <Plus className="size-4" />
+          </Button>
         </div>
       </div>
 
@@ -254,7 +261,7 @@ function ChatConversation({
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div
           className={cn(
-            "mx-auto max-w-3xl pb-6",
+            "w-full px-4 pb-6 sm:px-6",
             isIdle ? "flex min-h-full flex-col justify-center" : "space-y-8",
           )}
         >
@@ -280,11 +287,11 @@ function ChatConversation({
       </div>
 
       {/* Composer */}
-      <div className="border-t border-border pt-4">
+      <div className="border-t border-border px-4 py-3 sm:px-6 sm:py-4">
         {filtersActive > 0 && (
           <ActiveFilterChips filters={filters} setFilters={setFilters} />
         )}
-        <div className="mx-auto flex max-w-3xl items-end gap-2">
+        <div className="flex w-full items-end gap-2">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -296,7 +303,7 @@ function ChatConversation({
             }}
             rows={1}
             placeholder="Ask your library…"
-            className="max-h-40 min-h-[44px] flex-1 resize-none rounded-[12px] border border-border bg-surface px-4 py-3 text-[14px] text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-border-strong"
+            className="max-h-40 min-h-[44px] flex-1 resize-none rounded-[12px] border border-border bg-surface px-4 py-3 text-[16px] text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-border-strong sm:text-[14px]"
           />
           {isStreaming ? (
             <Button onClick={stop} variant="secondary" size="icon" className="size-11 rounded-[12px]">
@@ -338,7 +345,7 @@ function ThreadSidebar({
   return (
     <>
       {/* Desktop: a static left column. */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-border pr-3 md:flex">
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-border py-4 pl-4 pr-3 md:flex">
         <ThreadList activeId={activeId} onSelect={onSelect} onNew={onNew} />
       </aside>
 
@@ -440,7 +447,7 @@ function ThreadRow({
             if (e.key === "Escape") setEditing(false);
           }}
           onBlur={commitRename}
-          className="min-w-0 flex-1 rounded-[8px] border border-border-strong bg-surface px-2 py-1 text-[13px] outline-none"
+          className="min-w-0 flex-1 rounded-[8px] border border-border-strong bg-surface px-2 py-1 text-[16px] outline-none sm:text-[13px]"
         />
         <Button variant="ghost" size="icon" className="size-7" onClick={commitRename}>
           <Check className="size-3.5" />
@@ -552,7 +559,7 @@ function ActiveFilterChips({
     setFilters({ ...filters, tags: tags.filter((x) => x !== name) });
 
   return (
-    <div className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-1.5">
+    <div className="mb-2 flex w-full flex-wrap items-center gap-1.5">
       <span className="eyebrow text-fg-subtle">Filtered to</span>
       {sources.map((s) => (
         <Chip key={`s-${s}`} onRemove={() => removeSource(s)} className="capitalize">

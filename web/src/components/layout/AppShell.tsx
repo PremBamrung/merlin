@@ -16,6 +16,11 @@ export function AppShell() {
   const setNavOpen = useUi((s) => s.setNavOpen);
   const { pathname } = useLocation();
 
+  // Chat manages its own full-height layout and (on mobile) its own header, so
+  // it renders flush: no content padding, and the global topbar is hidden on
+  // mobile to reclaim vertical space (kept on desktop).
+  const isChat = pathname.startsWith("/chat");
+
   // Close the mobile drawer on route change and on Escape.
   useEffect(() => setNavOpen(false), [pathname, setNavOpen]);
   useEffect(() => {
@@ -55,13 +60,17 @@ export function AppShell() {
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <Topbar />
-          <main className="flex-1 overflow-y-auto">
-            {/* Wide ceiling so 27"/32" displays fill; grids inside use
-                auto-fill columns, reading views cap their own measure. */}
-            <div className="mx-auto w-full max-w-[3000px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10 2xl:px-14">
+          <Topbar className={cn(isChat && "hidden md:flex")} />
+          <main className={cn("flex-1", isChat ? "overflow-hidden" : "overflow-y-auto")}>
+            {isChat ? (
               <Outlet />
-            </div>
+            ) : (
+              /* Wide ceiling so 27"/32" displays fill; grids inside use
+                 auto-fill columns, reading views cap their own measure. */
+              <div className="mx-auto w-full max-w-[3000px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10 2xl:px-14">
+                <Outlet />
+              </div>
+            )}
           </main>
         </div>
       </div>

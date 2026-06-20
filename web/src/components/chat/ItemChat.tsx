@@ -106,7 +106,7 @@ export function ItemChat({
             }}
             rows={1}
             placeholder="Ask about this item…"
-            className="max-h-32 min-h-[40px] flex-1 resize-none rounded-[10px] border border-border bg-surface-2 px-3.5 py-2.5 text-[14px] text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-border-strong"
+            className="max-h-32 min-h-[40px] flex-1 resize-none rounded-[10px] border border-border bg-surface-2 px-3.5 py-2.5 text-[16px] text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-border-strong sm:text-[14px]"
           />
           {isStreaming ? (
             <Button onClick={stop} variant="secondary" size="icon" className="size-10 rounded-[10px]">

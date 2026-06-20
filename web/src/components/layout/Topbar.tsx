@@ -2,6 +2,7 @@ import { useLocation } from "react-router-dom";
 import { Menu, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUi } from "@/store/ui";
+import { cn } from "@/lib/utils";
 
 const TITLES: Record<string, string> = {
   "": "Today",
@@ -16,7 +17,7 @@ function useTitle() {
   return TITLES[seg] ?? "Merlin";
 }
 
-export function Topbar() {
+export function Topbar({ className }: { className?: string }) {
   const title = useTitle();
   const setPaletteOpen = useUi((s) => s.setPaletteOpen);
   const setNavOpen = useUi((s) => s.setNavOpen);
@@ -24,7 +25,12 @@ export function Topbar() {
   const isMac = navigator.platform.toLowerCase().includes("mac");
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-bg/80 px-4 backdrop-blur sm:gap-4 sm:px-6">
+    <header
+      className={cn(
+        "sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-bg/80 px-4 backdrop-blur sm:gap-4 sm:px-6",
+        className,
+      )}
+    >
       <button
         onClick={() => setNavOpen(true)}
         aria-label="Open navigation"
