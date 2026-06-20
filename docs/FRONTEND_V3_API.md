@@ -110,8 +110,9 @@ poll endpoint (`GET /api/tasks/{id}`) returns.
 
 ### 2.3 `Citation` (chat)
 
-Derived from the retriever's `RetrievedChunk`. Minimum fields the
-`CitationCard` needs (final names settled when the router is written):
+Each item in the chat stream's `data-citations` part (§4.1). The frontend type
+lives in `web/src/hooks/useAgentChat.ts`; server-side it's assembled in
+`ChatDeps.cite()` from the retriever's `RetrievedChunk` / a `get_item` result.
 
 ```jsonc
 {
@@ -119,7 +120,7 @@ Derived from the retriever's `RetrievedChunk`. Minimum fields the
   "title": "…",
   "source_type": "youtube",
   "snippet": "…matched passage…",
-  "score": 0.0             // optional relevance score
+  "score": 0.0             // relevance score (bm25-derived; 1.0 for get_item)
 }
 ```
 
@@ -143,7 +144,7 @@ first cut needs no new backend logic.
 | `GET /api/tasks` | `ingest.recent_tasks` | `?limit=` → `Task[]` |
 | `GET /api/tasks/{id}` | `ingest.get_task` | poll fallback; `404` if missing |
 | `GET /api/tasks/{id}/stream` | (wraps `get_task`) | **SSE** progress — §4.2 |
-| `POST /api/chat` | `chat.answer` | body `{ question, history[], filters }` → **SSE** — §4.1 |
+| `POST /api/chat` | Pydantic AI agent (`rag.agent`) via `VercelAIAdapter` | AI SDK message body (+ `filters`) → **SSE** (Vercel AI protocol) — §4.1 |
 | `GET /api/tags` | `library.list_tags` | `[{ name, count }]` |
 | `GET /api/source-types` | `library.list_source_types` | `[{ source_type, count }]` for sidebar |
 | `GET /api/insights/timeline` | `library.ingest_timeline` | Tier 1 |
@@ -170,54 +171,57 @@ switch on `type`.
 > needed. Chat is a `POST` that returns an event stream (fetch + `ReadableStream`,
 > not `EventSource`, since `EventSource` can't POST a body).
 
-### 4.1 Chat — `POST /api/chat`
+### 4.1 Chat — `POST /api/chat` (Vercel AI SDK protocol)
 
-**Request**
+> **Rebuilt (see `AGENTIC_CHAT_PLAN.md`).** Chat is now an **agentic,
+> tool-calling** chat: the backend is a **Pydantic AI** agent that searches/reads
+> the library itself, streamed via the adapter's **Vercel AI SDK data-stream
+> protocol**, and the frontend consumes it with **`useChat`** (`@ai-sdk/react`).
+> The old custom `citations → token → done` frames and `useChatStream` are gone.
+
+**Request** — the standard AI SDK `useChat` body, **plus** an extra `filters`
+field (the backend request model tolerates it):
 ```jsonc
 {
-  "question": "What did the DJI video say about moats?",
-  "history": [
-    { "role": "user", "content": "…" },
-    { "role": "assistant", "content": "…" }
+  "id": "conv-1",
+  "trigger": "submit-message",
+  "messages": [
+    { "id": "m1", "role": "user", "parts": [{ "type": "text", "text": "…" }] }
   ],
-  "filters": { "source_types": ["youtube"], "tags": ["ai"] }   // both optional
+  "filters": {                              // all optional
+    "source_types": ["youtube"],
+    "tags": ["ai"],
+    "item_id": "…"                          // set → Reader single-item chat (§3a)
+  }
 }
 ```
+The client attaches `filters` per send via `sendMessage(text, { body: { filters } })`.
+With no `item_id` the request runs the **library-wide agent** (tools); with an
+`item_id` it runs the **tool-less Reader agent** grounded in that item's
+transcript.
 
-Backed by `chat.answer(question, history, filters) -> (token_gen, citations)`.
-The router emits `citations` first (they're known before streaming — `answer`
-retrieves chunks synchronously, *then* returns the generator), streams tokens,
-then closes with `done`.
+**Response** — SSE in the AI SDK v6 data-stream protocol. The adapter frames
+everything; `useChat` parses it into `message.parts`. The relevant part types:
 
-**Event sequence**
-```
-data: {"type":"citations","citations":[ {Citation…}, … ]}
+| Part `type` | Meaning |
+|---|---|
+| `start` / `start-step` / `finish-step` / `finish` | run/step lifecycle |
+| `text-start` / `text-delta` / `text-end` | the answer, streamed |
+| `reasoning-start` / `reasoning-delta` / `reasoning-end` | model reasoning (when a reasoning model is configured) |
+| `tool-input-start` / `tool-input-delta` / `tool-input-available` | a tool call + its (streamed) args |
+| `tool-output-available` | the tool's result — the inline tool-trace / citation surface |
+| `data-citations` | **custom** part: `{ data: { items: Citation[] } }` — the consolidated "Sources" list, emitted once at the end |
+| `error` | `{ errorText }` — failure (incl. the `request_limit` loop cap) |
 
-data: {"type":"token","text":"DJI's "}
+The frontend (`Message.tsx`) renders `text` as markdown, `reasoning` and each
+tool call as collapsible traces, and `data-citations` as the Sources grid.
+Streaming/abort/framing are handled by `useChat`; the route sets no-buffer
+headers (`Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`).
 
-data: {"type":"token","text":"edge "}
-
-…
-
-data: {"type":"done"}
-```
-
-| `type` | Fields | Meaning |
-|---|---|---|
-| `citations` | `citations: Citation[]` | sent once, up front (may be `[]`) |
-| `token` | `text: string` | append to the in-flight assistant bubble |
-| `done` | — | stream complete; re-enable composer |
-| `error` | `error: ErrorBody` (§5) | LLM/retrieval failure mid-stream; client shows inline retry preserving the question |
-
-Client (`useChatStream`): on a new question, **abort** the prior fetch; disable
-the composer while streaming; render the token cursor; on `done` resolve, on
-`error` surface §5 inline.
-
-> **Citations-first vs citations-last is a real choice.** `answer` returns the
-> citation list *before* the token generator runs, so emitting `citations` first
-> lets the rail render immediately and avoids a layout jump at the end. The
-> `SCREENS` doc shows the rail "after the stream" — either is acceptable; the
-> contract guarantees citations arrive **no later than `done`**.
+> **Citations** come from two surfaces: the live **tool-trace** parts (what the
+> agent actually searched/read) and the consolidated **`data-citations`** part at
+> the end. Server-side, tools accumulate touched items in `ChatDeps.cited`, which
+> the route's `on_complete` hook emits as the data part.
 
 ### 4.2 Task progress — `GET /api/tasks/{id}/stream`
 
