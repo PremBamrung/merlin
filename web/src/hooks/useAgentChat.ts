@@ -1,5 +1,5 @@
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import { DefaultChatTransport, type UIMessage } from "ai";
 import { useCallback } from "react";
 
 /**
@@ -92,14 +92,43 @@ export function linkifyCitationMarkers(text: string, citations: Citation[]): str
 // one stateless transport instance is shared across every chat surface.
 const transport = new DefaultChatTransport({ api: "/api/chat" });
 
+export type UseAgentChatOptions = {
+  /** Stable chat/thread id (continuable threads persist under this id). */
+  id?: string;
+  /** Messages to seed the conversation with when reopening a saved thread. */
+  initialMessages?: UIMessage[];
+  /**
+   * Called when an assistant turn finishes streaming, with the full message
+   * list — used to persist the thread. Not fired on abort/disconnect/error so a
+   * half-finished turn isn't saved.
+   */
+  onFinish?: (messages: UIMessage[]) => void;
+};
+
 /**
  * Thin wrapper over the Vercel AI SDK `useChat`. The SDK owns the streaming
  * message-parts protocol (text / tool calls / reasoning / data parts), framing,
- * abort, and incremental rendering; we add filter injection and a few ergonomic
- * helpers. History is in-memory and cleared on reload (ephemeral, v1).
+ * abort, and incremental rendering; we add filter injection, optional
+ * persistence seeding/callbacks, and a few ergonomic helpers.
+ *
+ * For continuable threads the caller passes a stable `id` + `initialMessages`
+ * and remounts (via React `key`) on thread switch, so each thread gets a clean
+ * `useChat` seeded from its stored history. Omit the options for the ephemeral
+ * Reader per-item chat.
  */
-export function useAgentChat() {
-  const chat = useChat({ transport });
+export function useAgentChat(opts?: UseAgentChatOptions) {
+  const { onFinish } = opts ?? {};
+  const chat = useChat({
+    transport,
+    id: opts?.id,
+    messages: opts?.initialMessages,
+    onFinish: onFinish
+      ? ({ messages, isAbort, isDisconnect, isError }) => {
+          if (isAbort || isDisconnect || isError) return;
+          onFinish(messages);
+        }
+      : undefined,
+  });
   const { messages, sendMessage, regenerate, status, setMessages } = chat;
 
   const isStreaming = status === "submitted" || status === "streaming";

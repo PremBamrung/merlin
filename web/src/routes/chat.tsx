@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import type { UIMessage } from "ai";
 import {
   Sparkles,
   ArrowUp,
@@ -8,8 +10,21 @@ import {
   MessageSquare,
   Plus,
   X,
+  PanelLeft,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Check,
 } from "lucide-react";
 import { useAgentChat, type ChatFilters } from "@/hooks/useAgentChat";
+import {
+  saveChatThread,
+  useChatThread,
+  useChatThreads,
+  useDeleteThread,
+  useRenameThread,
+  type ChatThreadSummary,
+} from "@/hooks/useChatThreads";
 import { useTags, useSourceTypes } from "@/hooks/useMeta";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +32,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Message } from "@/components/chat/Message";
+import { keys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 
 const STARTERS = [
@@ -26,25 +49,142 @@ const STARTERS = [
   "Which videos discuss business strategy?",
 ];
 
+/**
+ * The Chat tab. A ChatGPT-style thread sidebar (continuable, persisted
+ * server-side) alongside the active conversation. The active thread lives in
+ * `?thread=<id>`; the conversation pane is keyed by it so switching threads
+ * remounts a fresh `useChat` seeded from the thread's stored history.
+ *
+ * Persistence is client-driven: each finished turn PUTs the full message list
+ * (parts verbatim, citations intact) — see useChatThreads + the chat router.
+ */
 export default function ChatRoute() {
-  const { messages, isStreaming, send, regenerate, stop, reset } = useAgentChat();
+  const [params, setParams] = useSearchParams();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // The active thread id always exists: from the URL, or a fresh client id for
+  // a new conversation (the thread row is created lazily on its first turn, so
+  // no empty threads accumulate).
+  const [fallbackId] = useState<string>(() => crypto.randomUUID());
+  const activeId = params.get("thread") ?? fallbackId;
+
+  // Canonicalise the URL so a refresh keeps the same thread and the sidebar can
+  // highlight it — without clobbering a `?q=` prefill from the Today omnibox.
+  useEffect(() => {
+    if (!params.get("thread")) {
+      const next = new URLSearchParams(params);
+      next.set("thread", activeId);
+      setParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const openThread = (id: string) => {
+    setParams({ thread: id });
+    setSidebarOpen(false);
+  };
+  const newChat = () => {
+    setParams({ thread: crypto.randomUUID() });
+    setSidebarOpen(false);
+  };
+
+  return (
+    <div className="flex h-[calc(100vh-3.5rem-4rem)]">
+      <ThreadSidebar
+        activeId={activeId}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        onSelect={openThread}
+        onNew={newChat}
+      />
+      <ChatPane
+        key={activeId}
+        threadId={activeId}
+        onNewChat={newChat}
+        onOpenSidebar={() => setSidebarOpen(true)}
+      />
+    </div>
+  );
+}
+
+/** Fetch the thread's stored messages, then mount the conversation seeded with
+ * them. Gating on load keeps `useChat` seeding clean (initial messages are only
+ * applied at mount). */
+function ChatPane({
+  threadId,
+  onNewChat,
+  onOpenSidebar,
+}: {
+  threadId: string;
+  onNewChat: () => void;
+  onOpenSidebar: () => void;
+}) {
+  const { data, isLoading } = useChatThread(threadId);
+
+  if (isLoading || !data) {
+    return (
+      <div className="flex min-w-0 flex-1 flex-col gap-4 p-6">
+        <Skeleton className="h-7 w-32" />
+        <Skeleton className="h-20 w-full max-w-3xl" />
+        <Skeleton className="h-20 w-full max-w-3xl" />
+      </div>
+    );
+  }
+
+  return (
+    <ChatConversation
+      threadId={threadId}
+      initialMessages={data.messages as unknown as UIMessage[]}
+      onNewChat={onNewChat}
+      onOpenSidebar={onOpenSidebar}
+    />
+  );
+}
+
+function ChatConversation({
+  threadId,
+  initialMessages,
+  onNewChat,
+  onOpenSidebar,
+}: {
+  threadId: string;
+  initialMessages: UIMessage[];
+  onNewChat: () => void;
+  onOpenSidebar: () => void;
+}) {
+  const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [input, setInput] = useState("");
   const [filters, setFilters] = useState<ChatFilters>({});
   const bottomRef = useRef<HTMLDivElement>(null);
   const sentPrefill = useRef(false);
 
+  const { messages, isStreaming, send, regenerate, stop } = useAgentChat({
+    id: threadId,
+    initialMessages,
+    onFinish: (msgs) => {
+      // Client-driven persistence: save the full turn, then refresh the sidebar
+      // (which surfaces the freshly-titled new thread). Best-effort — a failed
+      // write must never disrupt the chat.
+      saveChatThread(threadId, msgs)
+        .then(() => qc.invalidateQueries({ queryKey: keys.chatThreads() }))
+        .catch(() => {});
+    },
+  });
+
   const filtersActive =
     (filters.source_types?.length ?? 0) + (filters.tags?.length ?? 0);
 
-  // Prefill from ?q= (Today omnibox / command palette) — auto-send once.
+  // Prefill from ?q= (Today omnibox / command palette) — auto-send once on a
+  // fresh thread, then strip q while keeping the thread id.
   useEffect(() => {
     const q = params.get("q");
-    if (q && !sentPrefill.current) {
+    if (q && !sentPrefill.current && messages.length === 0) {
       sentPrefill.current = true;
-      send(q, filters);
-      params.delete("q");
-      setParams(params, { replace: true });
+      send(q, normalizeFilters(filters));
+      const next = new URLSearchParams(params);
+      next.delete("q");
+      setParams(next, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -64,13 +204,32 @@ export default function ChatRoute() {
   const isIdle = messages.length === 0;
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem-4rem)] flex-col">
+    <div className="flex min-w-0 flex-1 flex-col">
       {/* Header */}
       <div className="flex items-center justify-between pb-4">
-        <h1 className="text-[24px] font-semibold">Chat</h1>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={onOpenSidebar}
+            aria-label="Conversations"
+          >
+            <PanelLeft className="size-4" />
+          </Button>
+          <h1 className="text-[24px] font-semibold">Chat</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* The sidebar owns "New chat" on desktop; surface it here only on
+              mobile (where the sidebar is collapsed behind the panel toggle). */}
           {!isIdle && (
-            <Button variant="ghost" size="sm" onClick={reset} disabled={isStreaming}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="md:hidden"
+              onClick={onNewChat}
+              disabled={isStreaming}
+            >
               <Plus className="size-3.5" /> New chat
             </Button>
           )}
@@ -139,6 +298,184 @@ export default function ChatRoute() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// Thread sidebar
+// --------------------------------------------------------------------------- //
+
+function ThreadSidebar({
+  activeId,
+  open,
+  onClose,
+  onSelect,
+  onNew,
+}: {
+  activeId: string;
+  open: boolean;
+  onClose: () => void;
+  onSelect: (id: string) => void;
+  onNew: () => void;
+}) {
+  return (
+    <>
+      {/* Desktop: a static left column. */}
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-border pr-3 md:flex">
+        <ThreadList activeId={activeId} onSelect={onSelect} onNew={onNew} />
+      </aside>
+
+      {/* Mobile: a slide-in overlay. */}
+      {open && (
+        <div className="fixed inset-0 z-40 md:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+          <div className="absolute left-0 top-0 h-full w-72 max-w-[80%] bg-bg p-4 shadow-xl">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="eyebrow">Conversations</span>
+              <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
+                <X className="size-4" />
+              </Button>
+            </div>
+            <ThreadList activeId={activeId} onSelect={onSelect} onNew={onNew} />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ThreadList({
+  activeId,
+  onSelect,
+  onNew,
+}: {
+  activeId: string;
+  onSelect: (id: string) => void;
+  onNew: () => void;
+}) {
+  const { data: threads, isLoading } = useChatThreads();
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <Button variant="secondary" size="sm" className="mb-3 w-full justify-start" onClick={onNew}>
+        <Plus className="size-3.5" /> New chat
+      </Button>
+      <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
+        {isLoading ? (
+          <div className="space-y-2 px-1 py-2">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+          </div>
+        ) : threads && threads.length > 0 ? (
+          threads.map((t) => (
+            <ThreadRow
+              key={t.id}
+              thread={t}
+              active={t.id === activeId}
+              onSelect={() => onSelect(t.id)}
+              onDeleted={onNew}
+            />
+          ))
+        ) : (
+          <p className="px-2 py-6 text-center text-[12.5px] text-fg-subtle">
+            No saved conversations yet.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ThreadRow({
+  thread,
+  active,
+  onSelect,
+  onDeleted,
+}: {
+  thread: ChatThreadSummary;
+  active: boolean;
+  onSelect: () => void;
+  onDeleted: () => void;
+}) {
+  const rename = useRenameThread();
+  const del = useDeleteThread();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  const label = thread.title || thread.preview || "New conversation";
+
+  const commitRename = () => {
+    const title = draft.trim();
+    if (title && title !== thread.title) rename.mutate({ id: thread.id, title });
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1 px-1.5 py-1">
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitRename();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          onBlur={commitRename}
+          className="min-w-0 flex-1 rounded-[8px] border border-border-strong bg-surface px-2 py-1 text-[13px] outline-none"
+        />
+        <Button variant="ghost" size="icon" className="size-7" onClick={commitRename}>
+          <Check className="size-3.5" />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "group flex items-center gap-1 rounded-[8px] pl-2.5 pr-1 transition-colors",
+        active ? "bg-surface-2" : "hover:bg-surface-2/60",
+      )}
+    >
+      <button
+        onClick={onSelect}
+        className="min-w-0 flex-1 truncate py-2 text-left text-[13px] text-fg"
+        title={label}
+      >
+        {label}
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className="shrink-0 rounded-[6px] p-1 text-fg-subtle opacity-0 transition-opacity hover:text-fg group-hover:opacity-100 data-[state=open]:opacity-100"
+            aria-label="Conversation options"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MoreHorizontal className="size-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onSelect={() => {
+              setDraft(thread.title || "");
+              setEditing(true);
+            }}
+          >
+            <Pencil className="size-3.5" /> Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() =>
+              del.mutate(thread.id, { onSuccess: () => active && onDeleted() })
+            }
+            className="text-accent focus:text-accent"
+          >
+            <Trash2 className="size-3.5" /> Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
