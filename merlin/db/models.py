@@ -180,3 +180,54 @@ class DigestAction(Base):
     )
     action = Column(String(20), nullable=False)  # "ingest" | "skip"
     created_at = Column(DateTime, default=_now)
+
+
+class ChatThread(Base):
+    """A saved, continuable library-wide chat conversation.
+
+    `title` is NULL until the cheap title call returns (the UI falls back to a
+    message preview). `updated_at` is bumped on every saved turn; the sidebar
+    sorts by it. Messages cascade-delete with the thread.
+    """
+
+    __tablename__ = "chat_threads"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    title = Column(String(512))
+    created_at = Column(DateTime, default=_now)
+    updated_at = Column(DateTime, default=_now, onupdate=_now)
+
+    messages = relationship(
+        "ChatMessage",
+        back_populates="thread",
+        cascade="all, delete-orphan",
+        order_by="ChatMessage.seq",
+    )
+
+    __table_args__ = (Index("ix_chat_threads_updated", "updated_at"),)
+
+
+class ChatMessage(Base):
+    """One turn within a `ChatThread`.
+
+    `parts` stores the Vercel AI SDK `UIMessage` parts verbatim as a JSON array
+    (text, reasoning, tool calls/results, citation data-parts) so a reopened
+    thread renders identically and replays cleanly as agent history.
+    """
+
+    __tablename__ = "chat_messages"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    thread_id = Column(
+        String(36),
+        ForeignKey("chat_threads.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    seq = Column(Integer, nullable=False)
+    role = Column(String(20), nullable=False)  # user | assistant
+    parts = Column(Text)  # JSON array of UIMessage parts
+    created_at = Column(DateTime, default=_now)
+
+    thread = relationship("ChatThread", back_populates="messages")
+
+    __table_args__ = (Index("ix_chat_messages_thread_seq", "thread_id", "seq"),)
