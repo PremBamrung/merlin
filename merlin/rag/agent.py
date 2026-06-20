@@ -77,6 +77,16 @@ agent = Agent(deps_type=ChatDeps, system_prompt=AGENT_SYSTEM_PROMPT)
 # same VercelAIAdapter as the library-wide agent (see services/chat.py + §3a).
 item_agent = Agent(deps_type=ChatDeps)
 
+# A cheap one-shot agent that names a saved conversation from its first message,
+# for the chat-history sidebar. Model-less at construction (like the others); the
+# service injects the model at run time via `run_sync`.
+TITLE_SYSTEM_PROMPT = (
+    "You name conversations. Given the user's first message, reply with a short, "
+    "specific title of at most 6 words that captures its topic. Output only the "
+    "title — no quotes, no trailing punctuation, no 'Title:' prefix."
+)
+title_agent = Agent(system_prompt=TITLE_SYSTEM_PROMPT)
+
 
 @agent.tool
 def search_library(
