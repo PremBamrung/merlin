@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   RotateCw,
   Wrench,
@@ -9,6 +9,8 @@ import {
   Layers,
   ChevronRight,
   Brain,
+  Loader2,
+  Sparkles,
 } from "lucide-react";
 import type { UIMessage } from "ai";
 import { Button } from "@/components/ui/button";
@@ -18,6 +20,7 @@ import { CitationCard } from "@/components/chat/CitationCard";
 import {
   CITATIONS_PART,
   SOURCES_VIEWED_PART,
+  WORK_TIMING_PART,
   linkifyCitationMarkers,
   stripCitationMarkers,
   type Citation,
@@ -43,7 +46,7 @@ type AnyPart = {
   input?: unknown;
   output?: unknown;
   errorText?: string;
-  data?: { items?: Citation[] };
+  data?: { items?: Citation[]; seconds?: number };
 };
 
 function isToolPart(p: AnyPart): boolean {
@@ -52,6 +55,36 @@ function isToolPart(p: AnyPart): boolean {
 
 function toolName(p: AnyPart): string {
   return p.toolName ?? (p.type.startsWith("tool-") ? p.type.slice(5) : "tool");
+}
+
+/**
+ * Segments of an assistant turn: spoken text vs. "work" (a run of consecutive
+ * reasoning + tool-call parts). Work runs collapse into a single `WorkTrace`
+ * disclosure; text between runs renders inline. Empty reasoning parts are
+ * dropped so a stray placeholder never opens a work block on its own.
+ */
+type Segment =
+  | { kind: "text"; text: string; key: number }
+  | { kind: "work"; parts: AnyPart[]; key: number };
+
+function groupParts(parts: AnyPart[]): Segment[] {
+  const segments: Segment[] = [];
+  let work: AnyPart[] | null = null;
+  parts.forEach((p, i) => {
+    const isWork = isToolPart(p) || p.type === "reasoning";
+    if (isWork) {
+      if (p.type === "reasoning" && !p.text) return;
+      if (!work) {
+        work = [];
+        segments.push({ kind: "work", parts: work, key: i });
+      }
+      work.push(p);
+    } else if (p.type === "text" && p.text) {
+      work = null;
+      segments.push({ kind: "text", text: p.text, key: i });
+    }
+  });
+  return segments;
 }
 
 /**
@@ -106,6 +139,12 @@ export function Message({
     (p) => (p.type === "text" && p.text) || p.type === "reasoning" || isToolPart(p),
   );
   const showActions = isLast && !isThisStreaming && !!textContent;
+  const segments = groupParts(parts);
+  // Persisted work-phase duration (set on finish; present after a reload). Shown
+  // on the first work block when its live timer isn't available.
+  const persistedSeconds =
+    parts.find((p) => p.type === WORK_TIMING_PART)?.data?.seconds ?? null;
+  const firstWorkIdx = segments.findIndex((s) => s.kind === "work");
 
   return (
     <div className="space-y-3">
@@ -115,21 +154,23 @@ export function Message({
       </div>
 
       <div className="space-y-2.5">
-        {parts.map((p, i) => {
-          if (p.type === "reasoning" && p.text) {
-            return <ReasoningBlock key={i} text={p.text} />;
-          }
-          if (isToolPart(p)) {
-            return <ToolTrace key={i} part={p} />;
-          }
-          if (p.type === "text" && p.text) {
+        {segments.map((seg, idx) => {
+          const isLastSeg = idx === segments.length - 1;
+          if (seg.kind === "work") {
             return (
-              <div key={i} className="max-w-none">
-                <Markdown>{linkifyCitationMarkers(p.text, citations)}</Markdown>
-              </div>
+              <WorkTrace
+                key={seg.key}
+                parts={seg.parts}
+                streaming={isThisStreaming && isLastSeg}
+                fallbackSeconds={idx === firstWorkIdx ? persistedSeconds : null}
+              />
             );
           }
-          return null;
+          return (
+            <div key={seg.key} className="max-w-none">
+              <Markdown>{linkifyCitationMarkers(seg.text, citations)}</Markdown>
+            </div>
+          );
         })}
 
         {/* Thinking placeholder before any content streams in. */}
@@ -174,24 +215,125 @@ export function Message({
   );
 }
 
-/** A collapsible reasoning trace (shown when the model emits reasoning parts). */
-function ReasoningBlock({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
+/**
+ * A run of reasoning + tool calls collapsed into one disclosure. The header is a
+ * single live summary ("Searching your library… 3s" while working, then
+ * "Searched & reasoned · 6 steps · 5s"); expanding reveals each reasoning text
+ * and tool call (each tool keeps its own result expansion). Auto-expands while
+ * the turn streams so steps appear live, then auto-collapses when it settles —
+ * still user-toggleable afterwards.
+ */
+function WorkTrace({
+  parts,
+  streaming,
+  fallbackSeconds,
+}: {
+  parts: AnyPart[];
+  streaming: boolean;
+  fallbackSeconds: number | null;
+}) {
+  // Auto-expand while streaming, auto-collapse when it settles — but stay
+  // user-toggleable. This is the documented "adjust state on prop change"
+  // pattern: flip `open` to match `streaming` only on the transition, so a
+  // manual toggle between transitions sticks.
+  const [open, setOpen] = useState(streaming);
+  const [prevStreaming, setPrevStreaming] = useState(streaming);
+  if (streaming !== prevStreaming) {
+    setPrevStreaming(streaming);
+    setOpen(streaming);
+  }
+
+  // Elapsed seconds — only meaningful for turns generated live this session.
+  // Reloaded threads never stream, so `elapsed` stays null and we omit it.
+  const startRef = useRef<number | null>(null);
+  const [elapsed, setElapsed] = useState<number | null>(null);
+  useEffect(() => {
+    if (!streaming) return;
+    if (startRef.current == null) startRef.current = Date.now();
+    const tick = () => setElapsed(Math.round((Date.now() - startRef.current!) / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [streaming]);
+
+  const toolParts = parts.filter(isToolPart);
+  // Live timer wins; fall back to the persisted duration on a reloaded thread.
+  const seconds = elapsed != null ? elapsed : fallbackSeconds;
+  const summary = workSummary(streaming, toolParts, seconds);
+
   return (
-    <div className="rounded-[10px] border border-border bg-surface-2/50">
+    <div className="rounded-[10px] border border-border bg-surface-2/50 text-[12.5px]">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-[12px] text-fg-muted"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left"
       >
-        <Brain className="size-3.5 text-fg-subtle" />
-        <span className="eyebrow">Thinking</span>
-        <ChevronRight className={cn("ml-auto size-3.5 transition-transform", open && "rotate-90")} />
+        {streaming ? (
+          <Loader2 className="size-3.5 shrink-0 animate-spin text-fg-subtle" />
+        ) : (
+          <Sparkles className="size-3.5 shrink-0 text-fg-subtle" />
+        )}
+        <span className="font-medium text-fg-muted">{summary}</span>
+        <ChevronRight
+          className={cn("ml-auto size-3.5 shrink-0 transition-transform", open && "rotate-90")}
+        />
       </button>
       {open && (
-        <div className="border-t border-border px-3 py-2 text-[12.5px] italic leading-relaxed text-fg-muted">
-          {text}
+        <div className="space-y-2 border-t border-border px-3 py-2.5">
+          {parts.map((p, i) => {
+            if (p.type === "reasoning" && p.text) return <ReasoningInline key={i} text={p.text} />;
+            if (isToolPart(p)) return <ToolTrace key={i} part={p} />;
+            return null;
+          })}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Collapsed-header label for a `WorkTrace`. */
+function workSummary(
+  streaming: boolean,
+  toolParts: AnyPart[],
+  elapsed: number | null,
+): string {
+  const secs = elapsed != null ? `${elapsed}s` : null;
+  if (streaming) {
+    const active =
+      [...toolParts]
+        .reverse()
+        .find((p) => p.state !== "output-available" && p.state !== "output-error") ??
+      toolParts[toolParts.length - 1];
+    const verb = active ? streamingVerb(toolName(active)) : "Thinking";
+    return secs ? `${verb}… ${secs}` : `${verb}…`;
+  }
+  const steps = toolParts.length;
+  const bits = [steps > 0 ? "Searched & reasoned" : "Thought"];
+  if (steps > 0) bits.push(`${steps} step${steps === 1 ? "" : "s"}`);
+  if (secs) bits.push(secs);
+  return bits.join(" · ");
+}
+
+function streamingVerb(name: string): string {
+  switch (name) {
+    case "search_library":
+      return "Searching your library";
+    case "get_item":
+      return "Reading sources";
+    case "browse_library":
+    case "list_tags":
+    case "list_source_types":
+      return "Browsing your library";
+    default:
+      return "Working";
+  }
+}
+
+/** One reasoning step shown inside an expanded `WorkTrace`. */
+function ReasoningInline({ text }: { text: string }) {
+  return (
+    <div className="flex gap-2 text-[12.5px] italic leading-relaxed text-fg-muted">
+      <Brain className="mt-0.5 size-3.5 shrink-0 text-fg-subtle" />
+      <span className="whitespace-pre-wrap">{text}</span>
     </div>
   );
 }

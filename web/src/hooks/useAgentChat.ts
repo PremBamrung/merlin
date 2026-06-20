@@ -1,6 +1,6 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 /**
  * Chat filters sent alongside the AI SDK message payload (the backend's request
@@ -30,6 +30,13 @@ export type Citation = {
  */
 export const CITATIONS_PART = "data-citations";
 export const SOURCES_VIEWED_PART = "data-sources-viewed";
+/**
+ * The wall-clock duration (whole seconds) of a turn's "work" phase — from send
+ * until the assistant's first answer text streams in. The live `WorkTrace`
+ * timer is client-only and lost on refresh, so we capture this on finish and
+ * persist it as a data-part; on reload the work block reads it back.
+ */
+export const WORK_TIMING_PART = "data-work-timing";
 
 /**
  * Inline citation markers (`[#<id>]`, or `[<id>]` — the `#` is optional because
@@ -88,6 +95,40 @@ export function linkifyCitationMarkers(text: string, citations: Citation[]): str
     .replace(/[ \t]{2,}/g, " ");
 }
 
+/** True for a reasoning or tool-call part (the parts a `WorkTrace` groups). */
+function isWorkPart(p: { type: string }): boolean {
+  return p.type === "reasoning" || p.type === "dynamic-tool" || p.type.startsWith("tool-");
+}
+
+/**
+ * Annotate the last assistant message with a `data-work-timing` part so the
+ * work-phase duration survives a reload. No-op when the turn did no tool/
+ * reasoning work, or when already annotated. Returns a new array (never mutates
+ * the SDK's message objects).
+ */
+function withWorkTiming(messages: UIMessage[], ms: number | null): UIMessage[] {
+  if (ms == null) return messages;
+  let idx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "assistant") {
+      idx = i;
+      break;
+    }
+  }
+  if (idx < 0) return messages;
+  const parts = (messages[idx].parts ?? []) as { type: string }[];
+  if (!parts.some(isWorkPart) || parts.some((p) => p.type === WORK_TIMING_PART)) {
+    return messages;
+  }
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  const next = messages.slice();
+  next[idx] = {
+    ...messages[idx],
+    parts: [...parts, { type: WORK_TIMING_PART, data: { seconds } }],
+  } as UIMessage;
+  return next;
+}
+
 // The endpoint is fixed; filters are attached per-send via the request body, so
 // one stateless transport instance is shared across every chat surface.
 const transport = new DefaultChatTransport({ api: "/api/chat" });
@@ -118,6 +159,12 @@ export type UseAgentChatOptions = {
  */
 export function useAgentChat(opts?: UseAgentChatOptions) {
   const { onFinish } = opts ?? {};
+
+  // Work-phase timing: stamped at send, frozen when the answer text first
+  // appears (see the effect below), and attached to the persisted message.
+  const turnStartRef = useRef<number | null>(null);
+  const workMsRef = useRef<number | null>(null);
+
   const chat = useChat({
     transport,
     id: opts?.id,
@@ -125,7 +172,7 @@ export function useAgentChat(opts?: UseAgentChatOptions) {
     onFinish: onFinish
       ? ({ messages, isAbort, isDisconnect, isError }) => {
           if (isAbort || isDisconnect || isError) return;
-          onFinish(messages);
+          onFinish(withWorkTiming(messages, workMsRef.current));
         }
       : undefined,
   });
@@ -133,10 +180,26 @@ export function useAgentChat(opts?: UseAgentChatOptions) {
 
   const isStreaming = status === "submitted" || status === "streaming";
 
+  // Freeze the work-phase duration the moment the assistant's first answer text
+  // streams in (mirrors when the `WorkTrace` live timer stops). Captured once
+  // per turn; reset at send/regenerate.
+  useEffect(() => {
+    if (!isStreaming || turnStartRef.current == null || workMsRef.current != null) return;
+    const last = messages[messages.length - 1];
+    if (last?.role !== "assistant") return;
+    const hasText = (last.parts ?? []).some(
+      (p) => (p as { type: string; text?: string }).type === "text" &&
+        !!(p as { text?: string }).text,
+    );
+    if (hasText) workMsRef.current = Date.now() - turnStartRef.current;
+  }, [messages, isStreaming]);
+
   const send = useCallback(
     (text: string, filters?: ChatFilters) => {
       const q = text.trim();
       if (!q || isStreaming) return;
+      turnStartRef.current = Date.now();
+      workMsRef.current = null;
       void sendMessage({ text: q }, { body: { filters: filters ?? null } });
     },
     [sendMessage, isStreaming],
@@ -145,6 +208,8 @@ export function useAgentChat(opts?: UseAgentChatOptions) {
   const regenerateWith = useCallback(
     (filters?: ChatFilters) => {
       if (isStreaming) return;
+      turnStartRef.current = Date.now();
+      workMsRef.current = null;
       void regenerate({ body: { filters: filters ?? null } });
     },
     [regenerate, isStreaming],
