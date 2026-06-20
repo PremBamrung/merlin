@@ -14,6 +14,8 @@ abort/disconnect; we own the proxy-buffering headers, the loop cap
 
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Request, Response
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_ai.ui.vercel_ai.response_types import DataChunk
@@ -36,16 +38,75 @@ _NO_BUFFER_HEADERS = {
 }
 
 
-def _citations_emitter(deps: chat_service.ChatDeps):
-    """on_complete hook: emit every item a tool touched as a `data-citations`
-    part, for the frontend's consolidated "Sources" list."""
+# Inline citation markers the model emits, e.g. `[#a1b2c3d4]` — but models often
+# drop the `#` and mirror the bracketed id shown in tool output (`[a1b2c3d4]`),
+# so the `#` is optional. Require 8+ hex/dash chars (a UUID or its prefix) so
+# ordinary prose brackets (`[1]`, footnotes) never match.
+_MARKER_RE = re.compile(r"\[#?([0-9a-fA-F-]{8,})\]")
 
-    async def on_complete(_result):
-        if deps.cited:
-            yield DataChunk(
-                type="data-citations",
-                data={"items": list(deps.cited.values())},
-            )
+
+def _resolve_marker(marker: str, viewed: dict[str, dict]) -> str | None:
+    """Map a marker id to a viewed item id, tolerating abbreviation.
+
+    Models routinely shorten UUIDs (they emit `[#98aa2fbb]` for the full id
+    `98aa2fbb-…`), so fall back from an exact hit to a **unique** prefix match.
+    Ambiguous prefixes (matching >1 viewed item) are dropped — better to miss a
+    citation than mis-attribute one.
+    """
+    marker = marker.lower()
+    if marker in viewed:
+        return marker
+    hits = [iid for iid in viewed if iid.lower().startswith(marker)]
+    return hits[0] if len(hits) == 1 else None
+
+
+def _citations_emitter(deps: chat_service.ChatDeps):
+    """on_complete hook: split the items a tool surfaced into **used** vs merely
+    **viewed**, and emit them as two data-parts for the frontend's "Sources" /
+    "Also searched" tiers.
+
+    "Used" is derived from the final answer text: the items the model tagged
+    with an inline `[#id]` marker. Two graceful fallbacks keep the Sources list
+    sensible when the model ignores markers — match item titles appearing in the
+    text, then (last resort) treat every viewed item as used, so a clearly
+    grounded answer never shows an empty Sources list.
+    """
+
+    async def on_complete(result):
+        viewed = deps.cited  # {item_id: citation}
+        if not viewed:
+            return
+
+        text = getattr(result, "output", "") or ""
+
+        # Primary signal: explicit [#id] markers, resolved against what tools
+        # actually surfaced (drops hallucinated ids, tolerates abbreviation).
+        used_ids = {
+            resolved
+            for m in _MARKER_RE.findall(text)
+            if (resolved := _resolve_marker(m, viewed))
+        }
+
+        # Fallback 1: no markers → items whose title appears verbatim in the text.
+        if not used_ids:
+            lowered = text.lower()
+            used_ids = {
+                iid
+                for iid, c in viewed.items()
+                if c.get("title") and c["title"].lower() in lowered
+            }
+
+        # Fallback 2: still nothing → treat all viewed as used (never empty).
+        if not used_ids:
+            used_ids = set(viewed)
+
+        used = [c for iid, c in viewed.items() if iid in used_ids]
+        also = [c for iid, c in viewed.items() if iid not in used_ids]
+
+        if used:
+            yield DataChunk(type="data-citations", data={"items": used})
+        if also:
+            yield DataChunk(type="data-sources-viewed", data={"items": also})
 
     return on_complete
 

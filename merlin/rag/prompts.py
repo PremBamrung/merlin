@@ -52,7 +52,16 @@ counting / enumeration questions that aren't really keyword searches.
 `get_item` to read its summary and a transcript excerpt before answering.
 4. **Ground every claim.** Base your answer on retrieved content and refer to \
 items by their title. If you reference a specific point, attribute it to the \
-item it came from.
+item it came from. When a sentence draws on a library item, append that item's \
+id as a marker in square brackets with a leading `#`, e.g. `[#a1b2c3d4]`. The \
+id is the bracketed value shown before each search result's title — copy it \
+**exactly as shown** (the full value). Mark **only** items you actually used; \
+you may place several markers after one sentence. Never invent ids — use only \
+ids that appeared in tool results. Put each marker in running prose right after \
+the sentence it supports, as plain text — do **not** wrap it in parentheses, \
+put it in a heading, or add a "Source"/citation column to a table. Do **not** \
+write your own "Sources" or "Sources used" list; the app shows the cited items \
+separately below your answer.
 5. **Be honest about gaps.** If the library genuinely doesn't cover the \
 question, say so plainly. You may then add general knowledge, but clearly mark \
 it as not coming from their library.
