@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
@@ -15,6 +15,8 @@ import {
   Pencil,
   Trash2,
   Check,
+  AlertTriangle,
+  RotateCw,
 } from "lucide-react";
 import { useAgentChat, type ChatFilters } from "@/hooks/useAgentChat";
 import {
@@ -159,18 +161,29 @@ function ChatConversation({
   const bottomRef = useRef<HTMLDivElement>(null);
   const sentPrefill = useRef(false);
 
-  const { messages, isStreaming, send, regenerate, stop } = useAgentChat({
-    id: threadId,
-    initialMessages,
-    onFinish: (msgs) => {
-      // Client-driven persistence: save the full turn, then refresh the sidebar
-      // (which surfaces the freshly-titled new thread). Best-effort — a failed
-      // write must never disrupt the chat.
+  // Client-driven persistence — best-effort; a failed write must never disrupt
+  // the chat. Save the current message list, then refresh the sidebar (which
+  // surfaces the freshly-titled thread).
+  const persist = useCallback(
+    (msgs: UIMessage[]) => {
+      if (!msgs.length) return;
       saveChatThread(threadId, msgs)
         .then(() => qc.invalidateQueries({ queryKey: keys.chatThreads() }))
         .catch(() => {});
     },
-  });
+    [threadId, qc],
+  );
+
+  const { messages, status, isStreaming, error, send, regenerate, stop } =
+    useAgentChat({ id: threadId, initialMessages, onFinish: persist });
+
+  // Persist as soon as a turn STARTS (status flips to "submitted"), not just at
+  // the end — so the thread + the user's message are saved immediately and the
+  // title is generated from that first message, surviving a slow/failed answer.
+  useEffect(() => {
+    if (status === "submitted") persist(messages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
   const filtersActive =
     (filters.source_types?.length ?? 0) + (filters.tags?.length ?? 0);
@@ -258,6 +271,9 @@ function ChatConversation({
                 onFollowup={(q) => send(q, normalizeFilters(filters))}
               />
             ))
+          )}
+          {error && !isStreaming && (
+            <ChatError error={error} onRetry={() => regenerate(normalizeFilters(filters))} />
           )}
           <div ref={bottomRef} />
         </div>
@@ -485,6 +501,39 @@ function normalizeFilters(f: ChatFilters): ChatFilters {
     source_types: f.source_types?.length ? f.source_types : null,
     tags: f.tags?.length ? f.tags : null,
   };
+}
+
+/** Surfaces a failed/interrupted turn (e.g. the agent hit its per-turn step cap
+ * — `chat_max_requests` — searching without settling). Without this the turn
+ * just stops on its tool traces with no answer, which reads as "stuck". */
+function ChatError({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  const msg = error?.message ?? "";
+  const isLimit = /request[_ ]?limit|usage limit|exceeded|step/i.test(msg);
+  return (
+    <div className="rounded-[12px] border border-accent-border bg-accent-subtle/40 px-4 py-3">
+      <div className="flex items-start gap-2.5">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-accent" />
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <p className="text-[13.5px] font-medium text-fg">
+            {isLimit
+              ? "Merlin reached its step limit for this answer."
+              : "This answer was interrupted."}
+          </p>
+          <p className="text-[12.5px] leading-relaxed text-fg-muted">
+            {isLimit
+              ? "It searched several times without settling on an answer — often a sign the library doesn't cover this. Try rephrasing or narrowing with filters (or raise CHAT_MAX_REQUESTS)."
+              : msg || "Something went wrong while generating the response."}
+          </p>
+          <button
+            onClick={onRetry}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[12px] text-fg-muted transition-colors hover:border-border-strong hover:text-fg"
+          >
+            <RotateCw className="size-3.5" /> Retry
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /** Active chat filters as removable chips, shown above the composer. */
