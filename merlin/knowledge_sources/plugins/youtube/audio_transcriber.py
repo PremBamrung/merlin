@@ -207,16 +207,27 @@ class AudioTranscriber:
     @staticmethod
     def _transcribe_chunked(
         audio_file_path: str,
-    ) -> tuple[bool, Optional[List[Dict]], Optional[str]]:
-        """Split an oversized audio file, transcribe each chunk, and stitch."""
+    ) -> tuple[bool, Optional[List[Dict]], Optional[str], Optional[str]]:
+        """Split an oversized audio file, transcribe each chunk, and stitch.
+
+        Returns (success, subtitles, error_msg, language) — language is the
+        Whisper-detected language of the first chunk (the whole video is one
+        language), or None if Whisper didn't report it.
+        """
         chunk_dir = tempfile.mkdtemp(prefix="groq_chunks_")
         try:
             chunk_paths = AudioTranscriber._split_audio(audio_file_path, chunk_dir)
             if not chunk_paths:
-                return False, None, "Failed to split audio for chunked transcription"
+                return (
+                    False,
+                    None,
+                    "Failed to split audio for chunked transcription",
+                    None,
+                )
 
             logger.info(f"Transcribing {len(chunk_paths)} audio chunks")
             all_subtitles: List[Dict] = []
+            language: Optional[str] = None
             offset = 0.0
             for i, chunk_path in enumerate(chunk_paths):
                 ok, result, error_msg = AudioTranscriber._post_audio(chunk_path)
@@ -225,7 +236,10 @@ class AudioTranscriber:
                         False,
                         None,
                         (f"Chunk {i + 1}/{len(chunk_paths)} failed: {error_msg}"),
+                        None,
                     )
+                if language is None:
+                    language = result.get("language")
                 all_subtitles.extend(
                     AudioTranscriber._result_to_subtitles(result, offset)
                 )
@@ -236,41 +250,46 @@ class AudioTranscriber:
                 )
 
             if not all_subtitles:
-                return False, None, "No transcription produced from audio chunks"
+                return False, None, "No transcription produced from audio chunks", None
 
             logger.info(
                 f"Chunked transcription completed with {len(all_subtitles)} segments"
             )
-            return True, all_subtitles, None
+            return True, all_subtitles, None, language
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.decode("utf-8", "replace") if e.stderr else ""
             error_msg = f"ffmpeg failed to split audio: {stderr}"
             logger.error(error_msg)
-            return False, None, error_msg
+            return False, None, error_msg, None
         finally:
             shutil.rmtree(chunk_dir, ignore_errors=True)
 
     @staticmethod
     def transcribe_audio(
         audio_file_path: str,
-    ) -> tuple[bool, Optional[List[Dict]], Optional[str]]:
+    ) -> tuple[bool, Optional[List[Dict]], Optional[str], Optional[str]]:
         """Transcribes audio file using Groq Whisper API with verbose_json format.
 
         Files larger than `settings.groq_max_upload_mb` are split into chunks
         and transcribed separately (Groq rejects oversized uploads with 413).
 
+        Whisper auto-detects the spoken language (no language is forced); the
+        detected language is returned so the caller can summarise accordingly
+        instead of assuming English.
+
         Args:
             audio_file_path (str): Path to the audio file to transcribe.
 
         Returns:
-            tuple[bool, Optional[List[Dict]], Optional[str]]:
-                (success, subtitles_list, error_message)
+            tuple[bool, Optional[List[Dict]], Optional[str], Optional[str]]:
+                (success, subtitles_list, error_message, language)
                 subtitles_list format: [{"start": float, "duration": float, "text": str}]
+                language: Whisper-detected language (raw, e.g. "english"/"fr"), or None.
         """
         if not GROQ_API_KEY:
             error_msg = "GROQ_API_KEY not found in environment variables"
             logger.error(error_msg)
-            return False, None, error_msg
+            return False, None, error_msg, None
 
         logger.info(f"Starting transcription for: {audio_file_path}")
 
@@ -279,7 +298,7 @@ class AudioTranscriber:
         except OSError:
             error_msg = f"Audio file not found: {audio_file_path}"
             logger.error(error_msg)
-            return False, None, error_msg
+            return False, None, error_msg, None
 
         max_bytes = int(settings.groq_max_upload_mb * 1024 * 1024)
         if size_bytes > max_bytes:
@@ -292,34 +311,39 @@ class AudioTranscriber:
         try:
             ok, result, error_msg = AudioTranscriber._post_audio(audio_file_path)
             if not ok:
-                return False, None, error_msg
+                return False, None, error_msg, None
 
             subtitles = AudioTranscriber._result_to_subtitles(result)
             if not subtitles:
                 error_msg = "No text or segments found in transcription response"
                 logger.error(error_msg)
-                return False, None, error_msg
+                return False, None, error_msg, None
 
-            logger.info(f"Transcription completed with {len(subtitles)} segments")
-            return True, subtitles, None
+            language = result.get("language")
+            logger.info(
+                f"Transcription completed with {len(subtitles)} segments "
+                f"(detected language: {language or 'unknown'})"
+            )
+            return True, subtitles, None, language
         except Exception as e:
             error_msg = f"An unexpected error occurred during transcription: {e}"
             logger.error(error_msg)
-            return False, None, error_msg
+            return False, None, error_msg, None
 
     @staticmethod
     def transcribe_video(
         video_url: str,
-    ) -> tuple[bool, Optional[List[Dict]], Optional[str]]:
+    ) -> tuple[bool, Optional[List[Dict]], Optional[str], Optional[str]]:
         """Downloads audio from video URL and transcribes it.
 
         Args:
             video_url (str): The URL of the YouTube video.
 
         Returns:
-            tuple[bool, Optional[List[Dict]], Optional[str]]:
-                (success, subtitles_list, error_message)
+            tuple[bool, Optional[List[Dict]], Optional[str], Optional[str]]:
+                (success, subtitles_list, error_message, language)
                 subtitles_list format: [{"start": float, "duration": float, "text": str}]
+                language: Whisper-detected language (raw, e.g. "english"/"fr"), or None.
         """
         # Create a temporary file for the audio
         temp_dir = tempfile.gettempdir()
@@ -330,17 +354,17 @@ class AudioTranscriber:
         # Download audio
         success, result = AudioTranscriber.download_audio(video_url, temp_file_template)
         if not success:
-            return False, None, result  # result contains error message
+            return False, None, result, None  # result contains error message
 
         audio_file_path = result  # result contains the file path on success
 
         try:
             # Transcribe audio
-            transcribe_success, subtitles, error_msg = (
+            transcribe_success, subtitles, error_msg, language = (
                 AudioTranscriber.transcribe_audio(audio_file_path)
             )
 
-            return transcribe_success, subtitles, error_msg
+            return transcribe_success, subtitles, error_msg, language
 
         finally:
             # Clean up temporary audio file

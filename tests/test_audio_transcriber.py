@@ -44,7 +44,11 @@ def test_transcribe_chunked_stitches_with_running_offset():
     chunk_results = [
         (
             True,
-            {"segments": [{"start": 1.0, "end": 3.0, "text": "a"}], "duration": 60.0},
+            {
+                "segments": [{"start": 1.0, "end": 3.0, "text": "a"}],
+                "duration": 60.0,
+                "language": "french",
+            },
             None,
         ),
         (
@@ -60,9 +64,11 @@ def test_transcribe_chunked_stitches_with_running_offset():
         ),
         patch.object(AudioTranscriber, "_post_audio", side_effect=chunk_results),
     ):
-        ok, subs, err = AudioTranscriber._transcribe_chunked("big.mp3")
+        ok, subs, err, language = AudioTranscriber._transcribe_chunked("big.mp3")
 
     assert ok and err is None
+    # Language is taken from the first chunk.
+    assert language == "french"
     assert subs == [
         {"start": 1.0, "duration": 2.0, "text": "a"},
         {"start": 62.0, "duration": 2.0, "text": "b"},  # 2.0 + 60.0 offset
@@ -84,8 +90,9 @@ def test_transcribe_chunked_propagates_chunk_failure():
         ),
         patch.object(AudioTranscriber, "_post_audio", side_effect=chunk_results),
     ):
-        ok, subs, err = AudioTranscriber._transcribe_chunked("big.mp3")
+        ok, subs, err, language = AudioTranscriber._transcribe_chunked("big.mp3")
 
     assert not ok
     assert subs is None
+    assert language is None
     assert "Chunk 2/2 failed" in err

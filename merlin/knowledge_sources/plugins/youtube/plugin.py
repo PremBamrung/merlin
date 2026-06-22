@@ -65,6 +65,29 @@ LANGUAGE_MAP = {
     "lt": "lithuanian",
 }
 
+# Reverse of LANGUAGE_MAP (full English name → ISO code) for normalising
+# Whisper's detected-language field, which Groq returns as a full name
+# (e.g. "french") rather than a code.
+_LANGUAGE_NAME_TO_CODE = {name: code for code, name in LANGUAGE_MAP.items()}
+
+
+def _normalize_language(value: Optional[str]) -> Optional[str]:
+    """Normalise a Whisper-detected language to a 2-letter ISO code.
+
+    Accepts a full English name ("french"), an ISO code ("fr"/"fr-FR"), or None.
+    Returns a known 2-letter code, or None if it can't be mapped (caller defaults).
+    """
+    if not value:
+        return None
+    v = value.strip().lower()
+    if v in _LANGUAGE_NAME_TO_CODE:
+        return _LANGUAGE_NAME_TO_CODE[v]
+    base = v.split("-")[0].split("_")[0]
+    if base in LANGUAGE_MAP:
+        return base
+    return None
+
+
 _YT_REGEX = re.compile(
     r"(?:youtube\.com/(?:[^/\n\s]+/\S+/|(?:v|e(?:mbed)?)/"
     r"|\S*?[?&]v=)|youtu\.be/)([a-zA-Z0-9_-]{11})"
@@ -154,13 +177,15 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             logger.warning(
                 f"No subtitles for {video_id}, falling back to audio transcription"
             )
-            success, fallback_subtitles, error_msg = AudioTranscriber.transcribe_video(
-                url
+            success, fallback_subtitles, error_msg, audio_language = (
+                AudioTranscriber.transcribe_video(url)
             )
             if not success or not fallback_subtitles:
                 raise ValueError(f"Failed to get subtitles or transcript: {error_msg}")
             subtitles = fallback_subtitles
-            detected_language = "en"
+            # Whisper auto-detects the spoken language — use it instead of
+            # assuming English, so a French video summarises as French.
+            detected_language = _normalize_language(audio_language) or "en"
             raw_text = self._subtitle_extractor.extract_text(subtitles)
 
         request.report(50, "Generating summary…")
