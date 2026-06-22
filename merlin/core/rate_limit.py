@@ -78,13 +78,22 @@ class MinIntervalRateLimiter:
     def trip_cooldown(self) -> float:
         """Enter (or escalate) the cooldown after a rate-limit / IP block.
 
-        Each trip with no successful call in between doubles the duration, up to
-        ``cooldown_max``. Returns the cooldown length applied (seconds); 0 when
-        cooldowns are disabled.
+        A trip that arrives while a cooldown is *still active* is treated as a
+        concurrent straggler from the same block event — the existing cooldown is
+        left untouched and its remaining seconds are returned. A trip that lands
+        *after* the previous cooldown expired (we recovered, retried, got blocked
+        again) escalates the duration by doubling, up to ``cooldown_max``.
+        Returns the seconds the caller should consider paused; 0 when cooldowns
+        are disabled.
         """
         if self._cooldown_base <= 0:
             return 0.0
         with self._lock:
+            now = time.monotonic()
+            remaining = self._cooldown_until - now
+            if remaining > 0:
+                # Still cooling down: same burst, don't escalate or shorten.
+                return remaining
             if self._tripped:
                 self._current_cooldown = min(
                     self._current_cooldown * 2, self._cooldown_max
@@ -92,7 +101,7 @@ class MinIntervalRateLimiter:
             else:
                 self._current_cooldown = self._cooldown_base
                 self._tripped = True
-            self._cooldown_until = time.monotonic() + self._current_cooldown
+            self._cooldown_until = now + self._current_cooldown
             return self._current_cooldown
 
     def clear_cooldown(self) -> None:
