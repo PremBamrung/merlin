@@ -22,6 +22,16 @@ type UiState = {
   setDensity: (d: Density) => void;
   setView: (v: LibraryView) => void;
   cycleDensity: () => void;
+  // Pinned chat threads (persisted) — frontend-only favouriting; pinned ids sort
+  // to a "Pinned" group at the top of the conversation sidebar.
+  pinnedThreads: string[];
+  togglePin: (id: string) => void;
+  // Per-thread composer drafts (session-only, NOT persisted). The chat pane is
+  // keyed by thread id and remounts on switch, which would otherwise drop
+  // typed-but-unsent input; this map carries it across switches.
+  chatDrafts: Record<string, string>;
+  setChatDraft: (id: string, text: string) => void;
+  clearChatDraft: (id: string) => void;
 };
 
 const DENSITY_ORDER: Density[] = ["comfortable", "cozy", "compact"];
@@ -48,10 +58,34 @@ export const useUi = create<UiState>()(
         const i = DENSITY_ORDER.indexOf(get().density);
         set({ density: DENSITY_ORDER[(i + 1) % DENSITY_ORDER.length] });
       },
+
+      pinnedThreads: [],
+      togglePin: (id) =>
+        set((s) => ({
+          pinnedThreads: s.pinnedThreads.includes(id)
+            ? s.pinnedThreads.filter((x) => x !== id)
+            : [...s.pinnedThreads, id],
+        })),
+
+      chatDrafts: {},
+      setChatDraft: (id, text) =>
+        set((s) => ({ chatDrafts: { ...s.chatDrafts, [id]: text } })),
+      clearChatDraft: (id) =>
+        set((s) => {
+          if (!(id in s.chatDrafts)) return s;
+          const next = { ...s.chatDrafts };
+          delete next[id];
+          return { chatDrafts: next };
+        }),
     }),
     {
       name: "merlin-ui",
-      partialize: (s) => ({ density: s.density, view: s.view }),
+      // Drafts are deliberately omitted — they're ephemeral session state.
+      partialize: (s) => ({
+        density: s.density,
+        view: s.view,
+        pinnedThreads: s.pinnedThreads,
+      }),
     },
   ),
 );

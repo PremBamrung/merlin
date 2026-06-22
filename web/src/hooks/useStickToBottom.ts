@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /** Within this many px of the bottom counts as "pinned to the bottom". */
 const THRESHOLD = 80;
@@ -24,6 +24,17 @@ export function useStickToBottom<T>(dep: T) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const prevTop = useRef(0);
+  // A render-visible mirror of `stick`, so callers can show a "jump to latest"
+  // affordance while the user is reading above the fold (`stick` is a ref and
+  // never re-renders on its own).
+  const [pinned, setPinned] = useState(true);
+
+  /** Jump to the bottom and re-engage sticking (used on send / the jump button). */
+  const scrollToBottom = useCallback(() => {
+    stick.current = true;
+    setPinned(true);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, []);
 
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -36,6 +47,7 @@ export function useStickToBottom<T>(dep: T) {
       stick.current = true; // back near the bottom — resume following
     }
     prevTop.current = top;
+    setPinned(stick.current);
   }, []);
 
   useEffect(() => {
@@ -51,5 +63,5 @@ export function useStickToBottom<T>(dep: T) {
     }
   }, [dep]);
 
-  return { scrollRef, bottomRef };
+  return { scrollRef, bottomRef, pinned, scrollToBottom };
 }

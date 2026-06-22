@@ -11,11 +11,13 @@ import {
   Brain,
   Loader2,
   Sparkles,
+  Pencil,
 } from "lucide-react";
 import type { UIMessage } from "ai";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/common/Markdown";
 import { CopyButton } from "@/components/common/CopyButton";
+import { AutoGrowTextarea } from "@/components/common/AutoGrowTextarea";
 import { CitationCard } from "@/components/chat/CitationCard";
 import {
   CITATIONS_PART,
@@ -101,12 +103,15 @@ export function Message({
   isStreaming,
   onRegenerate,
   onFollowup,
+  onEdit,
 }: {
   message: UIMessage;
   isLast: boolean;
   isStreaming: boolean;
   onRegenerate: () => void;
   onFollowup: (q: string) => void;
+  /** Edit a user turn and re-run from there. Omit to disable editing. */
+  onEdit?: (id: string, text: string) => void;
 }) {
   const parts = (message.parts ?? []) as AnyPart[];
   // Stripped of inline `[#id]` markers — used for the copy action.
@@ -124,14 +129,12 @@ export function Message({
 
   if (message.role === "user") {
     return (
-      <div className="flex flex-col items-end gap-1">
-        <div className="max-w-[85%] whitespace-pre-wrap rounded-[14px] rounded-tr-sm bg-surface-2 px-4 py-2.5 text-[14px] text-fg">
-          {textContent}
-        </div>
-        {timeLabel && (
-          <span className="px-1 text-[11px] text-fg-subtle">{timeLabel}</span>
-        )}
-      </div>
+      <UserMessage
+        text={textContent}
+        timeLabel={timeLabel}
+        disabled={isStreaming}
+        onEdit={onEdit ? (text) => onEdit(message.id, text) : undefined}
+      />
     );
   }
 
@@ -181,7 +184,7 @@ export function Message({
           }
           return (
             <div key={seg.key} className="max-w-none">
-              <Markdown>{linkifyCitationMarkers(seg.text, citations)}</Markdown>
+              <Markdown>{linkifyCitationMarkers(seg.text, citations, message.id)}</Markdown>
             </div>
           );
         })}
@@ -197,7 +200,12 @@ export function Message({
           <p className="eyebrow">Sources</p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {citations.map((c, i) => (
-              <CitationCard key={`${c.item_id}-${i}`} citation={c} index={i} />
+              <CitationCard
+                key={`${c.item_id}-${i}`}
+                citation={c}
+                index={i}
+                messageId={message.id}
+              />
             ))}
           </div>
         </div>
@@ -224,6 +232,93 @@ export function Message({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * A user turn: the bubble, its timestamp, and hover actions (copy + edit). Edit
+ * swaps the bubble for an inline textarea; saving re-runs the conversation from
+ * that turn via `onEdit`.
+ */
+function UserMessage({
+  text,
+  timeLabel,
+  disabled,
+  onEdit,
+}: {
+  text: string;
+  timeLabel: string;
+  disabled: boolean;
+  onEdit?: (text: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(text);
+
+  const save = () => {
+    const next = draft.trim();
+    setEditing(false);
+    if (next && next !== text) onEdit?.(next);
+  };
+
+  if (editing) {
+    return (
+      <div className="flex flex-col items-end">
+        <div className="w-full max-w-[85%] rounded-[14px] border border-border-strong bg-surface-2 p-2">
+          <AutoGrowTextarea
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                save();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setEditing(false);
+              }
+            }}
+            className="max-h-60 min-h-[40px] w-full bg-transparent px-2 py-1 text-[14px] text-fg outline-none"
+          />
+          <div className="flex justify-end gap-1.5 px-1 pt-1">
+            <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={save} disabled={!draft.trim()}>
+              Save &amp; submit
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="group flex flex-col items-end gap-1">
+      <div className="max-w-[85%] whitespace-pre-wrap rounded-[14px] rounded-tr-sm bg-surface-2 px-4 py-2.5 text-[14px] text-fg">
+        {text}
+      </div>
+      <div className="flex items-center gap-0.5 px-1">
+        {timeLabel && <span className="text-[11px] text-fg-subtle">{timeLabel}</span>}
+        {onEdit && (
+          <div className="flex items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+            <CopyButton text={text} size="icon-sm" className="size-6 text-fg-subtle" />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="size-6 text-fg-subtle"
+              onClick={() => {
+                setDraft(text);
+                setEditing(true);
+              }}
+              disabled={disabled}
+              aria-label="Edit message"
+            >
+              <Pencil className="size-3.5" />
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

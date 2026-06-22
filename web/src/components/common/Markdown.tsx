@@ -1,23 +1,76 @@
+import { isValidElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Link } from "react-router-dom";
+import { CopyButton } from "@/components/common/CopyButton";
 import { cn } from "@/lib/utils";
 
 // Inline citation chips: `linkifyCitationMarkers` rewrites answer markers into
-// `[n](#cite-<item_id>)`; here we render that sentinel href as a small
-// superscript pill linking to the item (client-side, so deep routes don't 404).
+// `[n](#cite-<messageId>-<item_id>)`; here we render that sentinel href as a
+// small superscript pill that scrolls to (and briefly flashes) the matching
+// Source card rendered below the answer — keeping the reader in the conversation
+// instead of navigating away.
 const CITE_PREFIX = "#cite-";
+
+/** Scroll a Source card into view and replay its highlight animation. */
+function flashCitation(anchorId: string): void {
+  const el = document.getElementById(anchorId);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.remove("cite-flash");
+  void el.offsetWidth; // force reflow so the animation restarts on repeat clicks
+  el.classList.add("cite-flash");
+}
+
+/** Flatten a markdown node's children into plain text (for the copy button). */
+function nodeText(node: ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join("");
+  if (isValidElement(node)) {
+    return nodeText((node.props as { children?: ReactNode }).children);
+  }
+  return "";
+}
+
+/** A fenced code block with a language label and a hover copy button. */
+function CodeBlock({ children }: { children?: ReactNode }) {
+  const codeEl = isValidElement(children) ? children : null;
+  const className =
+    (codeEl?.props as { className?: string } | undefined)?.className ?? "";
+  const lang = /language-(\w+)/.exec(className)?.[1] ?? "";
+  const code = nodeText(children).replace(/\n$/, "");
+
+  return (
+    <div className="group/code relative my-4 overflow-hidden rounded-[10px] border border-border bg-surface">
+      <div className="flex items-center justify-between border-b border-border bg-surface-2/50 px-3 py-1.5">
+        <span className="font-mono text-[11px] uppercase tracking-wide text-fg-subtle">
+          {lang || "code"}
+        </span>
+        <CopyButton
+          text={code}
+          size="icon-sm"
+          className="-my-1 size-7 opacity-0 transition-opacity group-hover/code:opacity-100"
+        />
+      </div>
+      <pre className="overflow-x-auto p-4">{children}</pre>
+    </div>
+  );
+}
 
 const components: Components = {
   a({ href, children, title }) {
     if (href?.startsWith(CITE_PREFIX)) {
       return (
-        <Link
-          to={`/library/${href.slice(CITE_PREFIX.length)}`}
-          className="ml-0.5 inline-block rounded bg-accent-subtle px-1 align-super text-[10px] font-medium leading-none text-accent !no-underline hover:bg-accent-border"
+        <a
+          href={href}
+          onClick={(e) => {
+            e.preventDefault();
+            flashCitation(href.slice(1));
+          }}
+          className="ml-0.5 inline-block cursor-pointer rounded bg-accent-subtle px-1 align-super text-[10px] font-medium leading-none text-accent !no-underline hover:bg-accent-border"
         >
           {children}
-        </Link>
+        </a>
       );
     }
     return (
@@ -25,6 +78,10 @@ const components: Components = {
         {children}
       </a>
     );
+  },
+  // Fenced blocks render through `pre`; inline `code` keeps the default styling.
+  pre({ children }) {
+    return <CodeBlock>{children}</CodeBlock>;
   },
 };
 
@@ -52,8 +109,9 @@ export function Markdown({
         "[&_a]:text-accent [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-accent-hover",
         "[&_blockquote]:border-l-2 [&_blockquote]:border-accent-border [&_blockquote]:pl-4 [&_blockquote]:text-fg-muted [&_blockquote]:italic",
         "[&_code]:rounded [&_code]:bg-surface-2 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[13px]",
-        "[&_pre]:my-4 [&_pre]:overflow-x-auto [&_pre]:rounded-[10px] [&_pre]:border [&_pre]:border-border [&_pre]:bg-surface [&_pre]:p-4",
-        "[&_pre_code]:bg-transparent [&_pre_code]:p-0",
+        // Fenced blocks own their chrome (see `CodeBlock`); only the inner `pre`
+        // needs horizontal scroll + a transparent `code` child.
+        "[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-[13px]",
         "[&_hr]:my-6 [&_hr]:border-border",
         "[&_table]:my-4 [&_table]:w-full [&_th]:border-b [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_td]:border-b [&_td]:border-border [&_td]:px-2 [&_td]:py-1",
         className,

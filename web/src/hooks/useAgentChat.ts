@@ -86,19 +86,33 @@ function citationIndex(markerId: string, citations: Citation[]): number {
   return idx;
 }
 
+/** DOM anchor id for a Source card, unique per message so the same item cited
+ * across turns doesn't collide. Shared by `linkifyCitationMarkers` (the chip
+ * href) and `CitationCard` (the scroll target). */
+export function citeAnchorId(messageId: string, itemId: string): string {
+  return `cite-${messageId}-${itemId}`;
+}
+
 /**
  * Rewrite `[#id]`/`[id]` markers into markdown superscript links
- * (`[n](#cite-<item_id>)`) numbered to match the Sources list, so each claim
- * carries a clickable citation. Markers that don't resolve to a known citation
- * — e.g. while the citations list is still streaming in, or a hallucinated id —
- * are dropped. The `#cite-` href is rendered as a chip by `Markdown`.
+ * (`[n](#cite-<messageId>-<item_id>)`) numbered to match the Sources list, so
+ * each claim carries a clickable citation that scrolls to its Source card.
+ * Markers that don't resolve to a known citation — e.g. while the citations list
+ * is still streaming in, or a hallucinated id — are dropped. The `#cite-` href
+ * is rendered as a chip by `Markdown`.
  */
-export function linkifyCitationMarkers(text: string, citations: Citation[]): string {
+export function linkifyCitationMarkers(
+  text: string,
+  citations: Citation[],
+  messageId: string,
+): string {
   if (!citations.length) return stripCitationMarkers(text);
   return text
     .replace(MARKER_CAPTURE_RE, (_full, id: string) => {
       const idx = citationIndex(id, citations);
-      return idx >= 0 ? `[${idx + 1}](#cite-${citations[idx].item_id})` : "";
+      return idx >= 0
+        ? `[${idx + 1}](#${citeAnchorId(messageId, citations[idx].item_id)})`
+        : "";
     })
     .replace(PARTIAL_MARKER_RE, "")
     .replace(/ +([.,;:!?])/g, "$1")
@@ -272,6 +286,28 @@ export function useAgentChat(opts?: UseAgentChatOptions) {
     [regenerate, isStreaming],
   );
 
+  /**
+   * Edit a prior user turn and re-run from there: drop that message and every
+   * turn after it, then send the new text — so the assistant answers the edited
+   * question with no stale follow-ups left dangling. No-op while streaming or if
+   * the id isn't a current message.
+   */
+  const editAndResend = useCallback(
+    (messageId: string, text: string, filters?: ChatFilters) => {
+      const q = text.trim();
+      if (!q || isStreaming) return;
+      const idx = chat.messages.findIndex((m) => m.id === messageId);
+      if (idx < 0) return;
+      // setMessages and sendMessage both act on the same Chat instance, so the
+      // truncation is in place before the new turn is appended.
+      setMessages(chat.messages.slice(0, idx));
+      turnStartRef.current = Date.now();
+      workMsRef.current = null;
+      void sendMessage({ text: q }, { body: { filters: filters ?? null } });
+    },
+    [chat, setMessages, sendMessage, isStreaming],
+  );
+
   const reset = useCallback(() => {
     chat.stop();
     setMessages([]);
@@ -284,6 +320,7 @@ export function useAgentChat(opts?: UseAgentChatOptions) {
     error: chat.error,
     send,
     regenerate: regenerateWith,
+    editAndResend,
     stop: chat.stop,
     reset,
   };

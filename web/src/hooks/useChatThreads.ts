@@ -57,7 +57,7 @@ const renameChatThread = (id: string, title: string) =>
     { title },
   );
 
-const deleteChatThread = (id: string) =>
+export const deleteChatThread = (id: string) =>
   client.delete<void>(`/api/chat/threads/${id}`);
 
 // --- hooks ------------------------------------------------------------------ //

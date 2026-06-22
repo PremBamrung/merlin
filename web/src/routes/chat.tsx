@@ -5,6 +5,7 @@ import type { UIMessage } from "ai";
 import {
   Sparkles,
   ArrowUp,
+  ArrowDown,
   Square,
   SlidersHorizontal,
   MessageSquare,
@@ -19,14 +20,17 @@ import {
   AlertTriangle,
   RotateCw,
   Search,
+  Pin,
+  PinOff,
+  Download,
 } from "lucide-react";
-import { useAgentChat, type ChatFilters } from "@/hooks/useAgentChat";
+import { useAgentChat, stripCitationMarkers, type ChatFilters } from "@/hooks/useAgentChat";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import {
   saveChatThread,
+  deleteChatThread,
   useChatThread,
   useChatThreads,
-  useDeleteThread,
   useRenameThread,
   type ChatThreadSummary,
 } from "@/hooks/useChatThreads";
@@ -47,6 +51,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Message } from "@/components/chat/Message";
+import { AutoGrowTextarea } from "@/components/common/AutoGrowTextarea";
+import { toast } from "@/components/ui/toaster";
 import { keys } from "@/lib/queryKeys";
 import { relDate } from "@/lib/format";
 import { cn, randomId } from "@/lib/utils";
@@ -87,14 +93,21 @@ export default function ChatRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const openThread = (id: string) => {
-    setParams({ thread: id });
-    setSidebarOpen(false);
-  };
-  const newChat = () => {
+  const openThread = useCallback(
+    (id: string) => {
+      setParams({ thread: id });
+      setSidebarOpen(false);
+    },
+    [setParams],
+  );
+  const newChat = useCallback(() => {
     setParams({ thread: randomId() });
     setSidebarOpen(false);
-  };
+  }, [setParams]);
+
+  // The sidebar list also powers next/prev-thread shortcuts (shared query cache).
+  const { data: threadList } = useChatThreads();
+  useChatShortcuts({ threads: threadList, activeId, onNew: newChat, onSelect: openThread });
 
   return (
     <div className="flex h-full min-h-0">
@@ -112,6 +125,51 @@ export default function ChatRoute() {
       />
     </div>
   );
+}
+
+/**
+ * Chat-route keyboard shortcuts. Modifier-gated (⌘/Ctrl+Shift) so they coexist
+ * with the global g-prefix nav (which early-returns on modifiers) and still fire
+ * while the composer is focused:
+ *   ⌘/Ctrl+Shift+O      → new chat
+ *   ⌘/Ctrl+Shift+↑ / ↓  → previous / next thread
+ */
+function useChatShortcuts({
+  threads,
+  activeId,
+  onNew,
+  onSelect,
+}: {
+  threads: ChatThreadSummary[] | undefined;
+  activeId: string;
+  onNew: () => void;
+  onSelect: (id: string) => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey) return;
+      if (e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        onNew();
+        return;
+      }
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        if (!threads || threads.length === 0) return;
+        e.preventDefault();
+        const idx = threads.findIndex((t) => t.id === activeId);
+        // From an unsaved/new thread (not in the list) either arrow lands on the
+        // newest thread; otherwise step within bounds.
+        const next =
+          idx < 0
+            ? 0
+            : Math.min(threads.length - 1, Math.max(0, idx + (e.key === "ArrowUp" ? -1 : 1)));
+        const target = threads[next];
+        if (target && target.id !== activeId) onSelect(target.id);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [threads, activeId, onNew, onSelect]);
 }
 
 /** Fetch the thread's stored messages, then mount the conversation seeded with
@@ -157,10 +215,21 @@ function ChatConversation({
   const qc = useQueryClient();
   const openAdd = useUi((s) => s.openAdd);
   const setNavOpen = useUi((s) => s.setNavOpen);
+  const setChatDraft = useUi((s) => s.setChatDraft);
+  const clearChatDraft = useUi((s) => s.clearChatDraft);
   const [params, setParams] = useSearchParams();
-  const [input, setInput] = useState("");
+  // Seed the composer from any saved draft for this thread (the pane remounts on
+  // thread switch, so local state alone would drop unsent input). Read once at
+  // mount via getState to avoid subscribing the whole pane to the draft map.
+  const [input, setInput] = useState(() => useUi.getState().chatDrafts[threadId] ?? "");
   const [filters, setFilters] = useState<ChatFilters>({});
   const sentPrefill = useRef(false);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+
+  const onInputChange = (value: string) => {
+    setInput(value);
+    setChatDraft(threadId, value);
+  };
 
   // Client-driven persistence — best-effort; a failed write must never disrupt
   // the chat. Save the current message list, then refresh the sidebar (which
@@ -175,12 +244,45 @@ function ChatConversation({
     [threadId, qc],
   );
 
-  const { messages, status, isStreaming, error, send, regenerate, stop } =
+  const { messages, status, isStreaming, error, send, regenerate, editAndResend, stop } =
     useAgentChat({ id: threadId, initialMessages, onFinish: persist });
 
   // Follow the stream to the bottom only while the user is already pinned there,
-  // so scrolling up to re-read isn't interrupted by incoming tokens.
-  const { scrollRef, bottomRef } = useStickToBottom(messages);
+  // so scrolling up to re-read isn't interrupted by incoming tokens. `pinned`
+  // drives the jump-to-latest button; `scrollToBottom` re-engages it.
+  const { scrollRef, bottomRef, pinned, scrollToBottom } = useStickToBottom(messages);
+
+  // Send + always snap to the latest turn (a send is an explicit "go to bottom"
+  // intent even if the user had scrolled up). Clears the saved draft.
+  const runSend = useCallback(
+    (q: string) => {
+      send(q, normalizeFilters(filters));
+      clearChatDraft(threadId);
+      scrollToBottom();
+    },
+    [send, filters, clearChatDraft, threadId, scrollToBottom],
+  );
+
+  // Auto-focus the composer when the pane mounts (new chat / thread open).
+  useEffect(() => {
+    composerRef.current?.focus();
+  }, []);
+
+  // Shift+Esc focuses the composer from anywhere; bare Esc stops a live stream.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (e.shiftKey) {
+        e.preventDefault();
+        composerRef.current?.focus();
+      } else if (isStreaming) {
+        e.preventDefault();
+        stop();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isStreaming, stop]);
 
   // Persist as soon as a turn STARTS (status flips to "submitted"), not just at
   // the end — so the thread + the user's message are saved immediately and the
@@ -199,7 +301,7 @@ function ChatConversation({
     const q = params.get("q");
     if (q && !sentPrefill.current && messages.length === 0) {
       sentPrefill.current = true;
-      send(q, normalizeFilters(filters));
+      runSend(q);
       const next = new URLSearchParams(params);
       next.delete("q");
       setParams(next, { replace: true });
@@ -210,8 +312,9 @@ function ChatConversation({
   const submit = () => {
     const q = input.trim();
     if (!q || isStreaming) return;
-    send(q, normalizeFilters(filters));
+    runSend(q);
     setInput("");
+    composerRef.current?.focus();
   };
 
   const isIdle = messages.length === 0;
@@ -246,6 +349,20 @@ function ChatConversation({
         </div>
         <div className="flex items-center gap-2 md:ml-auto">
           <FilterBar filters={filters} setFilters={setFilters} active={filtersActive} />
+          {!isIdle && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" size="icon-sm" aria-label="Conversation actions">
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => exportConversation(messages)}>
+                  <Download className="size-3.5" /> Export as Markdown
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           {/* Add-source lives in the global topbar, which is hidden on mobile for
               this route — surface it here so it stays reachable. */}
           <Button
@@ -268,7 +385,7 @@ function ChatConversation({
           )}
         >
           {isIdle ? (
-            <IdleState onPick={(q) => send(q, normalizeFilters(filters))} />
+            <IdleState onPick={runSend} />
           ) : (
             messages.map((m, i) => (
               <Message
@@ -276,8 +393,16 @@ function ChatConversation({
                 message={m}
                 isLast={i === messages.length - 1}
                 isStreaming={isStreaming}
-                onRegenerate={() => regenerate(normalizeFilters(filters))}
-                onFollowup={(q) => send(q, normalizeFilters(filters))}
+                onRegenerate={() => {
+                  regenerate(normalizeFilters(filters));
+                  scrollToBottom();
+                }}
+                onFollowup={runSend}
+                onEdit={(id, text) => {
+                  editAndResend(id, text, normalizeFilters(filters));
+                  clearChatDraft(threadId);
+                  scrollToBottom();
+                }}
               />
             ))
           )}
@@ -289,14 +414,25 @@ function ChatConversation({
       </div>
 
       {/* Composer */}
-      <div className="border-t border-border px-4 py-3 sm:px-6 sm:py-4">
+      <div className="relative border-t border-border px-4 py-3 sm:px-6 sm:py-4">
+        {/* Jump-to-latest — only while reading above the fold mid-conversation. */}
+        {!pinned && !isIdle && (
+          <button
+            onClick={scrollToBottom}
+            aria-label="Jump to latest"
+            className="absolute -top-5 left-1/2 z-10 flex size-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-surface-2 text-fg-muted shadow-lg shadow-black/30 transition-colors hover:text-fg"
+          >
+            <ArrowDown className="size-4" />
+          </button>
+        )}
         {filtersActive > 0 && (
           <ActiveFilterChips filters={filters} setFilters={setFilters} />
         )}
         <div className="flex w-full items-end gap-2">
-          <textarea
+          <AutoGrowTextarea
+            ref={composerRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => onInputChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -305,7 +441,7 @@ function ChatConversation({
             }}
             rows={1}
             placeholder="Ask your library…"
-            className="max-h-40 min-h-[44px] flex-1 resize-none rounded-[12px] border border-border bg-surface px-4 py-3 text-[16px] text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-border-strong sm:text-[14px]"
+            className="max-h-40 min-h-[44px] flex-1 rounded-[12px] border border-border bg-surface px-4 py-3 text-[16px] text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-border-strong sm:text-[14px]"
           />
           {isStreaming ? (
             <Button onClick={stop} variant="secondary" size="icon" className="size-11 rounded-[12px]">
@@ -398,8 +534,48 @@ function ThreadList({
   onNew: () => void;
 }) {
   const { data: threads, isLoading } = useChatThreads();
+  const qc = useQueryClient();
+  const pinnedThreads = useUi((s) => s.pinnedThreads);
+  const togglePin = useUi((s) => s.togglePin);
+  const pinnedSet = useMemo(() => new Set(pinnedThreads), [pinnedThreads]);
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
+
+  // Optimistic delete with an undo window: drop the row immediately, defer the
+  // real DELETE, and let Undo cancel it (the thread was never actually removed,
+  // so undo just re-fetches). No backend "restore" needed. Timers outlive an
+  // unmount on purpose, so the delete still fires if the user navigates away.
+  const pendingDeletes = useRef<Map<string, number>>(new Map());
+  const deleteThread = useCallback(
+    (id: string) => {
+      qc.setQueryData<ChatThreadSummary[]>(keys.chatThreads(), (cur) =>
+        (cur ?? []).filter((t) => t.id !== id),
+      );
+      if (id === activeId) onNew();
+      const timer = window.setTimeout(() => {
+        pendingDeletes.current.delete(id);
+        deleteChatThread(id)
+          .catch(() => {})
+          .finally(() => qc.invalidateQueries({ queryKey: keys.chatThreads() }));
+      }, 4500);
+      pendingDeletes.current.set(id, timer);
+      toast("Conversation deleted", {
+        duration: 4000,
+        action: {
+          label: "Undo",
+          onClick: () => {
+            const t = pendingDeletes.current.get(id);
+            if (t) {
+              window.clearTimeout(t);
+              pendingDeletes.current.delete(id);
+            }
+            qc.invalidateQueries({ queryKey: keys.chatThreads() });
+          },
+        },
+      });
+    },
+    [qc, activeId, onNew],
+  );
 
   // Client-side filter over title + first-message preview (the only text the
   // list endpoint returns; deep message content isn't searched).
@@ -413,24 +589,32 @@ function ThreadList({
     );
   }, [threads, q]);
 
-  // Grouped by date bucket — but a search shows a flat result list instead.
+  // Grouped by date bucket, with pinned threads lifted into a "Pinned" group at
+  // the top — but a search shows a flat result list instead.
   const groups = useMemo(() => {
     if (q) return [];
+    const out: (readonly [string, ChatThreadSummary[]])[] = [];
+    const pinned = filtered.filter((t) => pinnedSet.has(t.id));
+    if (pinned.length) out.push(["Pinned", pinned] as const);
     const map = new Map<string, ChatThreadSummary[]>();
     for (const t of filtered) {
+      if (pinnedSet.has(t.id)) continue;
       const b = bucketOf(t.updated_at);
       (map.get(b) ?? map.set(b, []).get(b)!).push(t);
     }
-    return BUCKETS.filter((b) => map.has(b)).map((b) => [b, map.get(b)!] as const);
-  }, [filtered, q]);
+    for (const b of BUCKETS) if (map.has(b)) out.push([b, map.get(b)!] as const);
+    return out;
+  }, [filtered, q, pinnedSet]);
 
   const row = (t: ChatThreadSummary) => (
     <ThreadRow
       key={t.id}
       thread={t}
       active={t.id === activeId}
+      pinned={pinnedSet.has(t.id)}
       onSelect={() => onSelect(t.id)}
-      onDeleted={onNew}
+      onPin={() => togglePin(t.id)}
+      onDelete={() => deleteThread(t.id)}
     />
   );
 
@@ -484,16 +668,19 @@ function ThreadList({
 function ThreadRow({
   thread,
   active,
+  pinned,
   onSelect,
-  onDeleted,
+  onPin,
+  onDelete,
 }: {
   thread: ChatThreadSummary;
   active: boolean;
+  pinned: boolean;
   onSelect: () => void;
-  onDeleted: () => void;
+  onPin: () => void;
+  onDelete: () => void;
 }) {
   const rename = useRenameThread();
-  const del = useDeleteThread();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
 
@@ -535,12 +722,16 @@ function ThreadRow({
     >
       <button
         onClick={onSelect}
-        className="flex min-w-0 flex-1 items-baseline gap-2 py-2 text-left"
+        className="flex min-w-0 flex-1 items-center gap-1.5 py-2 text-left"
         title={label}
       >
+        {pinned && <Pin className="size-3 shrink-0 text-fg-subtle" />}
         <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{label}</span>
         <span className="shrink-0 text-[11px] text-fg-subtle">
           {relDate(thread.updated_at)}
+          {thread.message_count > 0 && (
+            <span className="tabular-nums"> · {thread.message_count}</span>
+          )}
         </span>
       </button>
       <DropdownMenu>
@@ -554,6 +745,10 @@ function ThreadRow({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={onPin}>
+            {pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+            {pinned ? "Unpin" : "Pin"}
+          </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => {
               setDraft(thread.title || "");
@@ -563,9 +758,7 @@ function ThreadRow({
             <Pencil className="size-3.5" /> Rename
           </DropdownMenuItem>
           <DropdownMenuItem
-            onSelect={() =>
-              del.mutate(thread.id, { onSuccess: () => active && onDeleted() })
-            }
+            onSelect={onDelete}
             className="text-accent focus:text-accent"
           >
             <Trash2 className="size-3.5" /> Delete
@@ -581,6 +774,40 @@ function normalizeFilters(f: ChatFilters): ChatFilters {
     source_types: f.source_types?.length ? f.source_types : null,
     tags: f.tags?.length ? f.tags : null,
   };
+}
+
+/** Render the conversation as plain markdown (`**You:** … / **Merlin:** …`),
+ * citation markers stripped, turns separated by rules. */
+function conversationToMarkdown(messages: UIMessage[]): string {
+  return messages
+    .map((m) => {
+      const text = stripCitationMarkers(
+        (m.parts ?? [])
+          .filter((p) => (p as { type: string }).type === "text")
+          .map((p) => (p as { text?: string }).text ?? "")
+          .join(""),
+      ).trim();
+      if (!text) return "";
+      return `**${m.role === "user" ? "You" : "Merlin"}:**\n\n${text}`;
+    })
+    .filter(Boolean)
+    .join("\n\n---\n\n");
+}
+
+/** Download the conversation as a `.md` file. */
+function exportConversation(messages: UIMessage[]): void {
+  const md = conversationToMarkdown(messages);
+  if (!md) return;
+  const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `merlin-chat-${new Date().toISOString().slice(0, 10)}.md`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast("Conversation exported");
 }
 
 /** Surfaces a failed/interrupted turn (e.g. the agent hit its per-turn step cap

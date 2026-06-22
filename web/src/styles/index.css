@@ -118,3 +118,18 @@
     transform: translateX(100%);
   }
 }
+
+/* Highlight pulse for a Source card when its inline citation chip is clicked */
+@keyframes cite-flash {
+  0% {
+    box-shadow: 0 0 0 0 var(--color-accent-ring);
+    border-color: var(--color-accent);
+  }
+  100% {
+    box-shadow: 0 0 0 6px transparent;
+    border-color: var(--color-border);
+  }
+}
+.cite-flash {
+  animation: cite-flash 1.3s ease-out;
+}
