@@ -18,6 +18,7 @@ import {
   Check,
   AlertTriangle,
   RotateCw,
+  Search,
 } from "lucide-react";
 import { useAgentChat, type ChatFilters } from "@/hooks/useAgentChat";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
@@ -44,8 +45,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { Message } from "@/components/chat/Message";
 import { keys } from "@/lib/queryKeys";
+import { relDate } from "@/lib/format";
 import { cn, randomId } from "@/lib/utils";
 
 const STARTERS = [
@@ -367,6 +370,24 @@ function ThreadSidebar({
   );
 }
 
+// Sidebar date buckets, in display order. Threads arrive newest-first (the API
+// orders by updated_at desc), so iterating in order keeps each bucket sorted.
+const BUCKETS = ["Today", "Yesterday", "Previous 7 Days", "Older"] as const;
+
+function bucketOf(iso: string | null): (typeof BUCKETS)[number] {
+  if (!iso) return "Older";
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return "Older";
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const days = Math.round(
+    (startOfDay(new Date()).getTime() - startOfDay(dt).getTime()) / 86_400_000,
+  );
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return "Previous 7 Days";
+  return "Older";
+}
+
 function ThreadList({
   activeId,
   onSelect,
@@ -377,12 +398,59 @@ function ThreadList({
   onNew: () => void;
 }) {
   const { data: threads, isLoading } = useChatThreads();
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+
+  // Client-side filter over title + first-message preview (the only text the
+  // list endpoint returns; deep message content isn't searched).
+  const filtered = useMemo(() => {
+    if (!threads) return [];
+    if (!q) return threads;
+    return threads.filter(
+      (t) =>
+        (t.title ?? "").toLowerCase().includes(q) ||
+        (t.preview ?? "").toLowerCase().includes(q),
+    );
+  }, [threads, q]);
+
+  // Grouped by date bucket — but a search shows a flat result list instead.
+  const groups = useMemo(() => {
+    if (q) return [];
+    const map = new Map<string, ChatThreadSummary[]>();
+    for (const t of filtered) {
+      const b = bucketOf(t.updated_at);
+      (map.get(b) ?? map.set(b, []).get(b)!).push(t);
+    }
+    return BUCKETS.filter((b) => map.has(b)).map((b) => [b, map.get(b)!] as const);
+  }, [filtered, q]);
+
+  const row = (t: ChatThreadSummary) => (
+    <ThreadRow
+      key={t.id}
+      thread={t}
+      active={t.id === activeId}
+      onSelect={() => onSelect(t.id)}
+      onDeleted={onNew}
+    />
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Button variant="secondary" size="sm" className="mb-3 w-full justify-start" onClick={onNew}>
+      <Button variant="secondary" size="sm" className="mb-2 w-full justify-start" onClick={onNew}>
         <Plus className="size-3.5" /> New chat
       </Button>
+
+      <div className="relative mb-2">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-subtle" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search conversations…"
+          className="h-8 pl-8 text-[13px]"
+          aria-label="Search conversations"
+        />
+      </div>
+
       <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
         {isLoading ? (
           <div className="space-y-2 px-1 py-2">
@@ -390,20 +458,23 @@ function ThreadList({
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
           </div>
-        ) : threads && threads.length > 0 ? (
-          threads.map((t) => (
-            <ThreadRow
-              key={t.id}
-              thread={t}
-              active={t.id === activeId}
-              onSelect={() => onSelect(t.id)}
-              onDeleted={onNew}
-            />
-          ))
-        ) : (
+        ) : !threads || threads.length === 0 ? (
           <p className="px-2 py-6 text-center text-[12.5px] text-fg-subtle">
             No saved conversations yet.
           </p>
+        ) : filtered.length === 0 ? (
+          <p className="px-2 py-6 text-center text-[12.5px] text-fg-subtle">
+            No conversations match “{query.trim()}”.
+          </p>
+        ) : q ? (
+          filtered.map(row)
+        ) : (
+          groups.map(([label, items]) => (
+            <div key={label} className="pb-1">
+              <p className="eyebrow px-2.5 pb-1 pt-2 text-fg-subtle">{label}</p>
+              {items.map(row)}
+            </div>
+          ))
         )}
       </div>
     </div>
@@ -464,10 +535,13 @@ function ThreadRow({
     >
       <button
         onClick={onSelect}
-        className="min-w-0 flex-1 truncate py-2 text-left text-[13px] text-fg"
+        className="flex min-w-0 flex-1 items-baseline gap-2 py-2 text-left"
         title={label}
       >
-        {label}
+        <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{label}</span>
+        <span className="shrink-0 text-[11px] text-fg-subtle">
+          {relDate(thread.updated_at)}
+        </span>
       </button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
