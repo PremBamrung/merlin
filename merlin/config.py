@@ -73,7 +73,13 @@ class Settings(BaseSettings):
     # YouTube subtitle fetching — minimum seconds between requests to
     # YouTube's transcript endpoint (across all ingest workers), to avoid
     # being temporarily IP-banned (HTTP 429) during bulk ingestion.
-    youtube_subtitle_min_interval: float = 2.0
+    youtube_subtitle_min_interval: float = 10.0
+    # When YouTube blocks the transcript endpoint (HTTP 429 / IP block), pause
+    # all subtitle fetching for this long so the IP can recover; ingestion falls
+    # back to audio transcription meanwhile. Repeated blocks (with no successful
+    # fetch in between) escalate the pause by doubling, up to the _max cap.
+    youtube_subtitle_cooldown: float = 1800.0  # 30 minutes
+    youtube_subtitle_cooldown_max: float = 7200.0  # 2 hour escalation cap
 
     @cached_property
     def llm(self):

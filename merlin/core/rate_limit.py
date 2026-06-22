@@ -19,13 +19,31 @@ class MinIntervalRateLimiter:
 
     Thread-safe: callers block in ``wait()`` until at least ``min_interval``
     seconds have elapsed since the previous call returned from ``wait()``.
+
+    The limiter also exposes a process-wide *cooldown* circuit breaker. When the
+    upstream signals a hard rate-limit / IP block, callers trip the cooldown via
+    ``trip_cooldown()``; while ``in_cooldown()`` is true they should skip the
+    request entirely (rather than keep hammering and prolonging the ban). A
+    clean call clears it via ``clear_cooldown()``. Repeated trips with no
+    intervening success escalate the cooldown by doubling, up to ``cooldown_max``.
     """
 
-    def __init__(self, min_interval: float, name: str = "rate-limiter"):
+    def __init__(
+        self,
+        min_interval: float,
+        name: str = "rate-limiter",
+        cooldown_seconds: float = 0.0,
+        cooldown_max: float = 0.0,
+    ):
         self.min_interval = max(0.0, float(min_interval))
         self.name = name
+        self._cooldown_base = max(0.0, float(cooldown_seconds))
+        self._cooldown_max = max(self._cooldown_base, float(cooldown_max))
         self._lock = threading.Lock()
         self._last_call: float = 0.0
+        self._cooldown_until: float = 0.0
+        self._current_cooldown: float = self._cooldown_base
+        self._tripped: bool = False
 
     def wait(self) -> None:
         """Block until the configured interval since the last call has passed."""
@@ -42,3 +60,46 @@ class MinIntervalRateLimiter:
                 )
                 time.sleep(sleep_for)
             self._last_call = time.monotonic()
+
+    def in_cooldown(self) -> bool:
+        """True if a rate-limit cooldown is currently active."""
+        if self._cooldown_base <= 0:
+            return False
+        with self._lock:
+            return time.monotonic() < self._cooldown_until
+
+    def cooldown_remaining(self) -> float:
+        """Seconds left in the active cooldown (0 if none)."""
+        if self._cooldown_base <= 0:
+            return 0.0
+        with self._lock:
+            return max(0.0, self._cooldown_until - time.monotonic())
+
+    def trip_cooldown(self) -> float:
+        """Enter (or escalate) the cooldown after a rate-limit / IP block.
+
+        Each trip with no successful call in between doubles the duration, up to
+        ``cooldown_max``. Returns the cooldown length applied (seconds); 0 when
+        cooldowns are disabled.
+        """
+        if self._cooldown_base <= 0:
+            return 0.0
+        with self._lock:
+            if self._tripped:
+                self._current_cooldown = min(
+                    self._current_cooldown * 2, self._cooldown_max
+                )
+            else:
+                self._current_cooldown = self._cooldown_base
+                self._tripped = True
+            self._cooldown_until = time.monotonic() + self._current_cooldown
+            return self._current_cooldown
+
+    def clear_cooldown(self) -> None:
+        """Reset the cooldown and escalation after a successful call."""
+        if self._cooldown_base <= 0:
+            return
+        with self._lock:
+            self._cooldown_until = 0.0
+            self._current_cooldown = self._cooldown_base
+            self._tripped = False
