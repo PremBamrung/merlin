@@ -12,12 +12,22 @@ from merlin.knowledge_sources.plugins.youtube.extractors import SubtitleExtracto
 
 
 class _FakeTranscript:
-    def __init__(self, language_code, is_generated):
+    def __init__(self, language_code, is_generated, fetch_error=None):
         self.language_code = language_code
         self.is_generated = is_generated
+        self._fetch_error = fetch_error
+        self.translate_called = False
 
     def fetch(self):
+        if self._fetch_error is not None:
+            raise self._fetch_error
         return [{"start": 0.0, "duration": 1.0, "text": f"text-{self.language_code}"}]
+
+    def translate(self, target):
+        # We never translate via YouTube — flag it so the test can assert it
+        # was not called.
+        self.translate_called = True
+        raise AssertionError("translate() must not be called")
 
 
 class _FakeTranscriptList:
@@ -52,6 +62,13 @@ class _FakeTranscriptList:
 
 
 def _extract(transcripts, languages):
+    from merlin.knowledge_sources.plugins.youtube.extractors import (
+        _subtitle_rate_limiter,
+    )
+
+    # The rate limiter is a module-level singleton; clear any cooldown a prior
+    # test may have tripped so cases run in isolation.
+    _subtitle_rate_limiter.clear_cooldown()
     fake_api = type(
         "Api", (), {"list": lambda self, vid: _FakeTranscriptList(transcripts)}
     )()
@@ -92,3 +109,23 @@ def test_falls_back_to_first_available_when_no_generated():
     ]
     result = _extract(transcripts, ["en", "fr"])
     assert result["language_code"] == "fr"
+
+
+def test_ip_block_on_fetch_returns_none_and_never_translates():
+    # The chosen transcript's fetch() hits a YouTube IP block. We must NOT try
+    # to translate (which would only pile more requests on the blocked IP) —
+    # extract_subtitles returns None (→ caller falls back to audio) and the
+    # cooldown is tripped so subsequent ingests skip subtitles.
+    from merlin.knowledge_sources.plugins.youtube.extractors import (
+        _subtitle_rate_limiter,
+    )
+
+    ip_block = Exception("YouTube is blocking requests from your IP (RequestBlocked)")
+    blocked = _FakeTranscript("fr", is_generated=True, fetch_error=ip_block)
+
+    result = _extract([blocked], ["en", "fr"])
+
+    assert result is None
+    assert blocked.translate_called is False
+    assert _subtitle_rate_limiter.in_cooldown()
+    _subtitle_rate_limiter.clear_cooldown()

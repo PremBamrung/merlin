@@ -242,111 +242,22 @@ class SubtitleExtractor:
                 logger.error("No subtitles found (neither manual nor auto-generated)")
                 return None
 
-            # For auto-generated transcripts, try to fetch directly in whatever language they're in
-            # Only translate if direct fetch fails (some auto-generated transcripts require translation)
-            if transcript.is_generated:
-                transcript_lang = transcript.language_code
-                # Ensure we have the detected language (should already be set above)
-                if detected_language is None:
-                    detected_language = transcript_lang
-                logger.info(
-                    f"Found auto-generated transcript in language: {transcript_lang}"
-                )
-
-                # Always try direct fetch first, regardless of language
-                try:
-                    _subtitle_rate_limiter.wait()
-                    result = transcript.fetch()
-                    logger.info(
-                        f"Successfully fetched auto-generated transcript in {transcript_lang}"
-                    )
-                except Exception as fetch_error:
-                    # If direct fetch fails, try translation (some auto-generated transcripts must be translated)
-                    logger.info(
-                        f"Direct fetch failed for {transcript_lang}, attempting translation"
-                    )
-                    target_lang = (
-                        "en"
-                        if "en" in languages
-                        else (languages[0] if languages else "en")
-                    )
-
-                    try:
-                        _subtitle_rate_limiter.wait()
-                        translated_transcript = transcript.translate(target_lang)
-                        result = translated_transcript.fetch()
-                        logger.info(
-                            f"Successfully fetched translated transcript in {target_lang}"
-                        )
-                        # Note: We keep the original detected_language, not the translation target
-                    except Exception as translate_error:
-                        error_msg = str(translate_error).lower()
-                        # If rate limited or translation fails, try English as fallback
-                        if target_lang != "en":
-                            try:
-                                logger.info("Trying translation to English as fallback")
-                                _subtitle_rate_limiter.wait()
-                                translated_transcript = transcript.translate("en")
-                                result = translated_transcript.fetch()
-                                logger.info(
-                                    "Successfully fetched transcript translated to English"
-                                )
-                                # Note: We keep the original detected_language, not "en"
-                            except Exception as en_error:
-                                # If all translation attempts fail, try other available auto-generated transcripts
-                                if (
-                                    "429" in error_msg
-                                    or "too many requests" in error_msg
-                                ):
-                                    logger.warning(
-                                        "Rate limited, trying alternative auto-generated transcripts"
-                                    )
-                                    try:
-                                        for alt_transcript in transcript_list:
-                                            if (
-                                                alt_transcript.is_generated
-                                                and alt_transcript.language_code
-                                                != transcript_lang
-                                            ):
-                                                try:
-                                                    _subtitle_rate_limiter.wait()
-                                                    result = alt_transcript.fetch()
-                                                    detected_language = (
-                                                        alt_transcript.language_code
-                                                    )
-                                                    logger.info(
-                                                        f"Successfully fetched alternative transcript in {alt_transcript.language_code}"
-                                                    )
-                                                    break
-                                                except:
-                                                    continue
-                                        else:
-                                            logger.error(
-                                                f"All attempts failed. Last error: {str(en_error)}"
-                                            )
-                                            raise fetch_error
-                                    except Exception as alt_error:
-                                        logger.error(
-                                            f"Failed to find alternative transcript: {str(alt_error)}"
-                                        )
-                                        raise fetch_error
-                                else:
-                                    logger.error(
-                                        f"All translation attempts failed. Last error: {str(en_error)}"
-                                    )
-                                    raise fetch_error
-                        else:
-                            logger.error(f"Translation failed: {str(translate_error)}")
-                            raise fetch_error
-            else:
-                # Manual transcript - fetch directly
-                if detected_language is None:
-                    detected_language = transcript.language_code
-                _subtitle_rate_limiter.wait()
-                result = transcript.fetch()
-                logger.info(
-                    f"Successfully fetched manual transcript in language: {detected_language}"
-                )
+            # Fetch the chosen transcript in its original language. We never ask
+            # YouTube to translate: the summariser reads the original-language
+            # text and writes the summary in the user's language, so a translate
+            # request adds nothing — and on an IP block it can't succeed anyway,
+            # it just piles more requests onto an already-blocked IP. Any fetch
+            # failure therefore propagates to the outer handler, which trips the
+            # IP-block cooldown and lets the caller fall back to audio.
+            if detected_language is None:
+                detected_language = transcript.language_code
+            _subtitle_rate_limiter.wait()
+            result = transcript.fetch()
+            kind = "auto-generated" if transcript.is_generated else "manual"
+            logger.info(
+                f"Successfully fetched {kind} transcript in language: "
+                f"{transcript.language_code}"
+            )
 
             # Convert FetchedTranscriptSnippet objects to dictionaries
             if result and hasattr(result[0], "start"):
