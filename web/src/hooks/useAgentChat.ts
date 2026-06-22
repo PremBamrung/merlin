@@ -39,6 +39,16 @@ export const SOURCES_VIEWED_PART = "data-sources-viewed";
 export const WORK_TIMING_PART = "data-work-timing";
 
 /**
+ * Per-message wall-clock timestamp (epoch ms), stamped at end-of-turn and
+ * persisted as a data-part — so a message's time survives reload with no schema
+ * change (the DB column can't be used: each save wipes and re-inserts rows). The
+ * adapter skips `data-*` parts when replaying history, so this round-trips
+ * harmlessly on continuation turns. The user message is stamped with the turn's
+ * send time, the assistant message with the finish time.
+ */
+export const MESSAGE_TIME_PART = "data-message-time";
+
+/**
  * Inline citation markers (`[#<id>]`, or `[<id>]` — the `#` is optional because
  * models often drop it) the model writes after sentences. The backend parses
  * them to split used vs viewed sources; on the client we strip them from the
@@ -129,6 +139,40 @@ function withWorkTiming(messages: UIMessage[], ms: number | null): UIMessage[] {
   return next;
 }
 
+/** Append a `data-message-time` part to a message, unless it already has one.
+ * Returns a new message object (never mutates the SDK's). */
+function stampTime(msg: UIMessage, ms: number): UIMessage {
+  const parts = (msg.parts ?? []) as { type: string }[];
+  if (parts.some((p) => p.type === MESSAGE_TIME_PART)) return msg;
+  return {
+    ...msg,
+    parts: [...parts, { type: MESSAGE_TIME_PART, data: { ms } }],
+  } as UIMessage;
+}
+
+/**
+ * Stamp the turn's user + assistant messages with creation times (the user with
+ * the send time, the assistant with the finish time), skipping any already
+ * stamped. Returns a new array; only the changed entries are cloned.
+ */
+function withMessageTimes(
+  messages: UIMessage[],
+  userMs: number | null,
+  assistantMs: number,
+): UIMessage[] {
+  let lastUser = -1;
+  let lastAssistant = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (lastAssistant < 0 && messages[i].role === "assistant") lastAssistant = i;
+    if (lastUser < 0 && messages[i].role === "user") lastUser = i;
+    if (lastUser >= 0 && lastAssistant >= 0) break;
+  }
+  const next = messages.slice();
+  if (lastUser >= 0 && userMs != null) next[lastUser] = stampTime(next[lastUser], userMs);
+  if (lastAssistant >= 0) next[lastAssistant] = stampTime(next[lastAssistant], assistantMs);
+  return next;
+}
+
 // The endpoint is fixed; filters are attached per-send via the request body, so
 // one stateless transport instance is shared across every chat surface.
 const transport = new DefaultChatTransport({ api: "/api/chat" });
@@ -164,19 +208,32 @@ export function useAgentChat(opts?: UseAgentChatOptions) {
   // appears (see the effect below), and attached to the persisted message.
   const turnStartRef = useRef<number | null>(null);
   const workMsRef = useRef<number | null>(null);
+  // Holds the SDK's `setMessages` so `onFinish` (defined before the hook
+  // returns) can write the stamped messages back into the live conversation.
+  const setMessagesRef = useRef<((m: UIMessage[]) => void) | null>(null);
 
   const chat = useChat({
     transport,
     id: opts?.id,
     messages: opts?.initialMessages,
-    onFinish: onFinish
-      ? ({ messages, isAbort, isDisconnect, isError }) => {
-          if (isAbort || isDisconnect || isError) return;
-          onFinish(withWorkTiming(messages, workMsRef.current));
-        }
-      : undefined,
+    // Always defined: even without a persistence callback (the ephemeral Reader
+    // chat) we still stamp message times so they render live. Aborted/errored
+    // turns are left untouched.
+    onFinish: ({ messages, isAbort, isDisconnect, isError }) => {
+      if (isAbort || isDisconnect || isError) return;
+      const stamped = withMessageTimes(
+        withWorkTiming(messages, workMsRef.current),
+        turnStartRef.current,
+        Date.now(),
+      );
+      setMessagesRef.current?.(stamped);
+      onFinish?.(stamped);
+    },
   });
   const { messages, sendMessage, regenerate, status, setMessages } = chat;
+  useEffect(() => {
+    setMessagesRef.current = setMessages as (m: UIMessage[]) => void;
+  }, [setMessages]);
 
   const isStreaming = status === "submitted" || status === "streaming";
 

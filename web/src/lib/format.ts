@@ -70,6 +70,22 @@ export function relDate(iso: string | null | undefined): string {
   return dt.toLocaleDateString("en-US", opts);
 }
 
+/** Clock time for a chat message: "2:34 PM" today, "Jun 11, 2:34 PM" otherwise.
+ * Accepts an epoch-ms number (how chat timestamps are stored). */
+export function msgTime(ms: number | null | undefined): string {
+  if (ms == null) return "";
+  const dt = new Date(ms);
+  if (Number.isNaN(dt.getTime())) return "";
+  const now = new Date();
+  const time = dt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  if (dt.toDateString() === now.toDateString()) return time;
+  const opts: Intl.DateTimeFormatOptions =
+    dt.getFullYear() === now.getFullYear()
+      ? { month: "short", day: "numeric" }
+      : { month: "short", day: "numeric", year: "numeric" };
+  return `${dt.toLocaleDateString("en-US", opts)}, ${time}`;
+}
+
 /** 1234567 → "1.2M", 12300 → "12.3K". */
 export function compactNumber(n: number | string | null | undefined): string {
   const num = typeof n === "string" ? Number(n) : n;

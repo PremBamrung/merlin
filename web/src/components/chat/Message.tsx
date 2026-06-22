@@ -21,10 +21,12 @@ import {
   CITATIONS_PART,
   SOURCES_VIEWED_PART,
   WORK_TIMING_PART,
+  MESSAGE_TIME_PART,
   linkifyCitationMarkers,
   stripCitationMarkers,
   type Citation,
 } from "@/hooks/useAgentChat";
+import { msgTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const FOLLOWUPS = ["Why?", "Counterpoints?", "Give me an example", "Summarize key points"];
@@ -46,7 +48,7 @@ type AnyPart = {
   input?: unknown;
   output?: unknown;
   errorText?: string;
-  data?: { items?: Citation[]; seconds?: number };
+  data?: { items?: Citation[]; seconds?: number; ms?: number };
 };
 
 function isToolPart(p: AnyPart): boolean {
@@ -115,12 +117,20 @@ export function Message({
       .join(""),
   );
 
+  // Wall-clock time the message was created (epoch ms), persisted as a data-part
+  // at end-of-turn; absent on old threads, in which case we render no time.
+  const timeMs = parts.find((p) => p.type === MESSAGE_TIME_PART)?.data?.ms ?? null;
+  const timeLabel = timeMs != null ? msgTime(timeMs) : "";
+
   if (message.role === "user") {
     return (
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-1">
         <div className="max-w-[85%] whitespace-pre-wrap rounded-[14px] rounded-tr-sm bg-surface-2 px-4 py-2.5 text-[14px] text-fg">
           {textContent}
         </div>
+        {timeLabel && (
+          <span className="px-1 text-[11px] text-fg-subtle">{timeLabel}</span>
+        )}
       </div>
     );
   }
@@ -151,6 +161,9 @@ export function Message({
       <div className="flex items-center gap-2">
         <span className="text-accent">✦</span>
         <span className="eyebrow">Merlin</span>
+        {timeLabel && (
+          <span className="ml-auto text-[11px] text-fg-subtle">{timeLabel}</span>
+        )}
       </div>
 
       <div className="space-y-2.5">
