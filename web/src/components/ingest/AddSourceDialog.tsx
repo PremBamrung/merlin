@@ -47,7 +47,7 @@ export function AddSourceDialog() {
     setLangs((cur) => (cur.includes(l) ? cur.filter((x) => x !== l) : [...cur, l]));
 
   const submit = () => {
-    if (!url.trim()) return;
+    if (!url.trim() || ingest.isPending) return;
     ingest.mutate(
       { url: url.trim(), languages: langs.length ? langs : ["en"], summary_length: length },
       { onSuccess: () => setOpen(false) },
@@ -75,6 +75,14 @@ export function AddSourceDialog() {
               autoFocus
               value={url}
               onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter in the single-line URL field submits, mirroring the
+                // Today omnibox (the ⌘/Ctrl+Enter shortcut still works too).
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
               placeholder="https://www.youtube.com/watch?v=…"
             />
           </div>
