@@ -24,7 +24,14 @@ export function ItemChat({
   itemId: string;
   className?: string;
 }) {
-  const { messages, isStreaming, send, regenerate, stop } = useAgentChat();
+  // A stable per-item `id` is required: the AI SDK `useChat` (driven through the
+  // shared module-level transport) only reflects streamed parts back into
+  // `messages` when its Chat instance is keyed by an id. Without it the answer
+  // streams from the server but never renders. Keyed to the item; the Reader
+  // remounts via `key={item.id}`, so the thread stays ephemeral per item.
+  const { messages, isStreaming, send, regenerate, stop } = useAgentChat({
+    id: `item-${itemId}`,
+  });
   const [input, setInput] = useState("");
   const { scrollRef, bottomRef } = useStickToBottom(messages);
 
