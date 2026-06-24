@@ -358,3 +358,46 @@ def test_store_item_embedding_noop_under_null_embedder(make_item):
             embedder=NullEmbedder(),
         )
     assert wrote is False
+
+
+# --------------------------------------------------------------------------- #
+# heal_missing_embeddings (startup auto-heal + backfill share this)
+# --------------------------------------------------------------------------- #
+def test_heal_embeds_all_pending_items(make_item, monkeypatch):
+    from merlin.services import embeddings as svc
+
+    a = make_item(title="Alpha", summary="alpha", source_id="a")
+    b = make_item(title="Beta", summary="beta", source_id="b")
+    monkeypatch.setattr(svc, "get_embedder", lambda: _FakeEmbedder([1.0, 0.0]))
+
+    result = svc.heal_missing_embeddings(batch=10)
+
+    assert result == {"provider_enabled": True, "pending": 2, "embedded": 2}
+    with get_db() as db:
+        cands = EmbeddingRepository.candidates_for_search(db)
+    assert {c["knowledge_item_id"] for c in cands} == {a, b}
+
+
+def test_heal_skips_already_embedded(make_item, monkeypatch):
+    from merlin.services import embeddings as svc
+
+    a = make_item(title="Alpha", summary="alpha", source_id="a")
+    make_item(title="Beta", summary="beta", source_id="b")
+    _store_vec(a, [1.0, 0.0])  # a already has a vector
+    monkeypatch.setattr(svc, "get_embedder", lambda: _FakeEmbedder([0.0, 1.0]))
+
+    result = svc.heal_missing_embeddings(batch=10)
+
+    assert result["embedded"] == 1  # only b
+    assert result["pending"] == 1
+
+
+def test_heal_is_noop_without_provider(make_item):
+    from merlin.services import embeddings as svc
+
+    make_item(title="Alpha", summary="alpha", source_id="a")
+    # Default NullEmbedder (conftest forces EMBEDDING_PROVIDER=none).
+    result = svc.heal_missing_embeddings()
+    assert result == {"provider_enabled": False, "pending": 0, "embedded": 0}
+    with get_db() as db:
+        assert EmbeddingRepository.candidates_for_search(db) == []
