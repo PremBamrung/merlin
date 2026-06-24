@@ -59,7 +59,10 @@ export function useStickToBottom<T>(dep: T) {
 
   useEffect(() => {
     if (stick.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      // Instant (not smooth) — this fires on every streamed token; a smooth
+      // animation re-triggered dozens of times a second fights itself and janks.
+      // Smooth scrolling is reserved for the explicit `scrollToBottom` jump.
+      bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
     }
   }, [dep]);
 

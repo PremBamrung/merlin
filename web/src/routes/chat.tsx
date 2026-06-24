@@ -263,6 +263,22 @@ function ChatConversation({
     [send, filters, clearChatDraft, threadId, scrollToBottom],
   );
 
+  // Stable per-message handlers so the memoized <Message> rows don't re-render on
+  // every streamed token. `nf` only changes when the FilterBar changes.
+  const nf = useMemo(() => normalizeFilters(filters), [filters]);
+  const handleRegenerate = useCallback(() => {
+    regenerate(nf);
+    scrollToBottom();
+  }, [regenerate, nf, scrollToBottom]);
+  const handleEdit = useCallback(
+    (id: string, text: string) => {
+      editAndResend(id, text, nf);
+      clearChatDraft(threadId);
+      scrollToBottom();
+    },
+    [editAndResend, nf, clearChatDraft, threadId, scrollToBottom],
+  );
+
   // Auto-focus the composer when the pane mounts (new chat / thread open).
   useEffect(() => {
     composerRef.current?.focus();
@@ -393,16 +409,9 @@ function ChatConversation({
                 message={m}
                 isLast={i === messages.length - 1}
                 isStreaming={isStreaming}
-                onRegenerate={() => {
-                  regenerate(normalizeFilters(filters));
-                  scrollToBottom();
-                }}
+                onRegenerate={handleRegenerate}
                 onFollowup={runSend}
-                onEdit={(id, text) => {
-                  editAndResend(id, text, normalizeFilters(filters));
-                  clearChatDraft(threadId);
-                  scrollToBottom();
-                }}
+                onEdit={handleEdit}
               />
             ))
           )}

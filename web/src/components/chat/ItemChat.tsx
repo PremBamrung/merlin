@@ -47,6 +47,20 @@ export function ItemChat({
     [send, filters, scrollToBottom],
   );
 
+  // Stable per-message handlers so the memoized <Message> rows don't re-render on
+  // every streamed token.
+  const handleRegenerate = useCallback(() => {
+    regenerate(filters);
+    scrollToBottom();
+  }, [regenerate, filters, scrollToBottom]);
+  const handleEdit = useCallback(
+    (id: string, text: string) => {
+      editAndResend(id, text, filters);
+      scrollToBottom();
+    },
+    [editAndResend, filters, scrollToBottom],
+  );
+
   // Focus the composer when the per-item chat mounts (Reader remounts per item).
   useEffect(() => {
     composerRef.current?.focus();
@@ -103,15 +117,9 @@ export function ItemChat({
                 message={m}
                 isLast={i === messages.length - 1}
                 isStreaming={isStreaming}
-                onRegenerate={() => {
-                  regenerate(filters);
-                  scrollToBottom();
-                }}
+                onRegenerate={handleRegenerate}
                 onFollowup={runSend}
-                onEdit={(id, text) => {
-                  editAndResend(id, text, filters);
-                  scrollToBottom();
-                }}
+                onEdit={handleEdit}
               />
             ))}
             <div ref={bottomRef} />

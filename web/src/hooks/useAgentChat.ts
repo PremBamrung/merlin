@@ -251,6 +251,22 @@ export function useAgentChat(opts?: UseAgentChatOptions) {
 
   const isStreaming = status === "submitted" || status === "streaming";
 
+  // Refs mirroring per-render values, so the action callbacks below can be
+  // referentially STABLE (empty deps). Without this they'd be recreated on every
+  // streamed token (they read `messages`/`isStreaming`/the `chat` object), which
+  // would defeat the memoized <Message> rows that receive them as props and force
+  // the whole thread to re-render — and re-parse its markdown — per token. The
+  // refs are synced in an effect (post-commit) and read only at event time, so
+  // the callbacks always see the latest committed values.
+  const messagesRef = useRef(messages);
+  const isStreamingRef = useRef(isStreaming);
+  const sdkRef = useRef({ sendMessage, regenerate, setMessages, stop: chat.stop });
+  useEffect(() => {
+    messagesRef.current = messages;
+    isStreamingRef.current = isStreaming;
+    sdkRef.current = { sendMessage, regenerate, setMessages, stop: chat.stop };
+  });
+
   // Freeze the work-phase duration the moment the assistant's first answer text
   // streams in (mirrors when the `WorkTrace` live timer stops). Captured once
   // per turn; reset at send/regenerate.
@@ -265,26 +281,20 @@ export function useAgentChat(opts?: UseAgentChatOptions) {
     if (hasText) workMsRef.current = Date.now() - turnStartRef.current;
   }, [messages, isStreaming]);
 
-  const send = useCallback(
-    (text: string, filters?: ChatFilters) => {
-      const q = text.trim();
-      if (!q || isStreaming) return;
-      turnStartRef.current = Date.now();
-      workMsRef.current = null;
-      void sendMessage({ text: q }, { body: { filters: filters ?? null } });
-    },
-    [sendMessage, isStreaming],
-  );
+  const send = useCallback((text: string, filters?: ChatFilters) => {
+    const q = text.trim();
+    if (!q || isStreamingRef.current) return;
+    turnStartRef.current = Date.now();
+    workMsRef.current = null;
+    void sdkRef.current.sendMessage({ text: q }, { body: { filters: filters ?? null } });
+  }, []);
 
-  const regenerateWith = useCallback(
-    (filters?: ChatFilters) => {
-      if (isStreaming) return;
-      turnStartRef.current = Date.now();
-      workMsRef.current = null;
-      void regenerate({ body: { filters: filters ?? null } });
-    },
-    [regenerate, isStreaming],
-  );
+  const regenerateWith = useCallback((filters?: ChatFilters) => {
+    if (isStreamingRef.current) return;
+    turnStartRef.current = Date.now();
+    workMsRef.current = null;
+    void sdkRef.current.regenerate({ body: { filters: filters ?? null } });
+  }, []);
 
   /**
    * Edit a prior user turn and re-run from there: drop that message and every
@@ -295,23 +305,26 @@ export function useAgentChat(opts?: UseAgentChatOptions) {
   const editAndResend = useCallback(
     (messageId: string, text: string, filters?: ChatFilters) => {
       const q = text.trim();
-      if (!q || isStreaming) return;
-      const idx = chat.messages.findIndex((m) => m.id === messageId);
+      if (!q || isStreamingRef.current) return;
+      const msgs = messagesRef.current;
+      const idx = msgs.findIndex((m) => m.id === messageId);
       if (idx < 0) return;
       // setMessages and sendMessage both act on the same Chat instance, so the
       // truncation is in place before the new turn is appended.
-      setMessages(chat.messages.slice(0, idx));
+      sdkRef.current.setMessages(msgs.slice(0, idx));
       turnStartRef.current = Date.now();
       workMsRef.current = null;
-      void sendMessage({ text: q }, { body: { filters: filters ?? null } });
+      void sdkRef.current.sendMessage({ text: q }, { body: { filters: filters ?? null } });
     },
-    [chat, setMessages, sendMessage, isStreaming],
+    [],
   );
 
+  const stop = useCallback(() => sdkRef.current.stop(), []);
+
   const reset = useCallback(() => {
-    chat.stop();
-    setMessages([]);
-  }, [chat, setMessages]);
+    sdkRef.current.stop();
+    sdkRef.current.setMessages([]);
+  }, []);
 
   return {
     messages,
@@ -321,7 +334,7 @@ export function useAgentChat(opts?: UseAgentChatOptions) {
     send,
     regenerate: regenerateWith,
     editAndResend,
-    stop: chat.stop,
+    stop,
     reset,
   };
 }

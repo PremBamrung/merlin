@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import {
   RotateCw,
   Wrench,
@@ -96,8 +96,13 @@ function groupParts(parts: AnyPart[]): Segment[] {
  * bubble, or an assistant answer interleaving reasoning, tool calls (with args +
  * results), and text — plus a consolidated Sources list. Shared by the global
  * Chat page and the Reader's per-item chat.
+ *
+ * Memoized: while a turn streams, the AI SDK mutates only the last message and
+ * keeps completed message objects referentially stable, so a `memo` here skips
+ * re-rendering (and re-parsing the markdown of) every finished turn on each
+ * token. Relies on the caller passing stable callback props (see chat.tsx).
  */
-export function Message({
+export const Message = memo(function Message({
   message,
   isLast,
   isStreaming,
@@ -243,7 +248,7 @@ export function Message({
       )}
     </div>
   );
-}
+});
 
 /**
  * A user turn: the bubble, its timestamp, and hover actions (copy + edit). Edit
