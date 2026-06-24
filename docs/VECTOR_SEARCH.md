@@ -67,7 +67,8 @@ calls per chat search are the query embedding and the rerank.
 | When | Call | Frequency |
 |------|------|-----------|
 | **Ingest** (`services.ingest._index_for_search`) | embed the new item | once per item, ever |
-| **Backfill** (`scripts/backfill_embeddings.py`) | embed existing items | one-time / after a model change |
+| **Startup auto-heal** (`services.embeddings.heal_missing_embeddings`, spawned by `api.main`) | embed the backlog + ingest failures | once per process start (no-op when nothing's missing) |
+| **Backfill CLI** (`scripts/backfill_embeddings.py`) | same heal, on demand | manual / after a model change |
 | **Chat search** (`_vector`) | embed the **query only** | 1 per search |
 | **Chat search** (`_rerank`) | rerank the ~20 candidates | 1 per search — *not cacheable* (query-dependent) |
 
@@ -187,6 +188,7 @@ JINA_API_KEY="jina_…"
 JINA_EMBEDDING_MODEL="jina-embeddings-v5-text-small"   # 1024-d
 JINA_RERANKER_MODEL="jina-reranker-v3"
 JINA_MIN_INTERVAL=0.0              # secs between Jina calls (set ~0.7 on a free key)
+EMBEDDING_AUTO_HEAL=true           # backfill missing vectors on startup (default on)
 ```
 
 Settings live in `merlin/config.py`. With `EMBEDDING_PROVIDER=none`, all of the
@@ -194,11 +196,29 @@ above are ignored and retrieval is pure FTS5.
 
 ---
 
-## Operations — backfill
+## Operations — no migration; vectors self-heal
 
-New items embed automatically at ingest. Backfill embeds the **existing** corpus
-once. The engine binds to `settings.database_url` at import, so point it with the
-env var (not a flag):
+**There is no schema migration for vector search.** The `embeddings` table ships
+in migration `001`, and Docker already runs `alembic upgrade head` on every
+container start (`Dockerfile` CMD), so schema is always current after a deploy.
+What's "missing" on an existing DB is *data* (the vectors), not schema.
+
+### Auto-heal on startup (default)
+
+`api.main.create_app()` spawns a **daemon thread** that calls
+`services.embeddings.heal_missing_embeddings()` — it embeds any completed item
+without a vector, in the background, off the boot path. So on the Dockerised NAS
+deploy you just **redeploy the image and the backlog fills itself**; it also
+recovers any item whose ingest-time embedding failed (that path is best-effort).
+It's idempotent (a no-op once everything is embedded), inert under
+`EMBEDDING_PROVIDER=none`, honours `JINA_MIN_INTERVAL`, and can't crash boot.
+Disable with `EMBEDDING_AUTO_HEAL=false`.
+
+### Manual backfill (CLI)
+
+The same heal is also runnable on demand — a thin wrapper over the service. The
+engine binds to `settings.database_url` at import, so point it with the env var
+(not a flag):
 
 ```bash
 # preview (no API calls, no writes):
@@ -227,7 +247,9 @@ DATABASE_URL="sqlite:///<path>/merlin.db" \
 - `tests/backend/test_embeddings.py` — `item_embed_text`, `NullEmbedder`,
   `JinaEmbedder` request shape + parsing (HTTP mocked), the rate-limiter gate,
   `get_embedder` factory, RRF (pure function), the retriever's vector arm,
-  FTS5-fallback-on-error, rerank reordering, and `store_item_embedding`.
+  FTS5-fallback-on-error, rerank reordering, `store_item_embedding`, and
+  `heal_missing_embeddings` (embeds pending, skips already-embedded, no-op
+  without a provider).
 - `tests/backend/conftest.py` forces `EMBEDDING_PROVIDER=none` so the suite never
   hits the live API; the Jina-path tests monkeypatch the embedder/HTTP boundary.
 - **Live smoke test** (run once against the dev DB, rows cleaned up after):
