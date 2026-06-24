@@ -175,13 +175,6 @@ export const Message = memo(function Message({
         <span className="eyebrow">Merlin</span>
         <div className="ml-auto flex items-center gap-1">
           {timeLabel && <span className="text-[11px] text-fg-subtle">{timeLabel}</span>}
-          {showCopy && (
-            <CopyButton
-              text={textContent}
-              size="icon-sm"
-              className="size-6 text-fg-subtle opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100"
-            />
-          )}
         </div>
       </div>
 
@@ -244,6 +237,12 @@ export const Message = memo(function Message({
               {f}
             </button>
           ))}
+        </div>
+      )}
+
+      {showCopy && (
+        <div className="flex items-center px-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100">
+          <CopyButton text={textContent} size="icon-sm" className="size-6 text-fg-subtle" />
         </div>
       )}
     </div>
