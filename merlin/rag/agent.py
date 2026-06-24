@@ -131,12 +131,15 @@ def search_library(
     tags: list[str] | None = None,
     limit: int = 8,
 ) -> str:
-    """Keyword-search the knowledge base and return the most relevant items.
+    """Search the knowledge base and return the most relevant items.
 
-    Pass a focused set of keywords (not a whole sentence). `source_types` and
-    `tags` narrow the search; omit them to use the chat's active filters. Each
-    result shows the item id, title, source, publication date, and a matching
-    excerpt; a header reports the total match count when more exist than shown.
+    Search is **hybrid**: it fuses keyword (full-text) matching with semantic
+    (meaning-based) matching, so a natural phrase works as well as bare
+    keywords — phrase the `query` the way you'd describe what you're looking
+    for, and don't strip it down to lone keywords. `source_types` and `tags`
+    narrow the search; omit them to use the chat's active filters. Each result
+    shows the item id, title, source, publication date, and a matching excerpt;
+    a header reports the total match count when more exist than shown.
     """
     if _over_budget(ctx):
         return _BUDGET_REFUSAL

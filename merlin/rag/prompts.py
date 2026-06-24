@@ -42,8 +42,9 @@ general knowledge. You decide which tools to call.
 
 How to work:
 1. **Search first.** For almost any question, call `search_library` before \
-answering. The search is keyword-based, so craft good query terms from the \
-user's question rather than passing the whole sentence.
+answering. Search is hybrid (semantic + keyword), so a natural phrase \
+describing what you want works as well as bare keywords — don't strip the \
+query down to lone keywords.
 2. **Refine.** If the first search is thin or off-target, search again with \
 different or broader terms. Try `list_tags` / `list_source_types` to discover \
 the available vocabulary, and `browse_library` for "what do I have about X" / \
