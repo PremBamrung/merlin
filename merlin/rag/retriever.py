@@ -40,6 +40,15 @@ class RetrievedChunk:
     author: str | None
     excerpt: str  # relevant excerpt (snippet) from the matched column
     score: float = 1.0
+    published_at: str | None = None  # YYYY-MM-DD, when known
+
+
+def _ymd(value) -> str | None:
+    """Format a DB datetime/ISO-string to YYYY-MM-DD (date only), or None."""
+    if not value:
+        return None
+    s = value.isoformat() if hasattr(value, "isoformat") else str(value)
+    return s[:10]
 
 
 class HybridRetriever:
@@ -87,7 +96,7 @@ class HybridRetriever:
         sql = text(
             f"""
             SELECT ki.id, ki.source_type, ki.source_id, ki.title, ki.author,
-                   ki.summary, ki.tags,
+                   ki.summary, ki.tags, ki.published_at,
                    snippet(knowledge_fts, -1, '', '', '…', :snip) AS excerpt,
                    bm25(knowledge_fts, {weights}) AS score
             FROM knowledge_items ki
@@ -104,7 +113,7 @@ class HybridRetriever:
 
         chunks: list[RetrievedChunk] = []
         for row in rows:
-            item_id, source_type, source_id, title, author, summary, tags, excerpt, score = row  # noqa: E501
+            item_id, source_type, source_id, title, author, summary, tags, published_at, excerpt, score = row  # noqa: E501
 
             # Tag filter — tags are JSON text; keep the simple substring check.
             if tag_filters and tags:
@@ -125,12 +134,45 @@ class HybridRetriever:
                     author=author,
                     excerpt=excerpt,
                     score=round(-float(score), 4),
+                    published_at=_ymd(published_at),
                 )
             )
             if len(chunks) >= top_k:
                 break
 
         return chunks
+
+    def count(
+        self,
+        session: Session,
+        query: str,
+        source_types: list[str] | None = None,
+    ) -> int:
+        """Total items matching `query` (+ optional source_type) — a coverage
+        signal for the caller. Mirrors `retrieve`'s MATCH/source filter; tag
+        filtering (post-hoc, JSON column) is intentionally not reflected here.
+        """
+        fts_query = self._build_fts_query(query)
+        if not fts_query:
+            return 0
+        params: dict = {"q": fts_query}
+        source_clause = ""
+        if source_types:
+            placeholders = ", ".join(f":st{i}" for i in range(len(source_types)))
+            source_clause = f"AND ki.source_type IN ({placeholders})"
+            for i, st in enumerate(source_types):
+                params[f"st{i}"] = st
+        sql = text(
+            f"""
+            SELECT count(*)
+            FROM knowledge_items ki
+            JOIN knowledge_fts fts ON ki.rowid = fts.rowid
+            WHERE knowledge_fts MATCH :q
+              AND ki.status = 'completed'
+              {source_clause}
+            """
+        )
+        return int(session.execute(sql, params).scalar() or 0)
 
     @staticmethod
     def _build_fts_query(query: str) -> str:

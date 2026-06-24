@@ -135,35 +135,45 @@ def search_library(
 
     Pass a focused set of keywords (not a whole sentence). `source_types` and
     `tags` narrow the search; omit them to use the chat's active filters. Each
-    result shows the item id, title, source, and a matching excerpt.
+    result shows the item id, title, source, publication date, and a matching
+    excerpt; a header reports the total match count when more exist than shown.
     """
     if _over_budget(ctx):
         return _BUDGET_REFUSAL
     try:
         limit = max(1, min(limit, _MAX_SEARCH_LIMIT))
+        eff_source_types = source_types or ctx.deps.source_types
+        eff_tags = tags or ctx.deps.tags
         with get_db() as db:
             chunks = _retriever.retrieve(
                 db,
                 query=query,
-                source_types=source_types or ctx.deps.source_types,
-                tag_filters=tags or ctx.deps.tags,
+                source_types=eff_source_types,
+                tag_filters=eff_tags,
                 top_k=limit,
             )
+            # Exact total is meaningful only without post-hoc tag filtering
+            # (count() reflects MATCH + source_type, not the JSON tag filter).
+            total = None if eff_tags else _retriever.count(db, query, eff_source_types)
         if not chunks:
             return f"No items in the library matched the search {query!r}."
         for c in chunks:
             ctx.deps.cite(c)
-        return _format_chunks(chunks)
+        return _format_chunks(chunks, total)
     except Exception as exc:  # never crash the run
         return f"search_library failed: {exc}"
 
 
 @agent.tool
-def get_item(ctx: RunContext[ChatDeps], item_id: str) -> str:
+def get_item(
+    ctx: RunContext[ChatDeps], item_id: str, transcript_offset: int = 0
+) -> str:
     """Read one item in depth: its summary plus an excerpt of its transcript.
 
     Use after `search_library`/`browse_library` when a specific item is clearly
-    relevant and you need more than the search snippet.
+    relevant and you need more than the search snippet. The transcript is shown
+    in windows; if it ends with a "chars remain" note, call this again with
+    `transcript_offset` set to the value it suggests to read the next window.
     """
     if _over_budget(ctx):
         return _BUDGET_REFUSAL
@@ -172,7 +182,7 @@ def get_item(ctx: RunContext[ChatDeps], item_id: str) -> str:
         if item is None:
             return f"No item found with id {item_id!r}."
         ctx.deps.cite_item(item)
-        return _format_item(item)
+        return _format_item(item, offset=transcript_offset)
     except Exception as exc:
         return f"get_item failed: {exc}"
 
@@ -243,18 +253,24 @@ def list_source_types(ctx: RunContext[ChatDeps]) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def _format_chunks(chunks: list[RetrievedChunk]) -> str:
+def _format_chunks(chunks: list[RetrievedChunk], total: int | None = None) -> str:
     parts = []
     for c in chunks:
         head = f"[{c.knowledge_item_id}] {c.title}"
         if c.author:
             head += f" — {c.author}"
         head += f" ({c.source_type})"
+        if c.published_at:
+            head += f" · {c.published_at}"
         parts.append(f"{head}\n{c.excerpt}")
-    return "\n\n".join(parts)
+    body = "\n\n".join(parts)
+    # Coverage signal: only when there's more than what's shown.
+    if total is not None and total > len(chunks):
+        return f"{total} matches; showing top {len(chunks)}:\n\n{body}"
+    return body
 
 
-def _format_item(item: dict) -> str:
+def _format_item(item: dict, offset: int = 0) -> str:
     lines = [
         f"id: {item.get('id')}",
         f"title: {item.get('title') or 'Untitled'}",
@@ -262,16 +278,29 @@ def _format_item(item: dict) -> str:
     ]
     if item.get("channel") or item.get("author"):
         lines.append(f"author: {item.get('channel') or item.get('author')}")
+    if item.get("published_at"):
+        lines.append(f"published: {item['published_at'][:10]}")
+    if item.get("duration"):
+        lines.append(f"duration: {item['duration']}")
+    if item.get("views"):
+        lines.append(f"views: {item['views']:,}")
     if item.get("tags"):
         lines.append(f"tags: {', '.join(item['tags'])}")
     if item.get("summary"):
         lines.append(f"\nSUMMARY:\n{item['summary']}")
     transcript = (item.get("raw_content") or "").strip()
     if transcript:
-        excerpt = transcript[:_TRANSCRIPT_EXCERPT_CHARS]
-        if len(transcript) > _TRANSCRIPT_EXCERPT_CHARS:
-            excerpt += "\n…[transcript truncated]"
-        lines.append(f"\nTRANSCRIPT EXCERPT:\n{excerpt}")
+        start = max(0, offset)
+        window = transcript[start : start + _TRANSCRIPT_EXCERPT_CHARS]
+        end = start + len(window)
+        prefix = "…[continued]\n" if start > 0 else ""
+        suffix = ""
+        if end < len(transcript):
+            suffix = (
+                f"\n…[{len(transcript) - end} chars remain — call "
+                f"get_item(item_id, transcript_offset={end}) to continue]"
+            )
+        lines.append(f"\nTRANSCRIPT EXCERPT:\n{prefix}{window}{suffix}")
     return "\n".join(lines)
 
 
@@ -281,6 +310,8 @@ def _format_browse(items: list[dict], total: int) -> str:
     for it in items:
         tags = ", ".join(it.get("tags") or [])
         row = f"[{it.get('id')}] {it.get('title') or 'Untitled'} ({it.get('source_type')})"  # noqa: E501
+        if it.get("published_at"):
+            row += f" · {it['published_at'][:10]}"
         if tags:
             row += f" — tags: {tags}"
         rows.append(row)
