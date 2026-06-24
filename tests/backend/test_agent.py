@@ -84,6 +84,68 @@ def test_get_item_tool_returns_transcript_excerpt(make_item):
     assert item_id in deps.cited
 
 
+def test_search_library_shows_date_and_coverage(make_item):
+    from datetime import datetime
+
+    from merlin.rag.agent import ChatDeps, search_library
+
+    for i in range(3):
+        make_item(
+            title=f"Moat economics {i}",
+            source_id=f"moat{i}",
+            summary="A deep look at competitive moats.",
+            published_at=datetime(2025, 3, 14),
+        )
+
+    class Ctx:
+        def __init__(self, deps):
+            self.deps = deps
+
+    deps = ChatDeps()
+    out = search_library(Ctx(deps), query="moat", limit=2)  # type: ignore[arg-type]
+    assert "2025-03-14" in out  # publication date surfaced
+    assert "3 matches; showing top 2:" in out  # coverage signal
+
+
+def test_get_item_shows_metadata(make_item):
+    from datetime import datetime
+
+    from merlin.rag.agent import ChatDeps, get_item
+
+    item_id = make_item(title="Dated", published_at=datetime(2024, 12, 1))
+
+    class Ctx:
+        def __init__(self, deps):
+            self.deps = deps
+
+    out = get_item(Ctx(ChatDeps()), item_id)  # type: ignore[arg-type]
+    assert "published: 2024-12-01" in out
+    assert "duration: 00:16:59" in out
+    assert "views: 12,345" in out
+
+
+def test_get_item_transcript_paging(make_item):
+    from merlin.rag.agent import _TRANSCRIPT_EXCERPT_CHARS, ChatDeps, get_item
+
+    body = "A" * _TRANSCRIPT_EXCERPT_CHARS + "TAIL_MARKER end."
+    item_id = make_item(title="Long", raw_content=body)
+
+    class Ctx:
+        def __init__(self, deps):
+            self.deps = deps
+
+    first = get_item(Ctx(ChatDeps()), item_id)  # type: ignore[arg-type]
+    assert "chars remain" in first
+    assert f"transcript_offset={_TRANSCRIPT_EXCERPT_CHARS}" in first
+    assert "TAIL_MARKER" not in first  # tail is past the first window
+
+    rest = get_item(
+        Ctx(ChatDeps()), item_id, transcript_offset=_TRANSCRIPT_EXCERPT_CHARS
+    )  # type: ignore[arg-type]
+    assert "[continued]" in rest
+    assert "TAIL_MARKER" in rest
+
+
 def test_get_item_tool_handles_missing():
     from merlin.rag.agent import ChatDeps, get_item
 
