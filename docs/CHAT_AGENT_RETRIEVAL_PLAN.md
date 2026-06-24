@@ -165,6 +165,13 @@ if end < len(transcript):
 
 ## Fix 3 — Vector search (hybrid + RRF + Jina rerank)
 
+> **✅ Shipped.** Implemented as designed below (one vector per item — title +
+> tags + summary — rather than transcript chunks, see "Storage" decision). The
+> authoritative reference for the live implementation — algorithm, precompute,
+> rate limiting, scaling analysis, and the SQLite→numpy/sqlite-vec/pgvector
+> decision tree — is **`docs/VECTOR_SEARCH.md`**. The notes below are the
+> original design.
+
 **Provider decided: Jina AI** (hosted embeddings + reranking) — see
 `docs/JINA_API_REFERENCE.md` for the wire format, models, and task-type rules.
 Keys are in `.env` (`JINA_API_KEY`, gitignored). The pipeline is still built
@@ -253,6 +260,10 @@ rerank runs on the small candidate set, so it's one extra call per search.
 3. **Prompt nudge for parallel search** — one-line system-prompt change, ride
    along with #1 or #2.
 4. **Fix 3 scaffolding** — embedder/retriever/RRF machinery + `JinaEmbedder`,
-   inert when `EMBEDDING_PROVIDER=none`.
-5. **Migration + backfill** — create the `embeddings` table shape, embed existing
-   items via Jina, flip `EMBEDDING_PROVIDER=jina` so `vec_hits` + rerank go live.
+   inert when `EMBEDDING_PROVIDER=none`. ✅ done
+5. **Migration + backfill** — embed existing items via Jina, flip
+   `EMBEDDING_PROVIDER=jina` so `vec_hits` + rerank go live. ✅ done (no migration
+   needed — the existing `embeddings` table shape is reused; `dim` is derived from
+   the stored vector length). Backfill: `scripts/backfill_embeddings.py`.
+
+All of Fix 3 is shipped — see **`docs/VECTOR_SEARCH.md`**.

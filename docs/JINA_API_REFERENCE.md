@@ -146,6 +146,13 @@ data = resp.json()
 
 ## Notes for the Merlin integration
 
+> **As shipped:** Merlin embeds **one vector per item** (title + tags + summary),
+> **not** transcript chunks — so the chunking caveats below apply only if/when
+> transcript-chunk embedding is added later. FTS5 already covers transcript
+> keywords. See **`docs/VECTOR_SEARCH.md`** for the full picture (algorithm,
+> precompute, rate limiting, scaling).
+
+
 - Both calls are network I/O on a synchronous plugin/service path — wrap in
   try/except and **degrade gracefully** (fall back to FTS5-only ranking) on error
   or missing key, exactly as `NullEmbedder` does today.
