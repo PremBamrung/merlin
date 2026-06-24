@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from merlin.db.models import KnowledgeItem, YouTubeMetadata
+from merlin.db.models import Embedding, KnowledgeItem, YouTubeMetadata
 
 # Fuzzy fallback only runs when an exact search finds nothing and is reserved
 # for queries long enough that a close match is meaningful (avoids "ai"-style
@@ -214,17 +214,12 @@ class KnowledgeItemRepository:
 
         total = q.count()
         items = (
-            q.order_by(order_by)
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-            .all()
+            q.order_by(order_by).offset((page - 1) * page_size).limit(page_size).all()
         )
         return items, total
 
     @staticmethod
-    def update(
-        session: Session, item_id: str, updates: dict
-    ) -> KnowledgeItem | None:
+    def update(session: Session, item_id: str, updates: dict) -> KnowledgeItem | None:
         item = session.get(KnowledgeItem, item_id)
         if not item:
             return None
@@ -284,7 +279,9 @@ class KnowledgeItemRepository:
             session.query(KnowledgeItem)
             .filter(KnowledgeItem.status == "completed")
             .filter(KnowledgeItem.read_at.is_(None))
-            .update({KnowledgeItem.read_at: datetime.now(UTC)}, synchronize_session=False)
+            .update(
+                {KnowledgeItem.read_at: datetime.now(UTC)}, synchronize_session=False
+            )
         )
 
     @staticmethod
@@ -319,3 +316,88 @@ class YouTubeMetadataRepository:
     @staticmethod
     def get_by_video_id(session: Session, video_id: str) -> YouTubeMetadata | None:
         return session.query(YouTubeMetadata).filter_by(video_id=video_id).first()
+
+
+class EmbeddingRepository:
+    """Vector storage for semantic search. One row per (item, chunk_index);
+    the current scope embeds one vector per item (chunk_index=0)."""
+
+    @staticmethod
+    def upsert(
+        session: Session,
+        knowledge_item_id: str,
+        chunk_index: int,
+        chunk_text: str,
+        embedding: str,
+        embedding_model: str,
+    ) -> Embedding:
+        existing = (
+            session.query(Embedding)
+            .filter_by(knowledge_item_id=knowledge_item_id, chunk_index=chunk_index)
+            .first()
+        )
+        if existing:
+            existing.chunk_text = chunk_text
+            existing.embedding = embedding
+            existing.embedding_model = embedding_model
+            return existing
+        row = Embedding(
+            knowledge_item_id=knowledge_item_id,
+            chunk_index=chunk_index,
+            chunk_text=chunk_text,
+            embedding=embedding,
+            embedding_model=embedding_model,
+        )
+        session.add(row)
+        session.flush()
+        return row
+
+    @staticmethod
+    def candidates_for_search(
+        session: Session, source_types: list[str] | None = None
+    ) -> list[dict]:
+        """Load every stored vector (with the item fields the retriever needs)
+        for completed items, optionally restricted to `source_types`.
+
+        SQLite has no native vector index; for the current corpus a brute-force
+        cosine over these rows in Python is fine. `sqlite-vec` is the scale-up
+        path if the library grows large.
+        """
+        q = (
+            session.query(
+                Embedding.knowledge_item_id,
+                Embedding.embedding,
+                Embedding.chunk_text,
+                KnowledgeItem.source_type,
+                KnowledgeItem.source_id,
+                KnowledgeItem.title,
+                KnowledgeItem.author,
+                KnowledgeItem.summary,
+                KnowledgeItem.tags,
+                KnowledgeItem.published_at,
+            )
+            .join(KnowledgeItem, Embedding.knowledge_item_id == KnowledgeItem.id)
+            .filter(KnowledgeItem.status == "completed")
+        )
+        if source_types:
+            q = q.filter(KnowledgeItem.source_type.in_(source_types))
+        cols = (
+            "knowledge_item_id",
+            "embedding",
+            "chunk_text",
+            "source_type",
+            "source_id",
+            "title",
+            "author",
+            "summary",
+            "tags",
+            "published_at",
+        )
+        return [dict(zip(cols, row, strict=True)) for row in q.all()]
+
+    @staticmethod
+    def item_ids_with_embeddings(session: Session) -> set[str]:
+        """Ids of items that already have at least one stored vector (backfill
+        skip-set)."""
+        rows = session.query(Embedding.knowledge_item_id).distinct().all()
+        return {r[0] for r in rows}

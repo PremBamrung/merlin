@@ -66,6 +66,23 @@ class Settings(BaseSettings):
     # Active LLM provider: "azure" | "openrouter"
     llm_provider: str = "azure"
 
+    # Embeddings / reranking (hybrid semantic search — see
+    # docs/CHAT_AGENT_RETRIEVAL_PLAN.md "Fix 3" + docs/JINA_API_REFERENCE.md).
+    # "none" → NullEmbedder (pure FTS5, the historical behaviour); "jina" → Jina
+    # cloud embeddings + reranking. Built lazily via merlin.rag.embeddings; the
+    # whole vector arm degrades to FTS5-only when the provider is absent/errors.
+    embedding_provider: str = "none"
+    jina_api_key: str = ""
+    jina_embedding_model: str = "jina-embeddings-v5-text-small"
+    jina_reranker_model: str = "jina-reranker-v3"
+    # Minimum seconds between Jina calls, enforced process-wide across the ingest
+    # worker threads (the same burst guard as youtube_subtitle_min_interval).
+    # 0 = no throttling (default). Set this on a free key (≈100 RPM / 2 concurrent
+    # requests) — e.g. 0.7 keeps bulk ingest comfortably under the cap. The
+    # interactive search path is unaffected unless it actually bursts, since the
+    # limiter only blocks when calls land closer together than this interval.
+    jina_min_interval: float = 0.0
+
     # App
     app_password: str = ""
     log_level: str = "INFO"

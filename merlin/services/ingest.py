@@ -91,7 +91,31 @@ def persist_result(task_id: str, result) -> None:
         BackgroundTaskRepository.set_completed(
             session, task_id, {"knowledge_item_id": item.id}, knowledge_item_id=item.id
         )
+        item_id = item.id  # capture before commit expires the instance
         session.commit()
+
+    _index_for_search(item_id, result.title, result.summary, result.tags)
+
+
+def _index_for_search(item_id: str, title, summary, tags) -> None:
+    """Best-effort: embed the item for semantic search after a successful ingest.
+
+    Inert under `NullEmbedder` (EMBEDDING_PROVIDER=none). A Jina failure is
+    logged and swallowed — it must never fail an otherwise-successful ingest;
+    the backfill script can pick the item up later.
+    """
+    try:
+        from merlin.rag.embeddings import get_embedder, store_item_embedding
+
+        if not get_embedder().enabled:
+            return
+        with SessionFactory() as session:
+            if store_item_embedding(
+                session, item_id=item_id, title=title, summary=summary, tags=tags
+            ):
+                session.commit()
+    except Exception:
+        logger.warning("Embedding index failed for item %s", item_id, exc_info=True)
 
 
 # ------------------------------------------------------------------
