@@ -27,6 +27,10 @@ import os  # noqa: E402
 os.environ["DATABASE_URL"] = f"sqlite:///{_DB_PATH}"
 # Plain rollback journal — no WAL sidecar files for a short-lived test DB.
 os.environ["SQLITE_JOURNAL_MODE"] = "DELETE"
+# Force the no-op embedder so the retriever's vector arm stays inert and tests
+# never hit the live Jina API (the project .env may set EMBEDDING_PROVIDER=jina).
+# Tests that exercise the Jina path monkeypatch the embedder explicitly.
+os.environ["EMBEDDING_PROVIDER"] = "none"
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
