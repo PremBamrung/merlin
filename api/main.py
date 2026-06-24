@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import threading
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +21,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from merlin.bootstrap import register_plugins
+from merlin.config import settings
+from merlin.core.logging import logger
 from merlin.knowledge_sources.registry import registry
+from merlin.rag.embeddings import get_embedder
 
 from .errors import install_error_handlers, not_found
 from .routers import chat, inbox, ingest, insights, items
@@ -41,6 +45,28 @@ def _cors_origins() -> list[str]:
     return [*_DEFAULT_ORIGINS, *extra]
 
 
+def _start_embedding_self_heal() -> None:
+    """Fill missing item vectors in the background, off the boot path.
+
+    Runs once per process start in a daemon thread so it never delays uvicorn or
+    the health check. Skipped entirely when auto-heal is off or no embedding
+    provider is configured (so it adds nothing under EMBEDDING_PROVIDER=none and
+    never fires in tests). Idempotent — a no-op once everything is embedded.
+    """
+    if not settings.embedding_auto_heal or not get_embedder().enabled:
+        return
+
+    def _run() -> None:
+        try:
+            from merlin.services.embeddings import heal_missing_embeddings
+
+            heal_missing_embeddings()
+        except Exception:  # never let self-heal crash anything
+            logger.warning("Embedding self-heal failed", exc_info=True)
+
+    threading.Thread(target=_run, name="embedding-self-heal", daemon=True).start()
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Merlin API",
@@ -51,6 +77,11 @@ def create_app() -> FastAPI:
     # Register knowledge-source plugins once at startup (idempotent). Replaces
     # the Streamlit app's register_plugins() call.
     register_plugins()
+
+    # Backfill any missing item vectors in the background (no-op without a
+    # provider; never blocks boot). New items embed at ingest; this heals the
+    # existing backlog and any ingest-time embedding failures.
+    _start_embedding_self_heal()
 
     app.add_middleware(
         CORSMiddleware,

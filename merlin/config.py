@@ -82,6 +82,11 @@ class Settings(BaseSettings):
     # interactive search path is unaffected unless it actually bursts, since the
     # limiter only blocks when calls land closer together than this interval.
     jina_min_interval: float = 0.0
+    # On app startup, spawn a background thread that embeds any completed item
+    # missing a vector (the backlog + ingest-time failures). Idempotent and cheap
+    # when nothing is missing; a no-op when no provider is configured. Set false
+    # to disable the auto-heal and rely solely on scripts/backfill_embeddings.py.
+    embedding_auto_heal: bool = True
 
     # App
     app_password: str = ""
