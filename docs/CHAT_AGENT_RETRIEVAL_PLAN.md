@@ -163,11 +163,15 @@ if end < len(transcript):
 
 ---
 
-## Fix 3 — Vector search (hybrid + RRF), provider-agnostic scaffolding
+## Fix 3 — Vector search (hybrid + RRF + Jina rerank)
 
-Goal: land the full hybrid pipeline + RRF fusion + storage wiring **without
-committing to an embedding provider**. Plugging a provider later is a one-class
-change.
+**Provider decided: Jina AI** (hosted embeddings + reranking) — see
+`docs/JINA_API_REFERENCE.md` for the wire format, models, and task-type rules.
+Keys are in `.env` (`JINA_API_KEY`, gitignored). The pipeline is still built
+behind a swappable interface so it degrades to pure-FTS5 when the provider is
+absent or errors.
+
+Pipeline: **FTS5 + vector → RRF fuse → Jina rerank → top-k.**
 
 ### 3a. Swappable embedder interface
 New `merlin/rag/embeddings.py`:
@@ -175,19 +179,24 @@ New `merlin/rag/embeddings.py`:
 ```python
 class Embedder(Protocol):
     dim: int
-    def embed(self, texts: list[str]) -> list[list[float]]: ...
+    def embed(self, texts: list[str], *, query: bool = False) -> list[list[float]]: ...
 
 class NullEmbedder:
-    """Placeholder until a provider is chosen. Returns no vectors, so the
-    hybrid retriever degrades to pure-FTS5 (today's behaviour)."""
+    """Fallback when EMBEDDING_PROVIDER=none (or Jina key missing). Returns no
+    vectors, so the hybrid retriever degrades to pure-FTS5 (today's behaviour)."""
     dim = 0
-    def embed(self, texts): return []
+    def embed(self, texts, *, query=False): return []
+
+class JinaEmbedder:
+    """POST https://api.jina.ai/v1/embeddings. Uses task='retrieval.query' when
+    query=True else 'retrieval.passage' (v5 is asymmetric), normalized=True.
+    On any error/missing key, callers fall back to FTS5-only."""
 ```
 
-`settings` gets `EMBEDDING_PROVIDER` (default `"none"` → `NullEmbedder`). Real
-providers (OpenAI `text-embedding-3-*`, Voyage, local bge, etc.) are **left
-unimplemented** — a `# TODO: choose provider` stub each. **Do not add API keys or
-network calls yet.**
+`settings` reads `EMBEDDING_PROVIDER` (`"none"` default → `NullEmbedder`;
+`"jina"` → `JinaEmbedder`), `JINA_API_KEY`, `JINA_EMBEDDING_MODEL`,
+`JINA_RERANKER_MODEL`. The LLM is built lazily (config convention) — build the
+Jina client lazily too; never at import.
 
 ### 3b. Storage
 The `embeddings` table already exists (reserved, unused). Confirm/define its shape:
@@ -207,28 +216,32 @@ fused = self._rrf(fts_hits, vec_hits, k=60)[:top_k] # rank-based fusion
 
 - `_rrf` merges by `knowledge_item_id`, scoring `Σ 1/(60 + rank)` across both
   lists; dedups items that appear in both.
-- When `vec_hits == []` (no provider), `fused` == today's FTS5 ranking → **zero
-  behaviour change until a provider is wired.** This is the safety property that
-  lets us ship the scaffolding now.
+- When `vec_hits == []` (NullEmbedder or Jina error), `fused` == today's FTS5
+  ranking → **zero behaviour change when the provider is absent.** Safety property.
 - Update the module docstring (`retriever.py:11`) from "Phase 3 will add…" to "FTS5
-  + vector via RRF (vector arm inert until an embedder is configured)."
+  + vector via RRF + Jina rerank (vector/rerank arms inert without a provider)."
 
-### 3d. Backfill + ingest hook (stub)
-- A `scripts/` backfill that embeds existing items — **written but a no-op under
-  `NullEmbedder`.**
-- An ingest-time hook to embed new items on `persist_result` — same, inert until a
-  provider exists.
+### 3c-bis. Rerank pass (Jina)
+After RRF, take the merged top-N (e.g. 20) and send `{query, documents}` to
+`POST /v1/rerank` (`jina-reranker-v3`, `return_documents=false`); reorder by
+`results[].index`/`relevance_score`, keep top-k. Skip entirely (use the RRF order)
+when the provider is absent or the call errors. Only the query is embedded live;
+rerank runs on the small candidate set, so it's one extra call per search.
+
+### 3d. Storage + backfill + ingest hook
+- Embed library items at **`retrieval.passage`**, chunked (don't embed a whole
+  transcript as one string — see `JINA_API_REFERENCE.md` token note); store vector
+  + `dim` + `model` in the `embeddings` table.
+- A `scripts/` backfill that embeds existing items (batch the `input` list; respect
+  Jina rate limits). No-op under `NullEmbedder`.
+- An ingest-time hook to embed new items on `persist_result`. Inert without a provider.
 
 ### 3e. Tests
-- `_rrf` fusion ordering/dedup with synthetic ranked lists (no embedder needed —
-  pure function).
+- `_rrf` fusion ordering/dedup with synthetic ranked lists (pure function, no network).
 - Retriever returns identical results to today when the embedder is `NullEmbedder`
   (the regression guard).
-
-**Open decision (user):** which embedding provider — hosted (OpenAI/Voyage, best
-quality, per-call cost, data leaves machine) vs local (bge/e5 via
-`sentence-transformers`, free, private, heavier install). The interface in 3a makes
-this swap a single class; everything else can land first.
+- Jina embedder/reranker: monkeypatch the HTTP boundary (no live calls in tests),
+  assert the request shape (task types, normalized) and that errors fall back to FTS5.
 
 ---
 
@@ -239,6 +252,7 @@ this swap a single class; everything else can land first.
 2. **Fix 2** — small, independent PR.
 3. **Prompt nudge for parallel search** — one-line system-prompt change, ride
    along with #1 or #2.
-4. **Fix 3 scaffolding** — separate PR; lands the hybrid+RRF machinery inert.
-5. **Wire a real embedder** — only after the provider decision; flips `vec_hits`
-   from `[]` to real and runs the backfill.
+4. **Fix 3 scaffolding** — embedder/retriever/RRF machinery + `JinaEmbedder`,
+   inert when `EMBEDDING_PROVIDER=none`.
+5. **Migration + backfill** — create the `embeddings` table shape, embed existing
+   items via Jina, flip `EMBEDDING_PROVIDER=jina` so `vec_hits` + rerank go live.
