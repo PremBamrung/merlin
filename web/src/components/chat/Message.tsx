@@ -159,14 +159,25 @@ export function Message({
     parts.find((p) => p.type === WORK_TIMING_PART)?.data?.seconds ?? null;
   const firstWorkIdx = segments.findIndex((s) => s.kind === "work");
 
+  // Copy is available on every assistant turn (hover-revealed in the header),
+  // unlike Regenerate/follow-ups which only make sense on the last turn.
+  const showCopy = !isThisStreaming && !!textContent;
+
   return (
-    <div className="space-y-3">
+    <div className="group/msg space-y-3">
       <div className="flex items-center gap-2">
         <span className="text-accent">✦</span>
         <span className="eyebrow">Merlin</span>
-        {timeLabel && (
-          <span className="ml-auto text-[11px] text-fg-subtle">{timeLabel}</span>
-        )}
+        <div className="ml-auto flex items-center gap-1">
+          {timeLabel && <span className="text-[11px] text-fg-subtle">{timeLabel}</span>}
+          {showCopy && (
+            <CopyButton
+              text={textContent}
+              size="icon-sm"
+              className="size-6 text-fg-subtle opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100"
+            />
+          )}
+        </div>
       </div>
 
       <div className="space-y-2.5">
@@ -218,8 +229,6 @@ export function Message({
           <Button variant="ghost" size="sm" onClick={onRegenerate} disabled={isStreaming}>
             <RotateCw className="size-3.5" /> Regenerate
           </Button>
-          <CopyButton text={textContent} label="Copy" />
-          <span className="text-border-strong">·</span>
           {FOLLOWUPS.map((f) => (
             <button
               key={f}
