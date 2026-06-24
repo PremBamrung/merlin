@@ -196,6 +196,11 @@ class ChatThread(Base):
     title = Column(String(512))
     created_at = Column(DateTime, default=_now)
     updated_at = Column(DateTime, default=_now, onupdate=_now)
+    # Denormalized sidebar fields, refreshed on every save_thread, so the
+    # thread-list endpoint reads one row per thread instead of loading every
+    # message's (potentially large) parts blob just to count + preview them.
+    message_count = Column(Integer, default=0)
+    preview = Column(String(512))  # first user message text, for titleless rows
 
     messages = relationship(
         "ChatMessage",

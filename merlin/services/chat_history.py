@@ -37,6 +37,7 @@ __all__ = [
     "rename_thread",
     "delete_thread",
     "generate_title",
+    "generate_and_store_title",
 ]
 
 # Cap the preview/title source so a pathologically long first message can't bloat
@@ -94,28 +95,28 @@ def save_thread(
     """Upsert a thread and replace its messages with `messages` (idempotent).
 
     `messages` is the full ordered list of `{id?, role, parts}` from the client.
-    Creates the thread row lazily on first save (so no empty threads exist). On
-    the first save with no stored title, generates one from the first user
-    message. Returns `{"id", "title"}`.
-    """
-    # Generate the title BEFORE opening the DB session — the LLM call can take a
-    # second or two and we don't want to hold a write transaction open for it.
-    new_title: str | None = None
-    with get_db() as db:
-        thread = db.get(ChatThread, thread_id)
-        needs_title = title is None and (thread is None or not thread.title)
-    if title is not None:
-        new_title = title
-    elif needs_title:
-        new_title = generate_title(_first_user_text(messages))
+    Creates the thread row lazily on first save (so no empty threads exist) and
+    refreshes the denormalized sidebar fields (`message_count`, `preview`).
 
+    Title generation is **not** done here — it's a slow LLM call that would block
+    the save response. The returned `needs_title` flag tells the caller to
+    schedule `generate_and_store_title` out of band (FastAPI BackgroundTasks). An
+    explicit `title` (e.g. a rename folded into a save) is applied inline and
+    suppresses generation. Returns `{"id", "title", "needs_title"}`.
+    """
     with get_db() as db:
         thread = db.get(ChatThread, thread_id)
         if thread is None:
             thread = ChatThread(id=thread_id)
             db.add(thread)
-        if new_title:
-            thread.title = new_title
+        if title is not None:
+            thread.title = title
+        needs_title = title is None and not thread.title
+
+        # Refresh the denormalized sidebar fields from the full list in hand, so
+        # list_threads never has to load the messages just to count/preview them.
+        thread.message_count = len(messages)
+        thread.preview = _first_user_text(messages)[:_PREVIEW_CHARS] or None
 
         # Replace the message set wholesale — the client always sends the full
         # list, so this is simpler and race-free for a single user than diffing.
@@ -135,45 +136,64 @@ def save_thread(
         # Bump updated_at even though only children changed (sidebar ordering).
         thread.updated_at = datetime.now(UTC)
         db.flush()
-        result = {"id": thread.id, "title": thread.title}
+        result = {
+            "id": thread.id,
+            "title": thread.title,
+            "needs_title": needs_title,
+        }
     return result
+
+
+def generate_and_store_title(thread_id: str) -> None:
+    """Generate a title from a thread's first user message and store it, unless it
+    already has one. Meant to run out of band (FastAPI BackgroundTasks) so the
+    slow LLM call never blocks the save response — the title simply appears on a
+    later sidebar refetch. Best-effort: any failure is logged and swallowed,
+    leaving the title NULL (the UI falls back to the preview)."""
+    try:
+        with get_db() as db:
+            thread = db.get(ChatThread, thread_id)
+            if thread is None or thread.title:
+                return
+            first = _first_user_text(
+                [
+                    {"role": m.role, "parts": json.loads(m.parts or "[]")}
+                    for m in thread.messages
+                ]
+            )
+        title = generate_title(first)
+        if not title:
+            return
+        with get_db() as db:
+            thread = db.get(ChatThread, thread_id)
+            if thread is not None and not thread.title:
+                thread.title = title
+    except Exception as exc:  # never let title generation surface as an error
+        logger.warning("background title generation failed: %s", exc)
 
 
 def list_threads() -> list[dict]:
     """All threads newest-first: `{id, title, created_at, updated_at,
-    message_count, preview}`. `preview` is the first user message, for titleless
-    rows."""
+    message_count, preview}`. Reads the denormalized `message_count`/`preview`
+    straight off each thread row — no per-thread message load (the sidebar is
+    refetched on every turn, so this stays a single cheap query)."""
     with get_db() as db:
         threads = (
             db.execute(select(ChatThread).order_by(ChatThread.updated_at.desc()))
             .scalars()
             .all()
         )
-        out = []
-        for t in threads:
-            msgs = t.messages  # eager-ordered by seq via the relationship
-            preview = ""
-            for m in msgs:
-                if m.role == "user":
-                    parts = json.loads(m.parts or "[]")
-                    preview = " ".join(
-                        p.get("text", "")
-                        for p in parts
-                        if isinstance(p, dict) and p.get("type") == "text"
-                    ).strip()
-                    if preview:
-                        break
-            out.append(
-                {
-                    "id": t.id,
-                    "title": t.title,
-                    "created_at": t.created_at.isoformat() if t.created_at else None,
-                    "updated_at": t.updated_at.isoformat() if t.updated_at else None,
-                    "message_count": len(msgs),
-                    "preview": preview[:_PREVIEW_CHARS] or None,
-                }
-            )
-        return out
+        return [
+            {
+                "id": t.id,
+                "title": t.title,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+                "message_count": t.message_count or 0,
+                "preview": t.preview,
+            }
+            for t in threads
+        ]
 
 
 def get_thread(thread_id: str) -> dict | None:

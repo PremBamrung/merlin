@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Request, Response
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_ai.ui.vercel_ai.response_types import DataChunk
 from pydantic_ai.usage import UsageLimits
@@ -202,12 +202,21 @@ def get_chat_thread(thread_id: str):
 
 
 @router.put("/chat/threads/{thread_id}", response_model=SaveThreadResponse)
-def save_chat_thread(thread_id: str, body: SaveThreadRequest):
-    return chat_history.save_thread(
+def save_chat_thread(
+    thread_id: str, body: SaveThreadRequest, background_tasks: BackgroundTasks
+):
+    result = chat_history.save_thread(
         thread_id,
         [m.model_dump() for m in body.messages],
         title=body.title,
     )
+    # Title generation is a slow LLM call — run it after the response is sent so
+    # the save returns immediately; the title shows up on a later sidebar refetch.
+    if result.pop("needs_title", False):
+        background_tasks.add_task(
+            chat_history.generate_and_store_title, thread_id
+        )
+    return result
 
 
 @router.patch("/chat/threads/{thread_id}", response_model=SaveThreadResponse)
