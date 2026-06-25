@@ -1,5 +1,12 @@
 # Repository Analysis: Merlin
 
+> ⚠️ **Historical / out of date (2025-01-27).** This analysis describes the
+> original **v1** layout — a Streamlit app with `Home.py`/`pages/` as an "example
+> frontend." None of that exists anymore: the daily driver is a FastAPI backend
+> (`api/`) serving a React SPA (`web/`), and Streamlit has been removed entirely.
+> Kept only as a historical snapshot. For the current architecture see
+> `README.md`, `CLAUDE.md`, and `docs/FRONTEND_V3_PLAN.md`.
+
 **Generated:** 2025-01-27  
 **Repository:** merlin  
 **License:** Apache License 2.0

@@ -1,8 +1,8 @@
 # Frontend v3 — Design & Build Plan
 
 > Status: **Tier 0 shipped & cut over** (last reviewed 2026-06-19). v3 (FastAPI
-> `api/` + React `web/`) is now the **daily driver**; Streamlit is archived under
-> `streamlit/` as the "engine room." Tier 1 is mostly done but pivoted (the Inbox
+> `api/` + React `web/`) is now the **only** UI; the Streamlit app has since been
+> removed entirely. Tier 1 is mostly done but pivoted (the Inbox
 > became the **Feed**); **Tier 2 — semantic search + the Karpathy wiki layer, the
 > stated moat — has not started.** See **§0.5 Current status** for the honest
 > map of what's built vs. what this plan originally proposed. The tier/build-order
@@ -11,8 +11,8 @@
 ## 0. Context — what this has to serve
 
 Merlin is a **daily-driver personal knowledge vault** for a senior ML engineer
-who doesn't write frontend. Reading the docs (`STREAMLIT_MIGRATION_PLAN.md`,
-`SESSION_NOTES.md`, `MERLIN_FULL_ANALYSIS.md`), the frontend serves two things:
+who doesn't write frontend. Reading the docs (`SESSION_NOTES.md`,
+`MERLIN_FULL_ANALYSIS.md`), the frontend serves two things:
 
 1. **Ingest → summarize → browse → chat** over content (YouTube today; articles,
    PDFs, podcasts later — the data model is already source-agnostic).
@@ -115,10 +115,6 @@ Backend stays **FastAPI** — thin, a 1:1 HTTP skin over the already-clean
 
 ```
 merlin/            # core lib — UNTOUCHED (services already return plain dicts)
-                   #   SHARED by both the archived Streamlit app and the new api/
-streamlit/         # ARCHIVED current UI (moved here to avoid confusion with v3):
-                   #   app.py, ui/, .streamlit/, scripts/shoot.py
-                   #   stays runnable as the "engine room" until v3 hits Tier-0 parity
 api/               # NEW: FastAPI, thin
   main.py          #   app, CORS (dev), static-file mount of built web/
   deps.py
@@ -138,12 +134,9 @@ web/               # NEW: Vite + React + TS + Tailwind + shadcn
 docker-compose.yml # services: api (uvicorn, serves /api/* + built SPA) [+ db at Tier 2]
 ```
 
-> **Archiving Streamlit** is a small repo reorg with Docker/import implications
-> (Dockerfile `CMD`, compose command, the `streamlit run` path, `scripts/shoot.py`,
-> `[tool.uv] package=false` cwd imports). Do it as **step 0 of the v3 scaffold**,
-> not as a standalone change — there's nothing to confuse it with until `web/`
-> exists, and bundling keeps it a single verified move. `merlin/` does **not**
-> move; only the Streamlit-specific files do.
+> **Historical note:** Streamlit was first moved to `streamlit/` as an archived
+> "engine room," then removed entirely once v3 reached parity. React (`web/`) is
+> now the only UI; `merlin/` was never modified by any of this.
 
 ### The single practice that prevents v2's contract drift
 
@@ -260,18 +253,18 @@ Lean into the v2 look the owner liked; make it fill the screen and feel alive.
 | 7 | ~~Inbox/Digest~~ → **Feed** + Insights | Tier 1 | 🟡 Insights ✅; Inbox pivoted to Feed |
 | 8+ | Embeddings → wiki layer → graph → new sources | Tier 2 | ❌ **not started ← next push** |
 
-**Coexistence:** Streamlit is archived under `streamlit/`, still runnable as the
-engine room; `web/` is the daily driver as of **Tier-0 parity** (step 6, done).
+**UI:** `web/` is the only UI as of **Tier-0 parity** (step 6, done); the Streamlit
+app — first archived, then removed — is gone.
 
 ---
 
 ## 7. Resolved decisions & open questions
 
 **Resolved:**
-- **Accent**: keep **Streamlit's red** (`#ff4b4b`), built into a cohesive ramp on
+- **Accent**: keep the original red (`#ff4b4b`), built into a cohesive ramp on
   pure-neutral surfaces (see `FRONTEND_V3_DESIGN_SYSTEM.md`).
-- **Coexistence**: keep Streamlit runnable, archived under `streamlit/`; build
-  `api/` + `web/` in the **same repo**; cut over at Tier-0 parity.
+- **Migration**: build `api/` + `web/` in the **same repo** alongside the old
+  Streamlit app, cut over at Tier-0 parity, then remove Streamlit.
 - **End goal**: self-hosted on the **NAS**, used from devices over the web; the
   FastAPI server is the **only** DB client (browsers hit the server, not the DB),
   so multi-device access does **not** by itself require Postgres.

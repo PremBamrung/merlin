@@ -1,259 +1,128 @@
 # 🧙‍♂️ Merlin
 
-Merlin is a versatile chatbot application built with Streamlit that combines conversational AI with powerful integrations for YouTube video processing, web search, and knowledge management. Engage in dynamic conversations or harness integrated functionalities like YouTube subtitle extraction and summarization to build a comprehensive knowledge database effortlessly.
+Merlin is a personal knowledge-management app: **ingest** content (currently
+YouTube videos), **summarise** it with an LLM, **store** it in SQLite, and
+**query** it through hybrid RAG and an agentic chat assistant.
 
-## ✨ Features
+It runs as a **FastAPI backend** that serves a **React single-page app** — paste a
+URL, let it transcribe + summarise in the background, then browse, read, and chat
+with everything you've saved.
 
-### 🤖 Conversational AI
-- **Interactive Chat Interface**: Engage in natural conversations with an AI assistant
-- **Multiple LLM Providers**: Support for OpenRouter and Azure OpenAI
-- **Streaming Responses**: Real-time streaming of AI responses for better user experience
-- **Conversation History**: Maintain context across multiple interactions
+## ✨ What you get
 
-### 📺 YouTube Integration
-- **Video Summarization**: Automatically extract and summarize YouTube video content
-- **Subtitle Extraction**: Extract subtitles in multiple languages (English, French, German)
-- **Smart Caching**: Cache video summaries to avoid reprocessing
-- **Flexible Summary Lengths**: Choose from short, medium, or long summaries
-- **Video Metadata**: Extract and display video information including:
-  - Title, channel, views, duration
-  - Publication date
-  - Subscriber count
-  - Video thumbnail
-- **Tag Organization**: Organize summaries with custom tags
-- **Search & Filter**: Search through your video database by title, channel, content, or tags
-- **Topic Extraction**: Automatically extract key topics and timestamps
+| Surface | What it does |
+|---|---|
+| **Today** | Omnibox to ingest a URL (or ask a question) + live progress and recent items |
+| **Feed** | A swipe-to-read queue of unread items; mark read, ★ save, undo |
+| **Library / Reader** | Searchable/filterable grid of everything saved; full reading view per item |
+| **Chat** | Agentic assistant that searches and reads your library to answer (with sources) |
+| **Insights** | Charts: ingestion timeline, top channels, status breakdown |
 
-### 🔍 Web Search
-- **LangChain Integration**: Powered by LangChain agents for intelligent web searches
-- **DuckDuckGo Search**: Real-time web search capabilities
+**Under the hood:** plugin-based ingestion (YouTube today, more sources pluggable),
+LLM summarisation (Azure OpenAI or OpenRouter), and **hybrid retrieval** — SQLite
+FTS5 keyword search fused with optional Jina vector search + reranking.
 
-### 💾 Knowledge Database
-- **SQLite Database**: Store all video summaries and metadata locally
-- **Persistent Storage**: Your knowledge base persists across sessions
-- **Easy Retrieval**: Quick access to all summarized content
+## 🏗️ Architecture
 
-## 🚀 Installation
-
-### Prerequisites
-- Python 3.8 or higher
-- pip package manager
-
-### Setup
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd merlin
-   ```
-
-2. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Configure environment variables**
-
-   Create a `.env` file in the `merlin/` directory with the following variables:
-
-   **For OpenRouter:**
-   ```env
-   OPENROUTER_API_KEY=your_openrouter_api_key
-   OPENROUTER_MODEL_DEPLOYMENT=your_model_name
-   OPENROUTER_ENDPOINT=https://openrouter.ai/api/v1
-   ```
-
-   **For Azure OpenAI (alternative):**
-   ```env
-   AZURE_OPENAI_ENDPOINT=your_azure_endpoint
-   AZURE_OPENAI_KEY=your_azure_key
-   AZURE_OPENAI_API_VERSION=your_api_version
-   AZURE_MODEL_DEPLOYMENT=your_deployment_name
-   ```
-
-4. **Run the application**
-   ```bash
-   streamlit run Home.py
-   ```
-
-   The application will open in your default web browser at `http://localhost:8501`
-
-## 📖 Usage
-
-### Main Chat Interface
-- Start a conversation by typing in the chat input
-- Paste a YouTube URL directly in the chat to automatically summarize the video
-- Use the sidebar button to clear conversation history
-
-### YouTube Video Summarizer
-Navigate to the **YouTube** page from the sidebar to:
-- **Summarize a Video**:
-  - Enter a YouTube video URL
-  - Select your preferred language (English, French, German)
-  - Choose summary length (short, medium, long)
-  - Add optional tags for organization
-  - Click "Summarize" to process the video
-
-- **View Summarized Videos**:
-  - Browse all previously summarized videos
-  - Search by title, channel, or content
-  - Filter by tags
-  - View cached summaries instantly
-
-### QA & Search
-Access the **QA** page for web-enabled search capabilities using LangChain agents.
-
-## 📁 Project Structure
+The dependency arrow points one way:
 
 ```
-merlin/
-├── Home.py                 # Main Streamlit application entry point
-├── pages/                  # Streamlit multi-page application pages
-│   ├── 01_Youtube.py      # YouTube video summarization page
-│   ├── 02_QA.py           # QA and search page
-│   └── 03_Blogs.py        # Blog-related features
-├── merlin/                 # Core application package
-│   ├── llm/               # LLM provider integrations
-│   │   ├── openrouter.py  # OpenRouter LLM implementation
-│   │   └── azureopenai.py # Azure OpenAI LLM implementation
-│   ├── integration/       # External service integrations
-│   │   ├── youtube/       # YouTube integration module
-│   │   └── reddit.py      # Reddit integration
-│   ├── database/          # Database models and repositories
-│   │   ├── models.py      # SQLAlchemy models
-│   │   └── repositories.py # Data access layer
-│   └── utils.py           # Utility functions
-├── merlin.db              # SQLite database file
-├── tests/                 # Test suite
-│   ├── __init__.py        # Test package initialization
-│   ├── conftest.py        # Shared fixtures
-│   ├── test_azure_openai.py  # Azure OpenAI tests
-│   └── test_yt_subtitles.py  # YouTube subtitle tests
-├── pytest.ini             # Pytest configuration
-├── requirements.txt        # Python dependencies
-├── LICENSE                 # Apache License 2.0
-└── README.md               # This file
+api/  →  merlin.services  →  merlin.{core, db, rag, knowledge_sources}
+web/  (React SPA, built to web/dist, served by FastAPI at /)
 ```
 
-## 🛠️ Dependencies
+- **`merlin/`** — framework-agnostic core: config, the plugin-based ingestion
+  pipeline, the SQLite data layer + Alembic migrations, and RAG/agentic chat. It
+  never imports `fastapi` or `api/` (enforced by `tests/test_architecture.py`).
+- **`api/`** — a thin FastAPI skin: routers validate input, call **one**
+  `merlin.services` function, and serialise the dict it returns. Serves `/api/*`
+  and mounts the built SPA at `/` (same origin → no CORS in prod).
+- **`web/`** — Vite + React 19 + React Router + TanStack Query + Tailwind. Chat
+  streams over the Vercel AI SDK protocol; everything else uses a typed client
+  generated from the backend's OpenAPI schema.
 
-- **streamlit**: Web application framework
-- **langchain**: LLM framework and agent tools
-- **langchain_openai**: OpenAI integration for LangChain
-- **pytube**: YouTube video metadata extraction
-- **youtube_transcript_api**: YouTube subtitle extraction
-- **sqlalchemy**: Database ORM
-- **python-dotenv**: Environment variable management
-- **Pillow**: Image processing
-- **pytest**: Testing framework
-- **pytest-xdist**: Parallel test execution
+See `CLAUDE.md` and `docs/FRONTEND_V3_PLAN.md` for the full design.
 
-See `requirements.txt` for complete dependency list with versions.
+## 🚀 Quick start (Docker — recommended)
+
+```bash
+cp .env.example .env        # then fill in your LLM keys (see Configuration)
+docker compose up --build   # → http://localhost:8000
+```
+
+The `api` container runs `alembic upgrade head` (DB migrations) on start, then
+serves the API and the built React SPA from a single process. OpenAPI docs are at
+`http://localhost:8000/docs`. The SQLite DB lives in `./data` (a mounted volume),
+so it survives rebuilds.
+
+> Code is baked into the image, not bind-mounted — apply code/dependency changes
+> with `docker compose up --build` (a plain restart won't pick them up).
+
+## 🧑‍💻 Local development (without Docker)
+
+Python deps are managed with **[uv](https://docs.astral.sh/uv/)** (Python 3.11+);
+the frontend uses **npm**.
+
+```bash
+# 1. Backend
+uv sync
+# Point at the local DB (the .env default uses the Docker path) and run it:
+DATABASE_URL="sqlite:///$(pwd)/data/merlin.db" \
+  uv run uvicorn api.main:app --reload --port 8000
+
+# 2. Frontend (separate terminal) — Vite dev server proxies /api to :8000
+cd web && npm install && npm run dev          # → http://localhost:5173
+
+# DB migrations (env.py migrates settings.database_url)
+uv run alembic upgrade head
+```
+
+Frontend build/check commands (from `web/`): `npm run build` (→ `web/dist`),
+`npm run typecheck`, `npm run lint`, `npm run gen:api` (regenerate the typed API
+client against a running server's `/openapi.json`).
 
 ## 🔧 Configuration
 
-### LLM Provider Selection
-The application uses OpenRouter by default. To switch to Azure OpenAI, modify the import in `Home.py`:
+All configuration is via environment variables in `.env` (see `.env.example` for
+the full list with comments). The essentials:
 
-```python
-# Change from:
-from merlin.llm.openrouter import llm
+- **`LLM_PROVIDER`** — `openrouter` (default) or `azure`; fill in the matching
+  block (`OPENROUTER_*` or `AZURE_OPENAI_*`).
+- **`GROQ_API_KEY`** — fallback audio transcriber when no YouTube transcript exists.
+- **`EMBEDDING_PROVIDER`** — `none` for pure FTS5 keyword search (no API needed),
+  or `jina` to enable vector search + reranking (`JINA_*` keys).
+- **`DATABASE_URL`** / **`SQLITE_JOURNAL_MODE`** — SQLite path + journal mode. Use
+  `DELETE` on a macOS Docker bind mount (WAL is unsafe there); `WAL` is fine and
+  faster on a Linux/NAS volume.
 
-# To:
-from merlin.llm.azureopenai import llm
-```
+> Keep your API keys out of version control — `.env` is gitignored; commit only
+> `.env.example`.
 
-### Database
-The application uses SQLite by default (`merlin.db`). The database is automatically initialized on first run. To reset the database, simply delete the `merlin.db` file.
+## 🧪 Testing & linting
 
-## 🧪 Testing
-
-The project uses [pytest](https://docs.pytest.org/) for testing with parallel execution support via [pytest-xdist](https://pytest-xdist.readthedocs.io/).
-
-### Running Tests
-
-**Run all tests:**
 ```bash
-pytest tests/
+uv run pytest                          # full suite
+uv run pytest tests/backend            # router → service → temp-SQLite tests
+uv run pytest tests/test_architecture.py   # the dependency-boundary guard
+uv run pytest -m "not requires_azure"  # skip Azure-dependent tests
+
+uv run ruff check .                    # lint
+uv run ruff format .                   # format
 ```
 
-**Run tests in parallel (faster):**
-```bash
-pytest tests/ -n auto
-```
-The `-n auto` flag automatically uses all available CPU cores for parallel execution.
+Markers: `requires_azure`, `integration`, `slow`.
 
-**Run specific test files:**
-```bash
-# Run only YouTube subtitle tests
-pytest tests/test_yt_subtitles.py
-
-# Run only Azure OpenAI tests
-pytest tests/test_azure_openai.py
-```
-
-**Run specific tests:**
-```bash
-# Run a specific test function
-pytest tests/test_yt_subtitles.py::test_video_id_extraction
-
-# Run tests matching a pattern
-pytest tests/ -k "subtitle"
-```
-
-**Skip tests that require Azure OpenAI:**
-```bash
-# Skip Azure OpenAI tests if not configured
-pytest tests/ -m "not requires_azure"
-```
-
-### Test Structure
+## 📁 Repository layout
 
 ```
-tests/
-├── __init__.py              # Test package initialization
-├── conftest.py              # Shared fixtures and configuration
-├── test_azure_openai.py     # Azure OpenAI LLM tests
-└── test_yt_subtitles.py     # YouTube subtitle extraction tests
-```
-
-### Test Markers
-
-Tests are organized using pytest markers:
-- `@pytest.mark.requires_azure` - Tests that require Azure OpenAI configuration
-- `@pytest.mark.integration` - Integration tests
-- `@pytest.mark.slow` - Tests that take longer to run
-
-**Run tests by marker:**
-```bash
-# Run only Azure OpenAI tests
-pytest tests/ -m "requires_azure"
-
-# Run only non-Azure tests
-pytest tests/ -m "not requires_azure"
-```
-
-### Verbose Output
-
-For more detailed test output:
-```bash
-pytest tests/ -v              # Verbose output
-pytest tests/ -vv             # Very verbose output
-pytest tests/ -s              # Show print statements
+merlin/      Core library (config, ingestion plugins, DB + migrations, RAG/chat)
+api/         FastAPI backend — routers, schemas, error envelope, SSE
+web/         React SPA (Vite) — routes, components, hooks, generated API client
+tests/       pytest suite (incl. tests/backend/ integration tests)
+scripts/     Maintenance utilities (e.g. embedding backfill)
+docs/        Architecture & design docs
 ```
 
 ## 📝 License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📧 Support
-
-For issues, questions, or contributions, please open an issue on the repository.
-
----
-
-**Note**: Make sure to keep your API keys secure and never commit them to version control. The `.env` file should be added to `.gitignore`.
+Apache License 2.0 — see [LICENSE](LICENSE).
