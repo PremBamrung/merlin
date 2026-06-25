@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ── Stage 1: build the React SPA (web/) ──────────────────────────────────────
 # Produces web/dist, which the FastAPI app serves at / (same origin, no CORS).
 # Node 22 satisfies Vite 8's engine requirement. node_modules is .dockerignored,
@@ -5,9 +6,10 @@
 FROM node:22-slim AS web-build
 WORKDIR /web
 
-# Install deps in their own cached layer (keyed on the manifest + lock).
+# Install deps in their own cached layer (keyed on the manifest + lock). The
+# BuildKit cache mount keeps npm's download cache warm across rebuilds.
 COPY web/package.json web/package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # Build the bundle (tsc -b && vite build → web/dist).
 COPY web/ ./
@@ -27,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Use the image's Python; don't let uv download its own. Put the project venv
-# on PATH so `alembic`/`uvicorn`/`streamlit` resolve directly in CMD.
+# on PATH so `alembic`/`uvicorn` resolve directly in CMD.
 ENV UV_PYTHON_DOWNLOADS=never \
     UV_PROJECT_ENVIRONMENT=/app/.venv \
     UV_COMPILE_BYTECODE=1 \
@@ -35,15 +37,13 @@ ENV UV_PYTHON_DOWNLOADS=never \
     PATH="/app/.venv/bin:$PATH"
 
 # Install dependencies in their own cached layer (keyed on the manifest + lock).
+# The BuildKit cache mount reuses uv's download/build cache across rebuilds.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
 
-# Application code. The FastAPI layer (api/) and the core library (merlin/) are
-# the v3 runtime; streamlit/ is the archived "engine room" (still runnable via
-# the `streamlit` compose profile).
+# Application code: the FastAPI layer (api/) over the core library (merlin/).
 COPY merlin/ ./merlin/
 COPY api/ ./api/
-COPY streamlit/ ./streamlit/
 COPY scripts/ ./scripts/
 COPY alembic.ini ./
 
