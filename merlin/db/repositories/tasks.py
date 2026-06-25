@@ -80,6 +80,14 @@ class BackgroundTaskRepository:
             task.completed_at = datetime.now(timezone.utc)
 
     @staticmethod
+    def set_cancelled(session: Session, task_id: str) -> None:
+        """Mark a non-terminal task cancelled (user aborted the ingest)."""
+        task = session.get(BackgroundTask, task_id)
+        if task and task.status in ("queued", "processing"):
+            task.status = "cancelled"
+            task.completed_at = datetime.now(timezone.utc)
+
+    @staticmethod
     def list_recent(session: Session, limit: int = 20) -> list[BackgroundTask]:
         return (
             session.query(BackgroundTask)

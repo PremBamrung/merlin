@@ -81,6 +81,7 @@ export type TaskFrame =
   | { type: "progress"; task: components["schemas"]["Task"] }
   | { type: "complete"; task: components["schemas"]["Task"] }
   | { type: "failed"; task: components["schemas"]["Task"] }
+  | { type: "cancelled"; task: components["schemas"]["Task"] }
   | { type: "error"; error: ErrorBody };
 
 async function* sseRaw(

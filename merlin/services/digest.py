@@ -82,7 +82,8 @@ def retry_failed() -> dict:
                         input_data["raw_input"],
                         input_data.get("languages") or ["en"],
                         input_data.get("summary_length", "short"),
-                    )
+                        force=True,
+                    )["task_id"]
                 )
             else:
                 continue

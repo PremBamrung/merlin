@@ -144,6 +144,25 @@ class TaskIdResponse(BaseModel):
     task_id: str
 
 
+class IngestYouTubeResponse(BaseModel):
+    """Either an ingest was started, or the video is already in the library.
+
+    `status == "started"` → `task_id` is set (poll it). `status == "exists"` →
+    nothing was queued; `item_id`/`title` identify the existing item so the
+    client can confirm with the user before re-summarising.
+    """
+
+    status: str = "started"  # "started" | "exists"
+    task_id: str | None = None
+    item_id: str | None = None
+    title: str | None = None
+
+
+class CancelTaskResponse(BaseModel):
+    task_id: str
+    status: str = "cancelling"
+
+
 class Citation(BaseModel):
     item_id: str
     title: str

@@ -4,7 +4,8 @@ The **chat** stream is no longer here: `POST /api/chat` now speaks the Vercel AI
 SDK data-stream protocol, emitted by `VercelAIAdapter` in `routers/chat.py`.
 This module owns the remaining hand-rolled stream:
 
-  * task progress   — `GET /api/tasks/{id}/stream` (progress* → complete|failed)
+  * task progress   — `GET /api/tasks/{id}/stream`
+                       (progress* → complete|failed|cancelled)
 
 Each frame is one JSON object on a `data:` line, frames separated by a blank
 line. The task generator polls `merlin.services.ingest.get_task` server-side —
@@ -62,6 +63,9 @@ def task_progress_events(task_id: str) -> Iterator[str]:
             return
         if status == "failed":
             yield format_sse({"type": "failed", "task": task})
+            return
+        if status == "cancelled":
+            yield format_sse({"type": "cancelled", "task": task})
             return
 
         sig = (status, task.get("progress"), task.get("message"))

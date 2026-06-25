@@ -19,11 +19,21 @@ from merlin.db.repositories.tasks import BackgroundTaskRepository
 from merlin.knowledge_sources.base import IngestRequest, IngestResult
 
 
+class TaskCancelled(Exception):
+    """Raised inside a worker when the task has been cancelled by the user.
+
+    Surfaced at a progress checkpoint (cooperative cancellation) so the worker
+    unwinds cleanly and records the task as ``cancelled`` rather than ``failed``.
+    """
+
+
 class TaskQueue:
     def __init__(self, max_workers: int = 3):
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers, thread_name_prefix="merlin"
         )
+        # task_ids the user has asked to cancel; checked at progress checkpoints.
+        self._cancelled: set[str] = set()
 
     # ------------------------------------------------------------------
     # Public API
@@ -133,6 +143,32 @@ class TaskQueue:
         self._executor.submit(self._run_callable, task_id, work)
         return task_id
 
+    def cancel(self, task_id: str) -> bool:
+        """Request cancellation of a queued/running task. Cooperative.
+
+        Flags the id so the worker stops at its next `report()` checkpoint and
+        records the task as `cancelled`. Returns False if the task is unknown or
+        already terminal (completed/failed/cancelled). Work already in flight
+        between checkpoints (e.g. an LLM call) finishes before the stop takes.
+        """
+        with SessionFactory() as s:
+            task = BackgroundTaskRepository.get(s, task_id)
+            if task is None or task.status in ("completed", "failed", "cancelled"):
+                return False
+        self._cancelled.add(task_id)
+        return True
+
+    def _check_cancelled(self, task_id: str) -> None:
+        """Raise TaskCancelled if the user has cancelled this task."""
+        if task_id in self._cancelled:
+            raise TaskCancelled()
+
+    def _mark_cancelled(self, task_id: str) -> None:
+        logger.info(f"Task {task_id} cancelled")
+        with SessionFactory() as s:
+            BackgroundTaskRepository.set_cancelled(s, task_id)
+            s.commit()
+
     # ------------------------------------------------------------------
     # Worker (runs in thread pool)
     # ------------------------------------------------------------------
@@ -145,6 +181,7 @@ class TaskQueue:
         logger.info(f"Task {task_id} started — callable job")
 
         def report(percent: int, message: str):
+            self._check_cancelled(task_id)
             try:
                 with SessionFactory() as s:
                     BackgroundTaskRepository.update_progress(
@@ -159,13 +196,18 @@ class TaskQueue:
             s.commit()
 
         try:
+            self._check_cancelled(task_id)
             work(task_id, report)
             logger.info(f"Task {task_id} completed successfully")
+        except TaskCancelled:
+            self._mark_cancelled(task_id)
         except Exception as exc:
             logger.exception(f"Task {task_id} failed: {exc}")
             with SessionFactory() as s:
                 BackgroundTaskRepository.set_failed(s, task_id, str(exc))
                 s.commit()
+        finally:
+            self._cancelled.discard(task_id)
 
     def _run_ingest(
         self,
@@ -178,6 +220,7 @@ class TaskQueue:
         logger.info(f"Task {task_id} started — {plugin.source_type}: {raw_input[:80]}")
 
         def progress_callback(percent: int, message: str):
+            self._check_cancelled(task_id)
             try:
                 with SessionFactory() as s:
                     BackgroundTaskRepository.update_progress(
@@ -201,6 +244,7 @@ class TaskQueue:
             s.commit()
 
         try:
+            self._check_cancelled(task_id)
             request = IngestRequest(
                 raw_input=raw_input,
                 options=options,
@@ -214,11 +258,15 @@ class TaskQueue:
             on_complete(task_id, result)
             logger.info(f"Task {task_id} completed successfully")
 
+        except TaskCancelled:
+            self._mark_cancelled(task_id)
         except Exception as exc:
             logger.exception(f"Task {task_id} failed: {exc}")
             with SessionFactory() as s:
                 BackgroundTaskRepository.set_failed(s, task_id, str(exc))
                 s.commit()
+        finally:
+            self._cancelled.discard(task_id)
 
 
 # Module-level singleton — imported by the API routers

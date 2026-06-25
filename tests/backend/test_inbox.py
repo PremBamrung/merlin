@@ -92,7 +92,10 @@ def test_retry_failed_reenqueues_and_clears(client, make_item, make_task, monkey
     )
     monkeypatch.setattr(
         "merlin.services.ingest.submit_youtube",
-        lambda url, languages, summary_length="short": "rt-url",
+        lambda url, languages, summary_length="short", force=False: {
+            "status": "started",
+            "task_id": "rt-url",
+        },
     )
 
     item_id = make_item()

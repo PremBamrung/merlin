@@ -64,9 +64,10 @@ export const getSourceTypes = () => client.get<NameCount[]>("/api/source-types")
 
 // --- Ingest / tasks --------------------------------------------------------
 export type TaskId = components["schemas"]["TaskIdResponse"];
+export type IngestYouTubeResult = components["schemas"]["IngestYouTubeResponse"];
 
 export const ingestYouTube = (body: components["schemas"]["IngestYouTubeRequest"]) =>
-  client.post<TaskId>("/api/ingest/youtube", body);
+  client.post<IngestYouTubeResult>("/api/ingest/youtube", body);
 
 export const resummarize = (
   id: string,
@@ -82,6 +83,11 @@ export const getTasks = (limit = 10) =>
   client.get<Task[]>("/api/tasks", { limit });
 
 export const getTask = (id: string) => client.get<Task>(`/api/tasks/${id}`);
+
+export const cancelTask = (id: string) =>
+  client.post<components["schemas"]["CancelTaskResponse"]>(
+    `/api/tasks/${id}/cancel`,
+  );
 
 // --- Inbox / Digest: failed-ingest management (the Feed replaced review) ----
 export type Inbox = components["schemas"]["InboxResponse"];

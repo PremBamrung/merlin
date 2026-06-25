@@ -13,7 +13,7 @@ def test_ingest_youtube_returns_task_id(client, monkeypatch):
 
     def fake_submit(url, languages, summary_length="short"):
         captured.update(url=url, languages=languages, summary_length=summary_length)
-        return "task-123"
+        return {"status": "started", "task_id": "task-123"}
 
     monkeypatch.setattr("merlin.services.ingest.submit_youtube", fake_submit)
 
@@ -26,11 +26,37 @@ def test_ingest_youtube_returns_task_id(client, monkeypatch):
         },
     )
     assert resp.status_code == 200
-    assert resp.json() == {"task_id": "task-123"}
+    assert resp.json() == {
+        "status": "started",
+        "task_id": "task-123",
+        "item_id": None,
+        "title": None,
+    }
     assert captured == {
         "url": "https://youtu.be/abc",
         "languages": ["en", "fr"],
         "summary_length": "long",
+    }
+
+
+def test_ingest_youtube_already_ingested_asks_to_confirm(client, monkeypatch):
+    # An already-ingested URL is NOT re-summarised silently: the service reports
+    # it exists so the client can confirm first.
+    monkeypatch.setattr(
+        "merlin.services.ingest.submit_youtube",
+        lambda url, languages, summary_length="short": {
+            "status": "exists",
+            "item_id": "item-42",
+            "title": "Already Here",
+        },
+    )
+    resp = client.post("/api/ingest/youtube", json={"url": "https://youtu.be/dupe"})
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "status": "exists",
+        "task_id": None,
+        "item_id": "item-42",
+        "title": "Already Here",
     }
 
 
@@ -41,7 +67,7 @@ def test_ingest_youtube_defaults_languages(client, monkeypatch):
         lambda url, languages, summary_length="short": seen.update(
             languages=languages, summary_length=summary_length
         )
-        or "t1",
+        or {"status": "started", "task_id": "t1"},
     )
     resp = client.post("/api/ingest/youtube", json={"url": "https://youtu.be/x"})
     assert resp.status_code == 200
@@ -124,3 +150,23 @@ def test_get_task_404(client):
     resp = client.get("/api/tasks/nope")
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "not_found"
+
+
+def test_cancel_task(client, make_task):
+    task_id = make_task(status="processing")
+    resp = client.post(f"/api/tasks/{task_id}/cancel")
+    assert resp.status_code == 200
+    assert resp.json() == {"task_id": task_id, "status": "cancelling"}
+
+
+def test_cancel_unknown_task_404(client):
+    resp = client.post("/api/tasks/nope/cancel")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "not_found"
+
+
+def test_cancel_finished_task_404(client, make_task):
+    # A terminal task has nothing to cancel.
+    task_id = make_task(status="completed", progress=100)
+    resp = client.post(f"/api/tasks/{task_id}/cancel")
+    assert resp.status_code == 404

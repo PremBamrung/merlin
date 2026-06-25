@@ -848,6 +848,33 @@ export interface components {
             /** Task Id */
             task_id: string;
         };
+        /**
+         * IngestYouTubeResponse
+         * @description Either an ingest was started, or the video is already in the library.
+         */
+        IngestYouTubeResponse: {
+            /**
+             * Status
+             * @default started
+             */
+            status: string;
+            /** Task Id */
+            task_id?: string | null;
+            /** Item Id */
+            item_id?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** CancelTaskResponse */
+        CancelTaskResponse: {
+            /** Task Id */
+            task_id: string;
+            /**
+             * Status
+             * @default cancelling
+             */
+            status: string;
+        };
         /** TimelinePoint */
         TimelinePoint: {
             /** Date */

@@ -4,6 +4,14 @@ import { persist } from "zustand/middleware";
 export type Density = "comfortable" | "cozy" | "compact";
 export type LibraryView = "grid" | "list";
 
+/** A pending "this is already ingested — redo the summary?" confirmation. */
+export type ResummarizePrompt = {
+  itemId: string;
+  title: string | null;
+  summary_length: string;
+  languages: string[];
+};
+
 type UiState = {
   // Command palette
   paletteOpen: boolean;
@@ -13,6 +21,11 @@ type UiState = {
   addPrefill: string;
   openAdd: (prefill?: string) => void;
   setAddOpen: (open: boolean) => void;
+  // Re-summarise confirmation: set when an ingest hits an already-ingested
+  // video, so a global dialog can ask the user before redoing the summary.
+  resummarizePrompt: ResummarizePrompt | null;
+  openResummarizePrompt: (p: ResummarizePrompt) => void;
+  closeResummarizePrompt: () => void;
   // Mobile navigation drawer (only rendered below the `md` breakpoint)
   navOpen: boolean;
   setNavOpen: (open: boolean) => void;
@@ -46,6 +59,10 @@ export const useUi = create<UiState>()(
       addPrefill: "",
       openAdd: (prefill = "") => set({ addOpen: true, addPrefill: prefill }),
       setAddOpen: (open) => set({ addOpen: open }),
+
+      resummarizePrompt: null,
+      openResummarizePrompt: (p) => set({ resummarizePrompt: p }),
+      closeResummarizePrompt: () => set({ resummarizePrompt: null }),
 
       navOpen: false,
       setNavOpen: (open) => set({ navOpen: open }),

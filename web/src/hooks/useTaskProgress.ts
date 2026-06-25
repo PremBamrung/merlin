@@ -11,6 +11,7 @@ export type TaskProgress = {
   status: string;
   done: boolean;
   failed: boolean;
+  cancelled: boolean;
 };
 
 /**
@@ -29,7 +30,11 @@ export function useTaskProgress(taskId: string): TaskProgress {
     const ctrl = new AbortController();
     finished.current = false;
 
-    const settle = (frame: Extract<TaskFrame, { task: Task }>, ok: boolean) => {
+    // outcome: "ok" (complete) | "failed" | "cancelled" — drives the toast.
+    const settle = (
+      frame: Extract<TaskFrame, { task: Task }>,
+      outcome: "ok" | "failed" | "cancelled",
+    ) => {
       setTask(frame.task);
       setStatus(frame.task.status);
       if (finished.current) return;
@@ -39,11 +44,16 @@ export function useTaskProgress(taskId: string): TaskProgress {
       if (frame.task.knowledge_item_id) {
         qc.invalidateQueries({ queryKey: keys.item(frame.task.knowledge_item_id) });
       }
-      const title = frame.task.message || (ok ? "Ingest complete" : "Ingest failed");
-      if (ok) toast.success(title);
-      else toast.error("Ingest failed", { description: frame.task.error ?? undefined });
+      if (outcome === "ok") {
+        toast.success(frame.task.message || "Ingest complete");
+      } else if (outcome === "cancelled") {
+        toast("Ingestion cancelled");
+      } else {
+        toast.error("Ingest failed", { description: frame.task.error ?? undefined });
+      }
       // Give the UI a beat to show the terminal state, then stop tracking.
-      window.setTimeout(() => remove(taskId), 4000);
+      // Cancelled rows clear faster — there's nothing to read on them.
+      window.setTimeout(() => remove(taskId), outcome === "cancelled" ? 1500 : 4000);
     };
 
     (async () => {
@@ -54,9 +64,11 @@ export function useTaskProgress(taskId: string): TaskProgress {
             setTask(f.task);
             setStatus(f.task.status);
           } else if (f.type === "complete") {
-            settle(f, true);
+            settle(f, "ok");
           } else if (f.type === "failed") {
-            settle(f, false);
+            settle(f, "failed");
+          } else if (f.type === "cancelled") {
+            settle(f, "cancelled");
           } else if (f.type === "error") {
             setStatus("failed");
           }
@@ -75,5 +87,6 @@ export function useTaskProgress(taskId: string): TaskProgress {
     status,
     done: status === "completed",
     failed: status === "failed",
+    cancelled: status === "cancelled",
   };
 }

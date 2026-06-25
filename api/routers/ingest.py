@@ -15,7 +15,9 @@ from merlin.services import ingest
 
 from ..errors import not_found
 from ..schemas import (
+    CancelTaskResponse,
     IngestYouTubeRequest,
+    IngestYouTubeResponse,
     ResummarizeRequest,
     RetryRequest,
     Task,
@@ -26,12 +28,12 @@ from ..sse import task_progress_events
 router = APIRouter(prefix="/api", tags=["ingest"])
 
 
-@router.post("/ingest/youtube", response_model=TaskIdResponse)
+@router.post("/ingest/youtube", response_model=IngestYouTubeResponse)
 def ingest_youtube(body: IngestYouTubeRequest):
     # Server-side dedup happens inside the service: an already-ingested URL
-    # routes to the re-summarise path and still returns a {task_id}.
-    task_id = ingest.submit_youtube(body.url, body.languages, body.summary_length)
-    return {"task_id": task_id}
+    # returns {"status": "exists", item_id, title} instead of queueing, so the
+    # client can confirm a re-summarise rather than redoing it silently.
+    return ingest.submit_youtube(body.url, body.languages, body.summary_length)
 
 
 @router.post("/items/{item_id}/resummarize", response_model=TaskIdResponse)
@@ -59,6 +61,14 @@ def get_task(task_id: str):
     if task is None:
         raise not_found("Task not found.")
     return task
+
+
+@router.post("/tasks/{task_id}/cancel", response_model=CancelTaskResponse)
+def cancel_task(task_id: str):
+    # 404 covers both unknown ids and already-terminal tasks (nothing to stop).
+    if not ingest.cancel_task(task_id):
+        raise not_found("Task not found or already finished.")
+    return {"task_id": task_id, "status": "cancelling"}
 
 
 @router.get("/tasks/{task_id}/stream")

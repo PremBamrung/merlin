@@ -127,12 +127,21 @@ def submit_youtube(
     url: str,
     languages: list[str],
     summary_length: str = "short",
-) -> str:
-    """Validate and enqueue a YouTube ingest. Returns the task_id to poll.
+    force: bool = False,
+) -> dict:
+    """Validate and enqueue a YouTube ingest.
 
-    If the video is already in the library (with a stored transcript), this
-    skips the full pipeline — no metadata fetch, no subtitle/audio download —
-    and re-summarises from the saved transcript instead.
+    Returns one of two dict shapes:
+
+    * ``{"status": "started", "task_id": <id>}`` — a fresh ingest (or, with
+      ``force=True``, a re-summarise) was queued; poll the task to track it.
+    * ``{"status": "exists", "item_id": <id>, "title": <title>}`` — the video
+      is already in the library with a stored transcript and ``force`` is False,
+      so nothing was queued. The caller should confirm with the user before
+      re-summarising (via ``resummarize`` / the resummarize endpoint).
+
+    Pass ``force=True`` to skip the confirmation gate and re-summarise an
+    already-ingested video in place (used by retry/digest, which always proceed).
 
     Raises ValueError if the plugin is unavailable or input is invalid.
     """
@@ -148,8 +157,9 @@ def submit_youtube(
     if errors:
         raise ValueError("; ".join(errors))
 
-    # Already ingested? Re-summarise from the stored transcript rather than
-    # re-running extraction (metadata + subs are already saved).
+    # Already ingested? Don't silently re-summarise — surface it so the caller
+    # can ask the user first. With force=True (retry/digest, or a confirmed
+    # redo) re-summarise from the stored transcript instead of re-extracting.
     video_id = VideoExtractor.extract_video_id(url)
     if video_id:
         with SessionFactory() as session:
@@ -157,15 +167,26 @@ def submit_youtube(
                 session, "youtube", video_id
             )
             existing_id = existing.id if existing and existing.raw_content else None
+            existing_title = existing.title if existing else None
         if existing_id:
-            return resummarize(existing_id, summary_length, languages)
+            if not force:
+                return {
+                    "status": "exists",
+                    "item_id": existing_id,
+                    "title": existing_title,
+                }
+            return {
+                "status": "started",
+                "task_id": resummarize(existing_id, summary_length, languages),
+            }
 
-    return task_queue.submit_ingest(
+    task_id = task_queue.submit_ingest(
         plugin=plugin,
         raw_input=url,
         options=options,
         on_complete=persist_result,
     )
+    return {"status": "started", "task_id": task_id}
 
 
 def resummarize(
@@ -309,7 +330,9 @@ def retry(
     if not video_id:
         raise ValueError("No YouTube metadata found")
     url = f"https://www.youtube.com/watch?v={video_id}"
-    return submit_youtube(url, langs, summary_length)
+    # A retry always proceeds — force past the already-ingested confirmation
+    # gate. (No transcript here anyway, so this hits the fresh-ingest path.)
+    return submit_youtube(url, langs, summary_length, force=True)["task_id"]
 
 
 # ------------------------------------------------------------------
@@ -345,6 +368,17 @@ def get_task(task_id: str) -> dict | None:
     with SessionFactory() as session:
         task = BackgroundTaskRepository.get(session, task_id)
         return _serialize_task(task) if task else None
+
+
+def cancel_task(task_id: str) -> bool:
+    """Request cancellation of an in-flight ingest/re-summarise task.
+
+    Cooperative: a still-queued task is marked cancelled immediately; a running
+    one stops at its next progress checkpoint (blocking work already in flight —
+    e.g. an LLM call — finishes first). Returns False if the task is unknown or
+    already in a terminal state (nothing to cancel).
+    """
+    return task_queue.cancel(task_id)
 
 
 def _parse_json(value, default):

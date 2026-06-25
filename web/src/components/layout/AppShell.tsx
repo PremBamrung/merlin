@@ -5,6 +5,7 @@ import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { CommandPalette } from "./CommandPalette";
 import { AddSourceDialog } from "@/components/ingest/AddSourceDialog";
+import { ResummarizeConfirmDialog } from "@/components/ingest/ResummarizeConfirmDialog";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useUi } from "@/store/ui";
 import { cn } from "@/lib/utils";
@@ -76,6 +77,7 @@ export function AppShell() {
       </div>
       <CommandPalette />
       <AddSourceDialog />
+      <ResummarizeConfirmDialog />
     </TooltipProvider>
   );
 }

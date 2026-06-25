@@ -81,6 +81,24 @@ def test_stream_failed(client, monkeypatch):
     assert frames[-1]["task"]["error"] == "yt-dlp: video unavailable"
 
 
+def test_stream_cancelled(client, monkeypatch):
+    monkeypatch.setattr("api.sse.TASK_STREAM_POLL_INTERVAL", 0)
+    states = iter(
+        [
+            _task(status="processing"),  # pre-check
+            _task(status="cancelled"),  # poll 1 → terminal
+        ]
+    )
+    cancelled = _task(status="cancelled")
+    monkeypatch.setattr(
+        "merlin.services.ingest.get_task",
+        lambda task_id: next(states, cancelled),
+    )
+
+    frames = _frames(client.get("/api/tasks/t1/stream").text)
+    assert frames[-1]["type"] == "cancelled"
+
+
 def test_stream_unknown_task_emits_error(client, monkeypatch):
     monkeypatch.setattr("api.sse.TASK_STREAM_POLL_INTERVAL", 0)
     monkeypatch.setattr("merlin.services.ingest.get_task", lambda task_id: None)
