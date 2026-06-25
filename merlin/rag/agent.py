@@ -15,6 +15,7 @@ agentic-chat regret: dumping big rows into history every turn.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 
 from pydantic_ai import Agent, RunContext
 
@@ -115,6 +116,24 @@ def _over_budget(ctx: RunContext[ChatDeps]) -> bool:
     # `run_step` is always present on a real RunContext; default 0 keeps the tools
     # callable from unit tests that pass a minimal ctx stand-in.
     return getattr(ctx, "run_step", 0) > settings.chat_max_requests
+
+
+@agent.instructions
+def current_date() -> str:
+    """Give the model today's date for recency / relative-time reasoning.
+
+    Lives in `@agent.instructions` (not the static system prompt) so it is
+    recomputed once per run and never persisted into message history — each turn
+    gets the current date, with no stale copies accumulating across a long
+    conversation. Attached only to the library-wide `agent`; the Reader's
+    `item_agent` answers from one fixed item and has no use for "now".
+    """
+    return (
+        f"Today's date is {date.today().isoformat()}. Use it for recency and "
+        'relative-time reasoning (e.g. "most recent in the library", "the last '
+        'month", "N days after release"). Each item\'s own publication date '
+        "appears in tool results."
+    )
 
 
 @agent.instructions
