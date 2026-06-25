@@ -88,7 +88,7 @@ class TaskQueue:
         on_complete: Callable[[str, IngestResult], None],
     ) -> str:
         """
-        Synchronous variant of enqueue_ingest for non-async callers (Streamlit).
+        Synchronous variant of enqueue_ingest for non-async callers.
 
         Same semantics — persists a queued task row and submits the blocking work
         to the thread pool — but without requiring a running asyncio event loop in

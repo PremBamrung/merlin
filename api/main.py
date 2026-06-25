@@ -74,8 +74,7 @@ def create_app() -> FastAPI:
         description="Thin HTTP layer over the Merlin knowledge-base core.",
     )
 
-    # Register knowledge-source plugins once at startup (idempotent). Replaces
-    # the Streamlit app's register_plugins() call.
+    # Register knowledge-source plugins once at startup (idempotent).
     register_plugins()
 
     # Backfill any missing item vectors in the background (no-op without a

@@ -2,7 +2,6 @@
 
 import os
 from pathlib import Path
-import sys
 
 from dotenv import load_dotenv
 import pytest
@@ -11,13 +10,6 @@ import pytest
 project_root = Path(__file__).parent.parent
 env_path = project_root / ".env"
 load_dotenv(env_path)
-
-# The archived Streamlit UI lives under streamlit/; its `ui` package is imported
-# by tests/test_ui_helpers.py. Put the archive dir on the path so `import ui`
-# resolves the same way `streamlit run streamlit/app.py` does.
-_streamlit_dir = project_root / "streamlit"
-if _streamlit_dir.is_dir() and str(_streamlit_dir) not in sys.path:
-    sys.path.insert(0, str(_streamlit_dir))
 
 
 @pytest.fixture(scope="session")
