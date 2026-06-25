@@ -2,7 +2,7 @@ import { AlertTriangle, RotateCw } from "lucide-react";
 import type { Task } from "@/lib/api/endpoints";
 import { useRetry } from "@/hooks/useIngest";
 import { Button } from "@/components/ui/button";
-import { relDate } from "@/lib/format";
+import { ingestLabel, relDate } from "@/lib/format";
 
 /**
  * A failed ingest task: red-edged card with the real backend error. When the
@@ -24,8 +24,9 @@ export function FailedCard({ task }: { task: Task }) {
         </span>
       </div>
 
+      <p className="truncate text-[13px] font-medium text-fg">{ingestLabel(task)}</p>
       {task.message && (
-        <p className="text-[13px] font-medium text-fg">{task.message}</p>
+        <p className="truncate text-[12px] text-fg-muted">{task.message}</p>
       )}
       {task.error && (
         <p className="line-clamp-3 rounded-md bg-bg/40 px-2.5 py-1.5 font-mono text-[11px] leading-relaxed text-fg-muted">

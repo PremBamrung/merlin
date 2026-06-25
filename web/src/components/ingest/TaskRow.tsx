@@ -2,18 +2,22 @@ import { Link } from "react-router-dom";
 import { CheckCircle2, AlertTriangle } from "lucide-react";
 import { useTaskProgress } from "@/hooks/useTaskProgress";
 import { StatusDot } from "@/components/common/StatusDot";
+import { ingestLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
- * A single live ingest row, driven by the task-progress SSE stream.
- * Shows a status dot, the latest message, and an animated progress bar.
+ * A single live ingest row, driven by the task-progress SSE stream. Shows which
+ * document is being ingested (its title once known, else the submitted URL) on
+ * the primary line, and the pipeline state (message + progress) below it.
  */
 export function TaskRow({ taskId }: { taskId: string }) {
   const { task, status, done, failed } = useTaskProgress(taskId);
   const percent = Math.max(0, Math.min(100, Math.round(task?.progress ?? 0)));
+  const label = task ? ingestLabel(task) : "Fetching…";
   const message =
-    task?.message ??
-    (status === "queued" ? "Queued…" : "Starting…");
+    failed
+      ? (task?.error ?? "Failed")
+      : (task?.message ?? (status === "queued" ? "Queued…" : "Starting…"));
   const itemId = task?.knowledge_item_id;
 
   return (
@@ -26,13 +30,8 @@ export function TaskRow({ taskId }: { taskId: string }) {
         ) : (
           <StatusDot status={status} pulse />
         )}
-        <span
-          className={cn(
-            "flex-1 truncate text-[13px]",
-            failed ? "text-accent" : "text-fg-muted",
-          )}
-        >
-          {failed ? (task?.error ?? message) : message}
+        <span className="flex-1 truncate text-[13px] font-medium text-fg">
+          {label}
         </span>
         {done && itemId ? (
           <Link
@@ -47,6 +46,15 @@ export function TaskRow({ taskId }: { taskId: string }) {
           </span>
         )}
       </div>
+
+      <p
+        className={cn(
+          "mt-1 truncate pl-[26px] text-[12px]",
+          failed ? "text-accent" : "text-fg-muted",
+        )}
+      >
+        {message}
+      </p>
 
       {!failed && !done && (
         <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-2">

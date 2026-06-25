@@ -106,3 +106,22 @@ export function thousands(n: number | null | undefined): string {
   if (n === null || n === undefined) return "0";
   return Intl.NumberFormat("en-US").format(n);
 }
+
+/** Strip the protocol/`www.` from a URL for a compact display label. */
+export function prettyUrl(url: string): string {
+  return url.replace(/^https?:\/\//, "").replace(/^www\./, "");
+}
+
+/**
+ * What to call an ingest task: its real title once fetched, else the submitted
+ * URL (prettified), else a generic placeholder. The title only becomes known
+ * partway through ingestion, so the URL is the fallback shown until then.
+ */
+export function ingestLabel(task: {
+  title?: string | null;
+  source_input?: string | null;
+}): string {
+  if (task.title) return task.title;
+  if (task.source_input) return prettyUrl(task.source_input);
+  return "Fetching…";
+}

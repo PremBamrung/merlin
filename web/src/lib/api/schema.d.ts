@@ -828,6 +828,10 @@ export interface components {
             progress: number;
             /** Message */
             message?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Source Input */
+            source_input?: string | null;
             /** Error */
             error?: string | null;
             /** Knowledge Item Id */
