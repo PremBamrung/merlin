@@ -132,6 +132,8 @@ class Task(BaseModel):
     status: str
     progress: int = 0
     message: str | None = None
+    title: str | None = None
+    source_input: str | None = None
     error: str | None = None
     knowledge_item_id: str | None = None
     created_at: str | None = None

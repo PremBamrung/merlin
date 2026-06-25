@@ -195,6 +195,9 @@ def resummarize(
             description = (meta.description if meta else None) or ""
             missing = _missing_youtube_fields(meta)
             length = _normalize_summary_length(summary_length or item.summary_length)
+            # Title is known up front here — surface it on the task row right away.
+            BackgroundTaskRepository.set_title(session, task_id, title)
+            session.commit()
         if not raw_text:
             raise ValueError("No stored transcript to re-summarise")
 
@@ -321,6 +324,8 @@ def _serialize_task(task) -> dict:
         "status": task.status,
         "progress": task.progress or 0,
         "message": task.message,
+        "title": task.title,
+        "source_input": _parse_json(task.input_data, {}).get("raw_input"),
         "error": task.error,
         "knowledge_item_id": task.knowledge_item_id,
         "created_at": task.created_at.isoformat() if task.created_at else None,

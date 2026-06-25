@@ -187,6 +187,14 @@ class TaskQueue:
             except Exception as e:
                 logger.warning(f"Progress update failed for {task_id}: {e}")
 
+        def title_callback(title: str):
+            try:
+                with SessionFactory() as s:
+                    BackgroundTaskRepository.set_title(s, task_id, title)
+                    s.commit()
+            except Exception as e:
+                logger.warning(f"Title update failed for {task_id}: {e}")
+
         # Mark as processing
         with SessionFactory() as s:
             BackgroundTaskRepository.set_processing(s, task_id)
@@ -198,6 +206,7 @@ class TaskQueue:
                 options=options,
                 task_id=task_id,
                 progress_callback=progress_callback,
+                title_callback=title_callback,
             )
             result: IngestResult = plugin.ingest(request)
 

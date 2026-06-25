@@ -24,11 +24,17 @@ class IngestRequest:
     options: dict[str, Any] = field(default_factory=dict)  # plugin-specific options
     task_id: str = ""
     progress_callback: Optional[Callable[[int, str], None]] = None
+    title_callback: Optional[Callable[[str], None]] = None
 
     def report(self, percent: int, message: str) -> None:
         """Convenience wrapper — safe to call even if no callback is set."""
         if self.progress_callback:
             self.progress_callback(percent, message)
+
+    def set_title(self, title: str) -> None:
+        """Record the document title once known. Safe to call with no callback."""
+        if self.title_callback and title:
+            self.title_callback(title)
 
 
 @dataclass

@@ -49,6 +49,13 @@ class BackgroundTaskRepository:
             task.message = message
 
     @staticmethod
+    def set_title(session: Session, task_id: str, title: str) -> None:
+        """Record the document title once it's known (e.g. after metadata fetch)."""
+        task = session.get(BackgroundTask, task_id)
+        if task:
+            task.title = title
+
+    @staticmethod
     def set_completed(
         session: Session,
         task_id: str,

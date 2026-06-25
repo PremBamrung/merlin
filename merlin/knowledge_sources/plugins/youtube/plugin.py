@@ -159,6 +159,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
         if not video_info:
             raise ValueError("Failed to fetch video metadata from YouTube")
         video_info["video_id"] = video_id
+        request.set_title(video_info.get("title", ""))
 
         request.report(25, "Extracting subtitles…")
         subtitle_result = self._subtitle_extractor.extract_subtitles(

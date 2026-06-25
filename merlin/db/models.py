@@ -119,6 +119,7 @@ class BackgroundTask(Base):
     )  # queued|processing|completed|failed
     progress = Column(Integer, default=0)  # 0-100
     message = Column(Text)
+    title = Column(Text)  # document title, set once known (e.g. after metadata fetch)
 
     input_data = Column(Text)  # JSON of original request
     result_data = Column(Text)  # JSON of result (knowledge_item_id, etc.)
