@@ -4,6 +4,7 @@ import {
   getTopChannels,
   getStatusCounts,
   getChannelCount,
+  getUsage,
 } from "@/lib/api/endpoints";
 import { keys } from "@/lib/queryKeys";
 
@@ -35,6 +36,14 @@ export function useChannelCount() {
   return useQuery({
     queryKey: keys.insights("channel-count"),
     queryFn: getChannelCount,
+    staleTime: 60_000,
+  });
+}
+
+export function useUsage() {
+  return useQuery({
+    queryKey: keys.insights("usage"),
+    queryFn: getUsage,
     staleTime: 60_000,
   });
 }

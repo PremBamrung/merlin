@@ -210,6 +210,41 @@ class CountResponse(BaseModel):
     count: int
 
 
+# --- Usage / cost (Insights spend; visibility only) -------------------------
+
+
+class UsageTotal(BaseModel):
+    tokens_in: int
+    tokens_out: int
+    cost_usd: float
+    calls: int
+
+
+class UsageDayPoint(BaseModel):
+    date: str
+    surface: str
+    cost_usd: float
+
+
+class UsageSurface(BaseModel):
+    surface: str
+    cost_usd: float
+    calls: int
+
+
+class UsageModel(BaseModel):
+    model: str
+    cost_usd: float
+    calls: int
+
+
+class UsageResponse(BaseModel):
+    total: UsageTotal
+    by_day: list[UsageDayPoint]
+    by_surface: list[UsageSurface]
+    by_model: list[UsageModel]
+
+
 class HealthResponse(BaseModel):
     status: str
     source_types: list[str] = Field(default_factory=list)

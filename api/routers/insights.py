@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from merlin.services import library
+from merlin.services import library, usage
 
-from ..schemas import CountResponse, NameCount, TimelinePoint
+from ..schemas import CountResponse, NameCount, TimelinePoint, UsageResponse
 
 router = APIRouter(prefix="/api/insights", tags=["insights"])
 
@@ -32,3 +32,19 @@ def status_counts():
 @router.get("/channel-count", response_model=CountResponse)
 def channel_count():
     return {"count": library.count_channels()}
+
+
+@router.get("/usage", response_model=UsageResponse)
+def usage_spend():
+    """LLM/transcription spend — totals + daily (by surface) + per-surface/model.
+
+    Visibility only; nothing here gates spend. Cost is provider-reported where
+    available, else computed, else omitted (unknown models contribute $0 to sums
+    but are visible as calls).
+    """
+    return {
+        "total": usage.total_spend(),
+        "by_day": usage.spend_by_day(),
+        "by_surface": usage.spend_by_surface(),
+        "by_model": usage.spend_by_model(),
+    }

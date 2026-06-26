@@ -16,7 +16,9 @@ import {
   useTopChannels,
   useStatusCounts,
   useChannelCount,
+  useUsage,
 } from "@/hooks/useInsights";
+import type { Usage } from "@/lib/api/endpoints";
 import { StatTile } from "@/components/common/StatTile";
 import { CalendarHeatmap } from "@/components/insights/CalendarHeatmap";
 import { Card } from "@/components/ui/card";
@@ -80,11 +82,144 @@ function ChartCard({
   );
 }
 
+const SURFACE_COLORS: Record<string, string> = {
+  chat: "#ff4b4b",
+  summarize: "#5b9df9",
+  transcribe: "#f5a524",
+};
+const SURFACE_ORDER = ["chat", "summarize", "transcribe"];
+
+function usd(n: number): string {
+  if (!n) return "$0.00";
+  if (n < 0.01) return "$" + n.toFixed(4);
+  return "$" + n.toFixed(2);
+}
+
+function SpendTooltip(props: { active?: boolean; payload?: TooltipEntry[]; label?: string | number }) {
+  const { active, payload, label } = props;
+  if (!active || !payload?.length) return null;
+  const rows = payload.filter((p) => (p.value ?? 0) > 0);
+  if (!rows.length) return null;
+  return (
+    <div className="rounded-md border border-border-strong bg-surface-2 px-3 py-2 text-[12px] shadow-lg">
+      <p className="mb-0.5 font-mono text-[11px] text-fg-subtle">{label}</p>
+      {rows.map((p, i) => (
+        <p key={i} className="text-fg">
+          <span className="font-semibold tabular-nums">{usd(p.value ?? 0)}</span>{" "}
+          <span className="capitalize text-fg-muted">{p.name}</span>
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function SpendSection({ usage, loading }: { usage?: Usage; loading: boolean }) {
+  const total = usage?.total;
+  const bySurface = usage?.by_surface ?? [];
+  const surfaces = SURFACE_ORDER.filter((s) => bySurface.some((r) => r.surface === s));
+  // Pivot [{date,surface,cost}] → one row per day with a column per surface.
+  const days = Array.from(new Set((usage?.by_day ?? []).map((d) => d.date))).sort();
+  const daily = days.map((date) => {
+    const row: Record<string, number | string> = { date };
+    for (const s of surfaces) {
+      row[s] = (usage?.by_day ?? [])
+        .filter((d) => d.date === date && d.surface === s)
+        .reduce((acc, d) => acc + d.cost_usd, 0);
+    }
+    return row;
+  });
+
+  const hasSpend = (total?.calls ?? 0) > 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-end justify-between">
+        <h2 className="text-[18px] font-semibold">Spend</h2>
+        <span className="eyebrow pb-0.5">Token &amp; transcription cost — tracking only</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i} className="p-5">
+              <Skeleton className="mb-3 h-3 w-16" />
+              <Skeleton className="h-8 w-12" />
+            </Card>
+          ))
+        ) : (
+          <>
+            <StatTile label="Total cost" value={usd(total?.cost_usd ?? 0)} />
+            <StatTile label="Tokens in" value={thousands(total?.tokens_in ?? 0)} />
+            <StatTile label="Tokens out" value={thousands(total?.tokens_out ?? 0)} />
+            <StatTile label="Calls" value={thousands(total?.calls ?? 0)} />
+          </>
+        )}
+      </div>
+
+      {!loading && !hasSpend ? (
+        <EmptyState
+          icon={BarChart3}
+          title="No spend recorded yet"
+          description="Costs appear here after your next chat or ingest."
+        />
+      ) : (
+        <ChartCard title="Daily cost by surface" loading={loading}>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={daily} margin={{ top: 0, right: 12, bottom: 0, left: 8 }}>
+              <CartesianGrid stroke={COLORS.grid} vertical={false} />
+              <XAxis
+                dataKey="date"
+                stroke={COLORS.axis}
+                tick={{ fontSize: 11, fill: COLORS.axis }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v: string) => v.slice(5)}
+              />
+              <YAxis
+                stroke={COLORS.axis}
+                tick={{ fontSize: 11, fill: COLORS.axis }}
+                tickLine={false}
+                axisLine={false}
+                width={56}
+                tickFormatter={(v: number) => usd(v)}
+              />
+              <Tooltip content={<SpendTooltip />} cursor={{ fill: COLORS.surface }} />
+              {surfaces.map((s, i) => (
+                <Bar
+                  key={s}
+                  dataKey={s}
+                  name={s}
+                  stackId="cost"
+                  fill={SURFACE_COLORS[s] ?? COLORS.axis}
+                  radius={i === surfaces.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+          <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1">
+            {bySurface.map((s) => (
+              <span key={s.surface} className="flex items-center gap-1.5 text-[12px]">
+                <span
+                  className="size-2 rounded-full"
+                  style={{ background: SURFACE_COLORS[s.surface] ?? COLORS.axis }}
+                />
+                <span className="capitalize text-fg-muted">{s.surface}</span>
+                <span className="font-mono tabular-nums text-fg-subtle">{usd(s.cost_usd)}</span>
+              </span>
+            ))}
+          </div>
+        </ChartCard>
+      )}
+    </div>
+  );
+}
+
 export default function InsightsRoute() {
   const timeline = useTimeline();
   const channels = useTopChannels(12);
   const status = useStatusCounts();
   const channelCount = useChannelCount();
+  const usage = useUsage();
 
   const loading =
     timeline.isLoading || channels.isLoading || status.isLoading || channelCount.isLoading;
@@ -226,6 +361,8 @@ export default function InsightsRoute() {
           </div>
         </>
       )}
+
+      <SpendSection usage={usage.data} loading={usage.isLoading} />
     </div>
   );
 }

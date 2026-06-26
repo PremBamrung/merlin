@@ -110,6 +110,8 @@ export const getStatusCounts = () =>
   client.get<NameCount[]>("/api/insights/status-counts");
 export const getChannelCount = () =>
   client.get<components["schemas"]["CountResponse"]>("/api/insights/channel-count");
+export type Usage = components["schemas"]["UsageResponse"];
+export const getUsage = () => client.get<Usage>("/api/insights/usage");
 
 // --- Meta ------------------------------------------------------------------
 export const getHealth = () => client.get<Health>("/api/health");

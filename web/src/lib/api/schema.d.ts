@@ -278,6 +278,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks/{task_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Task */
+        post: operations["cancel_task_api_tasks__task_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks/{task_id}/stream": {
         parameters: {
             query?: never;
@@ -417,6 +434,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/insights/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Usage Spend
+         * @description LLM/transcription spend — totals + daily (by surface) + per-surface/model.
+         *
+         *     Visibility only; nothing here gates spend. Cost is provider-reported where
+         *     available, else computed, else omitted (unknown models contribute $0 to sums
+         *     but are visible as calls).
+         */
+        get: operations["usage_spend_api_insights_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/digest": {
         parameters: {
             query?: never;
@@ -506,6 +547,16 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** CancelTaskResponse */
+        CancelTaskResponse: {
+            /** Task Id */
+            task_id: string;
+            /**
+             * Status
+             * @default cancelling
+             */
+            status: string;
+        };
         /** ChatMessageModel */
         ChatMessageModel: {
             /** Id */
@@ -627,6 +678,27 @@ export interface components {
              * @default short
              */
             summary_length: string;
+        };
+        /**
+         * IngestYouTubeResponse
+         * @description Either an ingest was started, or the video is already in the library.
+         *
+         *     `status == "started"` → `task_id` is set (poll it). `status == "exists"` →
+         *     nothing was queued; `item_id`/`title` identify the existing item so the
+         *     client can confirm with the user before re-summarising.
+         */
+        IngestYouTubeResponse: {
+            /**
+             * Status
+             * @default started
+             */
+            status: string;
+            /** Task Id */
+            task_id?: string | null;
+            /** Item Id */
+            item_id?: string | null;
+            /** Title */
+            title?: string | null;
         };
         /**
          * Item
@@ -848,33 +920,6 @@ export interface components {
             /** Task Id */
             task_id: string;
         };
-        /**
-         * IngestYouTubeResponse
-         * @description Either an ingest was started, or the video is already in the library.
-         */
-        IngestYouTubeResponse: {
-            /**
-             * Status
-             * @default started
-             */
-            status: string;
-            /** Task Id */
-            task_id?: string | null;
-            /** Item Id */
-            item_id?: string | null;
-            /** Title */
-            title?: string | null;
-        };
-        /** CancelTaskResponse */
-        CancelTaskResponse: {
-            /** Task Id */
-            task_id: string;
-            /**
-             * Status
-             * @default cancelling
-             */
-            status: string;
-        };
         /** TimelinePoint */
         TimelinePoint: {
             /** Date */
@@ -888,6 +933,54 @@ export interface components {
             tags?: string[] | null;
             /** Title */
             title?: string | null;
+        };
+        /** UsageDayPoint */
+        UsageDayPoint: {
+            /** Date */
+            date: string;
+            /** Surface */
+            surface: string;
+            /** Cost Usd */
+            cost_usd: number;
+        };
+        /** UsageModel */
+        UsageModel: {
+            /** Model */
+            model: string;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Calls */
+            calls: number;
+        };
+        /** UsageResponse */
+        UsageResponse: {
+            total: components["schemas"]["UsageTotal"];
+            /** By Day */
+            by_day: components["schemas"]["UsageDayPoint"][];
+            /** By Surface */
+            by_surface: components["schemas"]["UsageSurface"][];
+            /** By Model */
+            by_model: components["schemas"]["UsageModel"][];
+        };
+        /** UsageSurface */
+        UsageSurface: {
+            /** Surface */
+            surface: string;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Calls */
+            calls: number;
+        };
+        /** UsageTotal */
+        UsageTotal: {
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Calls */
+            calls: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -1298,7 +1391,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TaskIdResponse"];
+                    "application/json": components["schemas"]["IngestYouTubeResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1431,6 +1524,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_task_api_tasks__task_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancelTaskResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1732,6 +1856,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CountResponse"];
+                };
+            };
+        };
+    };
+    usage_spend_api_insights_usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageResponse"];
                 };
             };
         };
