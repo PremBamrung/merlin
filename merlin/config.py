@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # merlin.rag.agent) — so a long search ends with a graceful answer, not an
     # error. Also the hard loop/runaway guard.
     chat_max_requests: int = 20
+    # Context-window size (tokens) of the chat model, the denominator for the
+    # in-chat context-usage meter. Default = deepseek-v4-flash's 1.05M window.
+    # The response carries token *counts* but never the model's window size, so
+    # this can't be derived live; override via CHAT_CONTEXT_WINDOW if the model
+    # changes. 0 ⇒ unknown (the UI then shows tokens without a percentage).
+    chat_context_window: int = 1_048_576
 
     @property
     def chat_model_name(self) -> str:

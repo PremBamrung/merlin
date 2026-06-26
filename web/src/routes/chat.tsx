@@ -24,7 +24,12 @@ import {
   PinOff,
   Download,
 } from "lucide-react";
-import { useAgentChat, stripCitationMarkers, type ChatFilters } from "@/hooks/useAgentChat";
+import {
+  useAgentChat,
+  latestUsage,
+  stripCitationMarkers,
+  type ChatFilters,
+} from "@/hooks/useAgentChat";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import {
   saveChatThread,
@@ -51,6 +56,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Message } from "@/components/chat/Message";
+import { ContextMeter } from "@/components/chat/UsageFooter";
 import { AutoGrowTextarea } from "@/components/common/AutoGrowTextarea";
 import { toast } from "@/components/ui/toaster";
 import { keys } from "@/lib/queryKeys";
@@ -436,6 +442,11 @@ function ChatConversation({
         )}
         {filtersActive > 0 && (
           <ActiveFilterChips filters={filters} setFilters={setFilters} />
+        )}
+        {!isIdle && (
+          <div className="mb-1.5 flex justify-end px-1">
+            <ContextMeter usage={latestUsage(messages)} />
+          </div>
         )}
         <div className="flex w-full items-end gap-2">
           <AutoGrowTextarea

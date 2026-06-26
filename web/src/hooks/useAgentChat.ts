@@ -30,6 +30,43 @@ export type Citation = {
  */
 export const CITATIONS_PART = "data-citations";
 export const SOURCES_VIEWED_PART = "data-sources-viewed";
+
+/**
+ * Per-turn usage emitted by the server at end-of-turn: token counts, an
+ * estimated cost, and context-window occupancy. `context_used` is the *last*
+ * request's prompt + answer (how full the window has grown — not the tool
+ * loop's summed tokens); `context_limit` is the model's window (null ⇒ unknown,
+ * hide the %). Rides in the assistant message parts so it persists with the
+ * thread, exactly like the citation parts.
+ */
+export const USAGE_PART = "data-usage";
+export type TurnUsage = {
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_read_tokens: number | null;
+  requests: number | null;
+  cost_usd: number | null;
+  cost_estimated: boolean;
+  context_used: number | null;
+  context_limit: number | null;
+};
+
+/** A message's persisted turn-usage data-part, if it carries one. */
+export function messageUsage(message: UIMessage): TurnUsage | null {
+  const parts = (message.parts ?? []) as { type: string; data?: TurnUsage }[];
+  return parts.find((p) => p.type === USAGE_PART)?.data ?? null;
+}
+
+/** The most recent turn's usage in a message list — drives the composer meter.
+ * Walks from the end; null until the first turn finishes (data-usage lands at
+ * end-of-turn, so the meter simply doesn't show before then). */
+export function latestUsage(messages: UIMessage[]): TurnUsage | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const u = messageUsage(messages[i]);
+    if (u) return u;
+  }
+  return null;
+}
 /**
  * The wall-clock duration (whole seconds) of a turn's "work" phase — from send
  * until the assistant's first answer text streams in. The live `WorkTrace`

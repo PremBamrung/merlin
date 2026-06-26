@@ -352,9 +352,7 @@ def test_hallucinated_marker_id_is_dropped(client, monkeypatch, make_item):
     _three_moat_items(make_item)
     _patch_model(
         monkeypatch,
-        _search_then_answer_model(
-            "moat", f"Real [#{_ID1}] and fake [#deadbeefcafe]."
-        ),
+        _search_then_answer_model("moat", f"Real [#{_ID1}] and fake [#deadbeefcafe]."),
     )
 
     resp = client.post("/api/chat", json=_chat_body("moats?"))
@@ -409,6 +407,98 @@ def test_item_chat_missing_item_returns_400(client, monkeypatch):
     )
     assert resp.status_code == 400
     assert resp.json()["error"]["code"] == "invalid_input"
+
+
+# --------------------------------------------------------------------------- #
+# Live usage data-part (tokens / est. cost / context-window occupancy)
+# --------------------------------------------------------------------------- #
+
+
+def _usage_data(text: str) -> dict | None:
+    """The `data` of the first `data-usage` part (or None)."""
+    for obj in _sse_objects(text):
+        if obj.get("type") == "data-usage":
+            return obj.get("data")
+    return None
+
+
+def test_library_chat_emits_usage_part(client, monkeypatch, make_item):
+    """Each turn streams a data-usage part with token counts + the context
+    window denominator (FunctionModel populates real usage)."""
+    make_item(title="moats", summary="moats and edges")
+    _patch_model(monkeypatch, _text_model("Your library covers moats."))
+
+    resp = client.post("/api/chat", json=_chat_body("moats?"))
+    u = _usage_data(resp.text)
+    assert u is not None, "expected a data-usage part"
+    assert u["input_tokens"] and u["output_tokens"]
+    # Context window denominator comes from settings (deepseek's 1.05M window).
+    assert u["context_limit"] == 1_048_576
+    # Occupancy = the last request's prompt + answer.
+    assert u["context_used"]
+
+
+def test_item_chat_emits_usage_part(client, monkeypatch):
+    """The Reader (tool-less) path emits data-usage too — its on_complete now
+    yields it before returning early on the empty citations set."""
+    monkeypatch.setattr(
+        "merlin.services.library.get_item",
+        lambda _id: {
+            "id": "item-1",
+            "source_type": "youtube",
+            "title": "t",
+            "summary": "s",
+            "raw_content": "transcript",
+        },
+    )
+    _patch_model(monkeypatch, _text_model("answer"))
+
+    resp = client.post("/api/chat", json=_chat_body("q", filters={"item_id": "item-1"}))
+    u = _usage_data(resp.text)
+    assert u is not None
+    assert u["input_tokens"] and u["output_tokens"]
+
+
+def test_turn_usage_context_uses_last_request_not_sum():
+    """Context occupancy is the *last* request's prompt + answer, not the summed
+    RunUsage across the tool loop (which would multiply the window)."""
+    from api.routers import chat as chat_router
+
+    class _ReqUsage:
+        def __init__(self, i, o):
+            self.input_tokens = i
+            self.output_tokens = o
+
+    class _Resp:
+        def __init__(self, i, o):
+            self.usage = _ReqUsage(i, o)
+            self.model_name = "deepseek/deepseek-v4-flash"
+            self.provider_response_id = None
+
+    class _Result:
+        # RunUsage = the loop's summed tokens (10k + 47k inputs).
+        usage = type(
+            "RU",
+            (),
+            {
+                "input_tokens": 57_000,
+                "output_tokens": 1_200,
+                "cache_read_tokens": 40_000,
+                "requests": 2,
+            },
+        )()
+
+        def all_messages(self):
+            return [_Resp(10_000, 200), _Resp(47_000, 1_000)]
+
+    data = chat_router._turn_usage(_Result())
+    # Last request: 47k prompt + 1k answer — NOT the 57k summed input.
+    assert data["context_used"] == 48_000
+    assert data["context_limit"] == 1_048_576
+    # Tokens + cost bill over the summed RunUsage (you pay per request).
+    assert data["input_tokens"] == 57_000
+    assert data["cost_usd"] is not None
+    assert data["cost_estimated"] is True
 
 
 # --------------------------------------------------------------------------- #

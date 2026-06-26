@@ -19,12 +19,14 @@ import { Markdown } from "@/components/common/Markdown";
 import { CopyButton } from "@/components/common/CopyButton";
 import { AutoGrowTextarea } from "@/components/common/AutoGrowTextarea";
 import { CitationCard } from "@/components/chat/CitationCard";
+import { UsageFooter } from "@/components/chat/UsageFooter";
 import {
   CITATIONS_PART,
   SOURCES_VIEWED_PART,
   WORK_TIMING_PART,
   MESSAGE_TIME_PART,
   linkifyCitationMarkers,
+  messageUsage,
   stripCitationMarkers,
   type Citation,
 } from "@/hooks/useAgentChat";
@@ -151,6 +153,8 @@ export const Message = memo(function Message({
   const alsoViewed: Citation[] = parts
     .filter((p) => p.type === SOURCES_VIEWED_PART)
     .flatMap((p) => p.data?.items ?? []);
+  // Per-turn tokens / est. cost / context occupancy (lands at end-of-turn).
+  const usage = messageUsage(message);
 
   const isThisStreaming = isStreaming && isLast;
   const hasVisible = parts.some(
@@ -221,6 +225,8 @@ export const Message = memo(function Message({
       )}
 
       {alsoViewed.length > 0 && <AlsoSearched items={alsoViewed} />}
+
+      {usage && <UsageFooter usage={usage} />}
 
       {showActions && (
         <div className="flex flex-wrap items-center gap-2 pt-1">

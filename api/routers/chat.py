@@ -21,6 +21,7 @@ from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_ai.ui.vercel_ai.response_types import DataChunk
 from pydantic_ai.usage import UsageLimits
 
+from merlin import llm_pricing
 from merlin.config import settings
 from merlin.services import chat as chat_service, chat_history, usage as usage_service
 
@@ -75,12 +76,16 @@ def _resolve_marker(marker: str, viewed: dict[str, dict]) -> str | None:
 
 
 def _usage_and_generation_ids(result):
-    """Pull the RunUsage and *every* OpenRouter generation id off a finished run.
+    """Pull the RunUsage, *every* OpenRouter generation id, and the resolved
+    model name off a finished run.
 
     A turn's tool loop makes several model round-trips, each tagged with its own
     `gen-…` `provider_response_id`. The RunUsage aggregates tokens over all of
     them, so cost must be summed over all of them too (the service does the sum)
-    — keying only off the last id would undercount multi-step turns.
+    — keying only off the last id would undercount multi-step turns. The
+    resolved model name (e.g. `deepseek/deepseek-v4-flash-…`) is what the
+    response reports — used for pricing, since our configured id is an
+    unpriceable `@preset/…`.
     """
     # Pydantic AI exposes usage as a property (older versions used a method).
     # Only call it if it isn't already the RunUsage object — avoids the
@@ -92,14 +97,75 @@ def _usage_and_generation_ids(result):
     except Exception:  # pragma: no cover - defensive
         u = None
     gen_ids: list[str] = []
+    model_name: str | None = None
     try:
         for msg in result.all_messages():
             gid = getattr(msg, "provider_response_id", None)
             if gid and gid not in gen_ids:
                 gen_ids.append(gid)
+            name = getattr(msg, "model_name", None)
+            if name:
+                model_name = name
     except Exception:  # pragma: no cover - defensive
         pass
-    return u, gen_ids
+    return u, gen_ids, model_name
+
+
+def _last_response_usage(result):
+    """RequestUsage of the final model response in the turn — the prompt that
+    saw the most conversation + the answer it produced.
+
+    This is the right basis for *context-window occupancy*: the last request's
+    prompt already contains the whole accumulated conversation (history is
+    re-sent every turn), so its `input_tokens` (+ the answer's `output_tokens`)
+    is how full the window has grown. NOT `RunUsage.input_tokens`, which *sums*
+    every request in the tool loop and would multiply the window by the loop.
+    """
+    last = None
+    try:
+        for msg in result.all_messages():
+            mu = getattr(msg, "usage", None)
+            if mu is not None and getattr(mu, "input_tokens", 0):
+                last = mu
+    except Exception:  # pragma: no cover - defensive
+        pass
+    return last
+
+
+def _turn_usage(result) -> dict:
+    """The live `data-usage` payload streamed under each answer.
+
+    Cost + tokens are billed over the *summed* RunUsage (you pay per request in
+    the tool loop); context occupancy is the *last* request's prompt + answer
+    (see `_last_response_usage`). Cost is a cache-aware pricing-map **estimate**
+    (the authoritative spend lands in `llm_usage` via the background task); it's
+    None — and the context limit omitted — when they can't be derived, so the UI
+    degrades to tokens-only rather than showing a fake denominator.
+    """
+    u, _gen_ids, model_name = _usage_and_generation_ids(result)
+    model = model_name or settings.chat_model_name
+    input_tokens = getattr(u, "input_tokens", None) if u is not None else None
+    output_tokens = getattr(u, "output_tokens", None) if u is not None else None
+    cache_read = getattr(u, "cache_read_tokens", None) if u is not None else None
+    cost = llm_pricing.token_cost(
+        model, input_tokens or 0, output_tokens or 0, cache_read or 0
+    )
+    last = _last_response_usage(result)
+    context_used = None
+    if last is not None:
+        context_used = (getattr(last, "input_tokens", 0) or 0) + (
+            getattr(last, "output_tokens", 0) or 0
+        )
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_read_tokens": cache_read,
+        "requests": getattr(u, "requests", None) if u is not None else None,
+        "cost_usd": cost,
+        "cost_estimated": cost is not None,
+        "context_used": context_used,
+        "context_limit": settings.chat_context_window or None,
+    }
 
 
 def _queue_chat_usage(background_tasks, result, *, item_id: str | None) -> None:
@@ -110,7 +176,7 @@ def _queue_chat_usage(background_tasks, result, *, item_id: str | None) -> None:
     attributed to the item's `knowledge_item_id` — per-item cost means *ingest*
     cost, not what you spent chatting about the item.
     """
-    u, gen_ids = _usage_and_generation_ids(result)
+    u, gen_ids, model_name = _usage_and_generation_ids(result)
     if u is None:
         return
     meta = {
@@ -121,10 +187,11 @@ def _queue_chat_usage(background_tasks, result, *, item_id: str | None) -> None:
         meta["item_id"] = item_id
     background_tasks.add_task(
         usage_service.record_chat_turn,
-        model=settings.chat_model_name,
+        model=model_name or settings.chat_model_name,
         generation_ids=gen_ids,
         input_tokens=getattr(u, "input_tokens", None),
         output_tokens=getattr(u, "output_tokens", None),
+        cache_read_tokens=getattr(u, "cache_read_tokens", None),
         requests=getattr(u, "requests", 1) or 1,
         item_id=item_id,
         meta=meta,
@@ -150,6 +217,10 @@ def _make_on_complete(
 
     async def on_complete(result):
         _queue_chat_usage(background_tasks, result, item_id=item_id)
+        # Live per-turn tokens / est. cost / context-window usage. Emitted first
+        # (before the citations split) so *both* the library and Reader paths get
+        # it — the Reader's on_complete returns early below (no viewed items).
+        yield DataChunk(type="data-usage", data=_turn_usage(result))
 
         viewed = deps.cited  # {item_id: citation}
         if not viewed:

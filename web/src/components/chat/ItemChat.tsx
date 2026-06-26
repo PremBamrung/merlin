@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, ArrowDown, Square, Sparkles } from "lucide-react";
-import { useAgentChat, type ChatFilters } from "@/hooks/useAgentChat";
+import { useAgentChat, latestUsage, type ChatFilters } from "@/hooks/useAgentChat";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { Button } from "@/components/ui/button";
 import { Message } from "@/components/chat/Message";
+import { ContextMeter } from "@/components/chat/UsageFooter";
 import { AutoGrowTextarea } from "@/components/common/AutoGrowTextarea";
 import { cn } from "@/lib/utils";
 
@@ -137,6 +138,11 @@ export function ItemChat({
           >
             <ArrowDown className="size-4" />
           </button>
+        )}
+        {!isIdle && (
+          <div className="mb-1.5 flex justify-end px-1">
+            <ContextMeter usage={latestUsage(messages)} />
+          </div>
         )}
         <div className="flex items-end gap-2">
           <AutoGrowTextarea
