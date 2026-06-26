@@ -121,6 +121,10 @@ class Settings(BaseSettings):
                 temperature=0.01,
                 max_tokens=None,
                 streaming=True,
+                # OpenRouter usage accounting: the response then carries the
+                # call's actual cost in response_metadata.token_usage.cost, so
+                # ingest cost tracking reads real spend instead of estimating it.
+                extra_body={"usage": {"include": True}},
             )
         else:
             # Azure OpenAI (default)

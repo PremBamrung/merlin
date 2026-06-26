@@ -94,7 +94,37 @@ def persist_result(task_id: str, result) -> None:
         item_id = item.id  # capture before commit expires the instance
         session.commit()
 
+    _record_ingest_usage(item_id, result)
     _index_for_search(item_id, result.title, result.summary, result.tags)
+
+
+def _record_ingest_usage(item_id: str, result) -> None:
+    """Write the summarize (+ transcribe, if audio was used) llm_usage rows for a
+    finished ingest. Visibility only; `usage.record` swallows its own errors."""
+    from merlin.services import usage
+
+    if (
+        result.summarize_input_tokens is not None
+        or result.summarize_output_tokens is not None
+        or result.summarize_cost_usd is not None
+    ):
+        usage.record(
+            surface="summarize",
+            provider=settings.llm_provider,
+            model=result.llm_model,
+            input_tokens=result.summarize_input_tokens,
+            output_tokens=result.summarize_output_tokens,
+            cost_usd=result.summarize_cost_usd,
+            knowledge_item_id=item_id,
+        )
+    if result.transcribe_audio_seconds:
+        usage.record(
+            surface="transcribe",
+            provider="groq",
+            model=result.transcribe_model,
+            audio_seconds=result.transcribe_audio_seconds,
+            knowledge_item_id=item_id,
+        )
 
 
 def _index_for_search(item_id: str, title, summary, tags) -> None:
@@ -263,6 +293,7 @@ def resummarize(
             summary_length=length,
             description=description,
         )
+        summ_usage = getattr(plugin.summarizer, "last_usage", None) or {}
 
         report(90, "Saving to knowledge base…")
         with SessionFactory() as session:
@@ -288,6 +319,19 @@ def resummarize(
                 knowledge_item_id=item_id,
             )
             session.commit()
+
+        if summ_usage:
+            from merlin.services import usage
+
+            usage.record(
+                surface="summarize",
+                provider=settings.llm_provider,
+                model=settings.llm_model_name,
+                input_tokens=summ_usage.get("input_tokens"),
+                output_tokens=summ_usage.get("output_tokens"),
+                cost_usd=summ_usage.get("cost_usd"),
+                knowledge_item_id=item_id,
+            )
 
     return task_queue.submit_callable(
         work,

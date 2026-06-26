@@ -1,5 +1,6 @@
 from datetime import datetime
 import re
+import threading
 from typing import Generator
 
 from langchain_core.prompts import PromptTemplate
@@ -17,6 +18,22 @@ class VideoSummarizer:
             llm: LangChain LLM instance. If None, loaded lazily from settings.
         """
         self._llm = llm
+        # Usage of the most recent (non-streaming) summarize call: token counts +
+        # provider-reported cost, read off the response by the plugin so the
+        # service layer can persist a cost row. **Thread-local** because this
+        # summarizer is a singleton shared across the ingest thread-pool workers —
+        # a plain attribute would let one ingest's usage clobber another's (wrong
+        # cost attributed to the wrong item). Each worker writes then reads back
+        # the usage it produced on its own thread. None until a summary runs.
+        self._usage = threading.local()
+
+    @property
+    def last_usage(self) -> dict | None:
+        return getattr(self._usage, "value", None)
+
+    @last_usage.setter
+    def last_usage(self, value: dict | None) -> None:
+        self._usage.value = value
         TEMPLATE_SHORT = """Given the subtitles of a Youtube video, create a short summary that includes:
 
 ## Overview (2 sentences max)
@@ -295,6 +312,30 @@ Subtitles: {subtitles}
 
         return topics, timestamps
 
+    @staticmethod
+    def _extract_usage(response) -> dict | None:
+        """Pull token counts + provider-reported cost off a LangChain response.
+
+        `usage_metadata` carries the token counts; OpenRouter (with usage
+        accounting enabled in config) puts the call's actual cost in
+        `response_metadata['token_usage']['cost']`. Cost is None for providers
+        that don't report it (e.g. Azure) — the service falls back to the pricing
+        map there. Best-effort: any shape mismatch yields None.
+        """
+        try:
+            um = getattr(response, "usage_metadata", None) or {}
+            meta = getattr(response, "response_metadata", None) or {}
+            token_usage = meta.get("token_usage", {}) if isinstance(meta, dict) else {}
+            cost = token_usage.get("cost")
+            return {
+                "input_tokens": um.get("input_tokens"),
+                "output_tokens": um.get("output_tokens"),
+                "cost_usd": float(cost) if cost is not None else None,
+                "model": meta.get("model_name") if isinstance(meta, dict) else None,
+            }
+        except Exception:
+            return None
+
     def _summarize_non_streaming(
         self,
         subtitles: str,
@@ -333,9 +374,11 @@ Subtitles: {subtitles}
             "description_block": self._build_description_block(description),
         }
 
+        self.last_usage = None
         try:
             # Use invoke() instead of deprecated run()
             response = llm_chain.invoke(prompt_input)
+            self.last_usage = self._extract_usage(response)
             # Extract content from response
             if hasattr(response, "content"):
                 summary = response.content

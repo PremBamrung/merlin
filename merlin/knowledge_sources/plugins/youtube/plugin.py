@@ -167,6 +167,9 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             user_languages + ["en", "fr", "de"],
         )
 
+        # Audio seconds billed by Groq — only set when the transcription
+        # fallback runs (subtitles are free); drives the transcribe cost row.
+        transcribe_audio_seconds: float | None = None
         if subtitle_result:
             subtitles = subtitle_result["subtitles"]
             detected_language = subtitle_result["language_code"]
@@ -188,6 +191,15 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             # assuming English, so a French video summarises as French.
             detected_language = _normalize_language(audio_language) or "en"
             raw_text = self._subtitle_extractor.extract_text(subtitles)
+            # Approximate billed audio length from the last segment's end time
+            # (Groq bills by audio duration). Best-effort — never blocks ingest.
+            try:
+                transcribe_audio_seconds = max(
+                    (s.get("start", 0) or 0) + (s.get("duration", 0) or 0)
+                    for s in subtitles
+                )
+            except (ValueError, TypeError, AttributeError):
+                transcribe_audio_seconds = None
 
         request.report(50, "Generating summary…")
         summary_lang = self._pick_summary_language(detected_language, user_languages)
@@ -200,6 +212,8 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             streaming=False,
             description=video_info.get("description", ""),
         )
+        # Token counts + provider-reported cost from the call just made.
+        summ_usage = self.summarizer.last_usage or {}
 
         request.report(90, "Saving to knowledge base…")
 
@@ -235,6 +249,13 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             topics=topics,
             word_count=len(raw_text.split()),
             llm_model=settings.llm_model_name,
+            summarize_input_tokens=summ_usage.get("input_tokens"),
+            summarize_output_tokens=summ_usage.get("output_tokens"),
+            summarize_cost_usd=summ_usage.get("cost_usd"),
+            transcribe_audio_seconds=transcribe_audio_seconds,
+            transcribe_model="whisper-large-v3-turbo"
+            if transcribe_audio_seconds
+            else None,
             source_metadata={
                 "video_id": video_id,
                 "channel": video_info.get("channel"),

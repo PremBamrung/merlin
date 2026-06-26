@@ -60,6 +60,15 @@ class IngestResult:
     word_count: int = 0
     llm_model: str = ""
 
+    # Usage / cost tracking (visibility only — see merlin.services.usage). The
+    # plugin fills whatever it knows; the service layer writes the llm_usage
+    # rows. None ⇒ not measured (older items / providers without passthrough).
+    summarize_input_tokens: Optional[int] = None
+    summarize_output_tokens: Optional[int] = None
+    summarize_cost_usd: Optional[float] = None  # provider-reported when available
+    transcribe_audio_seconds: Optional[float] = None  # set only when audio was used
+    transcribe_model: Optional[str] = None
+
     # Plugin-specific fields stored in the per-source metadata table
     source_metadata: dict[str, Any] = field(default_factory=dict)
 
