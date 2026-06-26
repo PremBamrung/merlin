@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from merlin import llm_pricing
 
 # --------------------------------------------------------------------------- #
@@ -18,7 +20,7 @@ from merlin import llm_pricing
 
 
 def test_token_cost_known_model():
-    # 1M in + 1M out at the deepseek rate.
+    # 1M in + 1M out at the deepseek rate (no cache hits → full input rate).
     c = llm_pricing.cost(
         "openrouter",
         "deepseek/deepseek-v4-flash",
@@ -26,7 +28,40 @@ def test_token_cost_known_model():
         output_tokens=1_000_000,
     )
     rates = llm_pricing.TOKEN_PRICING["deepseek/deepseek-v4-flash"]
-    assert c == rates["in"] + rates["out"]
+    assert c == pytest.approx(rates["in"] + rates["out"])
+
+
+def test_token_cost_prices_cache_hits_cheaper():
+    """Cached input is billed at the discounted `cache_read` rate, not `in` —
+    so a turn whose prompt is mostly a cache hit costs far less than the naive
+    (all-input-at-full-rate) number."""
+    rates = llm_pricing.TOKEN_PRICING["deepseek/deepseek-v4-flash"]
+    # 1M prompt, 900k of it a cache hit, no output.
+    c = llm_pricing.cost(
+        "openrouter",
+        "deepseek/deepseek-v4-flash",
+        input_tokens=1_000_000,
+        output_tokens=0,
+        cache_read_tokens=900_000,
+    )
+    expected = 0.1 * rates["in"] + 0.9 * rates["cache_read"]
+    assert c == pytest.approx(expected)
+    # Strictly cheaper than pricing the whole prompt at the full input rate.
+    assert c < rates["in"]
+
+
+def test_token_cost_resolves_versioned_model_name():
+    """The response reports a resolved/versioned id; it prices off the base key
+    (our configured `@preset/…` is what would otherwise miss)."""
+    c = llm_pricing.cost(
+        "openrouter",
+        "deepseek/deepseek-v4-flash-20260423",
+        input_tokens=1_000_000,
+        output_tokens=0,
+    )
+    assert c == pytest.approx(
+        llm_pricing.TOKEN_PRICING["deepseek/deepseek-v4-flash"]["in"]
+    )
 
 
 def test_token_cost_unknown_model_is_none():

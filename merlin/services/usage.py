@@ -31,6 +31,7 @@ def record(
     model: str | None = None,
     input_tokens: int | None = None,
     output_tokens: int | None = None,
+    cache_read_tokens: int | None = None,
     audio_seconds: float | None = None,
     requests: int = 1,
     cost_usd: float | None = None,
@@ -45,6 +46,7 @@ def record(
                 model,
                 input_tokens=input_tokens or 0,
                 output_tokens=output_tokens or 0,
+                cache_read_tokens=cache_read_tokens or 0,
                 audio_seconds=audio_seconds or 0.0,
             )
         with SessionFactory() as session:
@@ -152,6 +154,7 @@ def record_chat_turn(
     generation_ids: list[str] | None,
     input_tokens: int | None,
     output_tokens: int | None,
+    cache_read_tokens: int | None = None,
     requests: int = 1,
     item_id: str | None = None,
     meta: dict | None = None,
@@ -161,9 +164,10 @@ def record_chat_turn(
     Meant to run as a background task (the cost fetch may retry), so it never
     delays the streamed answer. Sums the provider-reported cost over every
     generation in the turn. If the provider can't price all of them, falls back
-    to a pricing-map estimate on the turn's aggregate tokens (flagged in meta as
-    ``cost_estimated``) — and NULL when even that is unavailable (unknown/preset
-    model). Token counts are always captured regardless.
+    to a pricing-map estimate on the turn's aggregate tokens — cache-aware, so
+    the cached portion is billed at the discounted rate (flagged in meta as
+    ``cost_estimated``) — and NULL when even that is unavailable (unknown model).
+    Token counts are always captured regardless.
     """
     cost, complete = fetch_openrouter_costs(generation_ids)
     estimated = False
@@ -175,6 +179,7 @@ def record_chat_turn(
             model,
             input_tokens=input_tokens or 0,
             output_tokens=output_tokens or 0,
+            cache_read_tokens=cache_read_tokens or 0,
         )
         estimated = cost is not None
     ids = [g for g in (generation_ids or []) if g]
@@ -190,6 +195,7 @@ def record_chat_turn(
         model=model,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
+        cache_read_tokens=cache_read_tokens,
         requests=requests,
         cost_usd=cost,
         knowledge_item_id=None,  # reader-chat cost is not the item's ingest cost
