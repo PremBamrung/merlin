@@ -27,13 +27,6 @@ class VideoSummarizer:
         # the usage it produced on its own thread. None until a summary runs.
         self._usage = threading.local()
 
-    @property
-    def last_usage(self) -> dict | None:
-        return getattr(self._usage, "value", None)
-
-    @last_usage.setter
-    def last_usage(self, value: dict | None) -> None:
-        self._usage.value = value
         TEMPLATE_SHORT = """Given the subtitles of a Youtube video, create a short summary that includes:
 
 ## Overview (2 sentences max)
@@ -211,6 +204,14 @@ Subtitles: {subtitles}
                 ],
             ),
         }
+
+    @property
+    def last_usage(self) -> dict | None:
+        return getattr(self._usage, "value", None)
+
+    @last_usage.setter
+    def last_usage(self, value: dict | None) -> None:
+        self._usage.value = value
 
     # Cap the description fed into the prompt — descriptions can be enormous
     # (timestamps, affiliate links, sponsor blurbs); a few thousand chars is
