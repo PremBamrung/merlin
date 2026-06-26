@@ -13,7 +13,17 @@ The old youtube_video_summary table is NEVER touched here.
 from datetime import datetime, timezone
 import uuid
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -181,6 +191,41 @@ class DigestAction(Base):
     )
     action = Column(String(20), nullable=False)  # "ingest" | "skip"
     created_at = Column(DateTime, default=_now)
+
+
+class LlmUsage(Base):
+    """One LLM / transcription call's usage — for cost visibility only.
+
+    Written after each spend site (chat `on_complete`, ingest `persist_result`).
+    Nothing reads this to gate or throttle; it backs the Insights spend charts
+    and per-item cost. `cost_usd` is the provider-reported cost when available,
+    else computed from `merlin.llm_pricing`, else NULL (unknown model — Insights
+    treats NULL as "unknown", not "$0"). `meta` stashes cache tokens / tool_calls
+    / thread id as JSON.
+    """
+
+    __tablename__ = "llm_usage"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    created_at = Column(DateTime, default=_now)
+    surface = Column(String(20), nullable=False)  # chat|summarize|transcribe
+    provider = Column(String(20))  # openrouter|azure|groq
+    model = Column(String(100))
+    input_tokens = Column(Integer)
+    output_tokens = Column(Integer)
+    audio_seconds = Column(Float)
+    requests = Column(Integer)  # model round-trips (chat tool loop)
+    cost_usd = Column(Float)
+    knowledge_item_id = Column(
+        String(36), ForeignKey("knowledge_items.id", ondelete="SET NULL"), nullable=True
+    )
+    meta = Column(Text)  # JSON
+
+    __table_args__ = (
+        Index("ix_llm_usage_created", "created_at"),
+        Index("ix_llm_usage_surface", "surface"),
+        Index("ix_llm_usage_item", "knowledge_item_id"),
+    )
 
 
 class ChatThread(Base):
