@@ -22,7 +22,7 @@ from pydantic_ai.ui.vercel_ai.response_types import DataChunk
 from pydantic_ai.usage import UsageLimits
 
 from merlin.config import settings
-from merlin.services import chat as chat_service, chat_history
+from merlin.services import chat as chat_service, chat_history, usage as usage_service
 
 from ..errors import not_found
 from ..schemas import (
@@ -74,10 +74,72 @@ def _resolve_marker(marker: str, viewed: dict[str, dict]) -> str | None:
     return hits[0] if len(hits) == 1 else None
 
 
-def _citations_emitter(deps: chat_service.ChatDeps):
-    """on_complete hook: split the items a tool surfaced into **used** vs merely
-    **viewed**, and emit them as two data-parts for the frontend's "Sources" /
-    "Also searched" tiers.
+def _usage_and_generation_ids(result):
+    """Pull the RunUsage and *every* OpenRouter generation id off a finished run.
+
+    A turn's tool loop makes several model round-trips, each tagged with its own
+    `gen-…` `provider_response_id`. The RunUsage aggregates tokens over all of
+    them, so cost must be summed over all of them too (the service does the sum)
+    — keying only off the last id would undercount multi-step turns.
+    """
+    # Pydantic AI exposes usage as a property (older versions used a method).
+    # Only call it if it isn't already the RunUsage object — avoids the
+    # deprecation warning the callable shim emits when invoked.
+    try:
+        u = result.usage
+        if not hasattr(u, "input_tokens") and callable(u):  # pragma: no cover
+            u = u()
+    except Exception:  # pragma: no cover - defensive
+        u = None
+    gen_ids: list[str] = []
+    try:
+        for msg in result.all_messages():
+            gid = getattr(msg, "provider_response_id", None)
+            if gid and gid not in gen_ids:
+                gen_ids.append(gid)
+    except Exception:  # pragma: no cover - defensive
+        pass
+    return u, gen_ids
+
+
+def _queue_chat_usage(background_tasks, result, *, item_id: str | None) -> None:
+    """Enqueue cost/token capture for a finished turn as a background task.
+
+    Runs after the response is sent so the OpenRouter cost lookup never delays
+    the streamed answer. Reader (per-item) chat is tagged in `meta` but not
+    attributed to the item's `knowledge_item_id` — per-item cost means *ingest*
+    cost, not what you spent chatting about the item.
+    """
+    u, gen_ids = _usage_and_generation_ids(result)
+    if u is None:
+        return
+    meta = {
+        "cache_read": getattr(u, "cache_read_tokens", None),
+        "tool_calls": getattr(u, "tool_calls", None),
+    }
+    if item_id:
+        meta["item_id"] = item_id
+    background_tasks.add_task(
+        usage_service.record_chat_turn,
+        model=settings.chat_model_name,
+        generation_ids=gen_ids,
+        input_tokens=getattr(u, "input_tokens", None),
+        output_tokens=getattr(u, "output_tokens", None),
+        requests=getattr(u, "requests", 1) or 1,
+        item_id=item_id,
+        meta=meta,
+    )
+
+
+def _make_on_complete(
+    deps: chat_service.ChatDeps,
+    background_tasks: BackgroundTasks,
+    *,
+    item_id: str | None = None,
+):
+    """on_complete hook: queue token/cost usage capture, then (library chat only)
+    split the items a tool surfaced into **used** vs merely **viewed** and emit
+    them as two data-parts for the frontend's "Sources" / "Also searched" tiers.
 
     "Used" is derived from the final answer text: the items the model tagged
     with an inline `[#id]` marker. Two graceful fallbacks keep the Sources list
@@ -87,6 +149,8 @@ def _citations_emitter(deps: chat_service.ChatDeps):
     """
 
     async def on_complete(result):
+        _queue_chat_usage(background_tasks, result, item_id=item_id)
+
         viewed = deps.cited  # {item_id: citation}
         if not viewed:
             return
@@ -132,7 +196,7 @@ def _apply_stream_headers(response: Response) -> Response:
 
 
 @router.post("/chat")
-async def chat(request: Request) -> Response:
+async def chat(request: Request, background_tasks: BackgroundTasks) -> Response:
     # Read the body once (Starlette caches it, so the adapter re-reads for free)
     # to pull our extra `filters` field out of the AI SDK message payload.
     try:
@@ -156,6 +220,9 @@ async def chat(request: Request) -> Response:
             instructions=instructions,
             # No tools → a single model request; keep a tiny margin.
             usage_limits=UsageLimits(request_limit=2),
+            on_complete=_make_on_complete(
+                chat_service.ChatDeps(), background_tasks, item_id=item_id
+            ),
             sdk_version=_SDK_VERSION,
         )
         return _apply_stream_headers(response)
@@ -174,7 +241,7 @@ async def chat(request: Request) -> Response:
         usage_limits=UsageLimits(
             request_limit=settings.chat_max_requests + _BUDGET_GRACE
         ),
-        on_complete=_citations_emitter(deps),
+        on_complete=_make_on_complete(deps, background_tasks),
         sdk_version=_SDK_VERSION,
     )
     return _apply_stream_headers(response)
@@ -213,9 +280,7 @@ def save_chat_thread(
     # Title generation is a slow LLM call — run it after the response is sent so
     # the save returns immediately; the title shows up on a later sidebar refetch.
     if result.pop("needs_title", False):
-        background_tasks.add_task(
-            chat_history.generate_and_store_title, thread_id
-        )
+        background_tasks.add_task(chat_history.generate_and_store_title, thread_id)
     return result
 
 
