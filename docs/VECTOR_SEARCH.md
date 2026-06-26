@@ -156,6 +156,71 @@ lazy-LLM convention — importing the module never needs an API key):
 
 ---
 
+## Running it on the NAS — self-host vs stay on Jina
+
+Two ways to keep cost/limits in check on the N100 deploy (hardware spec:
+`NAS_DEPLOY.md`). They solve **different** problems — pick by what you actually
+want, not by reflex.
+
+### Free-tier longevity & key rotation (cheapest, stays cloud)
+
+At current volume the Jina free credit is barely touched, so "running out" is not
+the real constraint:
+
+- **Ingest:** one embed per item, `title+tags+summary` ≈ **~200 tokens/item** (the
+  whole 1k-item corpus backfills in ~200K tokens). At ~150 items/week →
+  **~30K tokens/week**.
+- **Chat:** query embed (~tens of tokens) + rerank of ~20 short docs (~2K tokens)
+  ≈ **~2K tokens/search**.
+
+So even heavy use is **single-digit-millions of tokens/year** — a single key's
+10M-token free credit lasts **~a year+**. Rotating multiple free keys (a key
+list, advance on quota/429) is trivial to wire in and a fine *emergency* stopgap,
+**but**: (a) you're nowhere near needing it at this scale; (b) it violates Jina's
+ToS (multi-account free-tier circumvention); (c) it keeps you fully
+cloud-dependent — it does **nothing** for offline ingest, per-call latency, or
+privacy. Don't add rotation complexity for a non-problem; if one key ever isn't
+enough, that's the signal to self-host, not to farm keys.
+
+### Self-host the embedder (solves offline / latency / privacy)
+
+The reasons to leave Jina aren't quota — they're: no network on the hot ingest
+path, no rate-limit dance (`JINA_MIN_INTERVAL`, 3-worker throttling), and content
+never leaving the box. Feasible on the N100 **only with small ONNX-Runtime INT8
+models** (not PyTorch + big checkpoints — those blow the 8 GB budget).
+
+**Embedder — recommended: `multilingual-e5-small`** (ONNX INT8 via
+`optimum[onnxruntime]`):
+
+- ~118M params / **~240 MB** resident, **100+ languages**, 512-token context,
+  **384-d**. ~5–15 ms/query on one N100 core; INT8 export triggers AVX2/AVX-VNNI.
+- **Must prefix inputs** `"query: "` / `"passage: "` — E5 quality *collapses*
+  without it. This maps directly onto the existing `embed(texts, query=)` flag
+  (same asymmetry as Jina v5's task param), so a `LocalEmbedder` is a drop-in
+  `Embedder` Protocol impl selected by `EMBEDDING_PROVIDER=local`;
+  retriever/RRF/rerank/store/backfill are unchanged.
+- Model-bound vectors → **one re-backfill** after switching (384-d replaces
+  1024-d). Cap ONNX intra-op threads to 1–2 (4 cores shared with uvicorn + the 3
+  ingest workers + transcription).
+- **Do not** use English-only `all-MiniLM-L6-v2` here — it regresses the ~40
+  languages the YouTube plugin ingests.
+
+**Reranker — keep on Jina (or drop it).** Cross-encoders run one forward pass
+*per candidate*, so they're the CPU-punishing part. Real-world CPU reports put
+`bge-reranker-v2-m3` (300M, the only strong *multilingual* reranker) at **2–4 s
+for 8–10 docs on a 4-core CPU — not viable** for interactive chat on the N100
+(ignore the optimistic "80–150 ms INT8" spec-sheet figure; trust the field
+reports). The lightweight CPU rerankers (`ms-marco-MiniLM-L-6-v2`,
+`ettin-reranker-68m`) are **English/MS-MARCO-trained**, so they mishandle the
+multilingual content you just embedded well. The bind is real: **multilingual +
+lightweight + CPU reranker = pick two.** Resolution: **self-host the multilingual
+embedder, keep the rerank arm on Jina** (1 call/search, multilingual, free-tier
+cheap, already fail-fast to RRF) — or drop rerank and lean on RRF for fully
+offline. If you *do* self-host an English reranker, also trim `_RERANK_POOL`
+(`retriever.py`) from 20 → 5–10.
+
+---
+
 ## Rate limiting
 
 Jina free key ≈ **100 RPM / 100K TPM / 2 concurrent**; paid ≈ 500 RPM / 2M TPM;
