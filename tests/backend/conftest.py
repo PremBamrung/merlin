@@ -70,6 +70,7 @@ def _clean_tables(_migrate_temp_db):
             "background_tasks",
             "youtube_metadata",
             "embeddings",
+            "llm_usage",
             "knowledge_items",
             "chat_messages",
             "chat_threads",
