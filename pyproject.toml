@@ -20,7 +20,11 @@ dependencies = [
     # YouTube processing
     "pytube>=15.0.0",
     "youtube-transcript-api>=1.2.3",
-    "yt-dlp>=2025.2.19",
+    # [default] bundles yt-dlp-ejs (YouTube n-challenge solver scripts) locally so
+    # no runtime GitHub download is needed. The deno JS runtime (Dockerfile) runs
+    # them; both halves are required or media downloads 403.
+    # https://github.com/yt-dlp/yt-dlp/wiki/EJS
+    "yt-dlp[default]>=2026.7.4",
     "Pillow>=11.0.0",
     # Utilities
     "requests>=2.32.3",

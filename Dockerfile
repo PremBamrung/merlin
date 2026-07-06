@@ -28,6 +28,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
+# JS runtime for yt-dlp. Modern YouTube requires solving a JS challenge
+# (signature deciphering + n-param) to produce valid, signed media URLs;
+# without a runtime yt-dlp emits stale URLs and media downloads 403. deno is
+# yt-dlp's default runtime (auto-detected on PATH — no extra config needed).
+COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
+
 # Use the image's Python; don't let uv download its own. Put the project venv
 # on PATH so `alembic`/`uvicorn` resolve directly in CMD.
 ENV UV_PYTHON_DOWNLOADS=never \
