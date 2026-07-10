@@ -7,11 +7,17 @@ from datetime import UTC, datetime
 import difflib
 import re
 
-from sqlalchemy import text
+from sqlalchemy import or_, select, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from merlin.db.models import Embedding, KnowledgeItem, YouTubeMetadata
+from merlin.db.models import (
+    Embedding,
+    ItemTopic,
+    KnowledgeItem,
+    Topic,
+    YouTubeMetadata,
+)
 
 # Fuzzy fallback only runs when an exact search finds nothing and is reserved
 # for queries long enough that a close match is meaningful (avoids "ai"-style
@@ -112,6 +118,7 @@ class KnowledgeItemRepository:
         status: str | None = None,
         search: str | None = None,
         tags: list[str] | None = None,
+        topics: list[str] | None = None,
         read: bool | None = None,
         saved: bool | None = None,
         page: int = 1,
@@ -123,9 +130,16 @@ class KnowledgeItemRepository:
 
         read/saved: None = no filter; True/False match presence of the
         corresponding timestamp (read_at / saved_at).
+        topics: list of topic slugs to include. The sentinel ``"uncategorised"``
+        matches items with no item_topics row. Mixing the sentinel with real
+        slugs is OR semantics: ``slug IN (...) OR (has no item_topics rows)``.
         sort: newest | oldest | longest | title | relevance
         search_transcripts: when True, search also matches full transcript text
         (raw_content); otherwise search is scoped to title/summary/tags.
+
+        The topic/tag/status filters are applied to the base query *before* the
+        search branch, so they hold on every downstream path — the plain sort,
+        the fuzzy-title fallback, and the separate ``sort="relevance"`` re-query.
         """
         q = session.query(KnowledgeItem)
 
@@ -146,9 +160,33 @@ class KnowledgeItemRepository:
                 else KnowledgeItem.saved_at.is_(None)
             )
         if tags:
-            # Each tag must appear somewhere in the JSON tags string
+            # Match the JSON-quoted form ("ai" not ai) so a substring like "ai"
+            # doesn't match "ai-safety". Both write paths store tags via
+            # json.dumps, so the quotes are always present; filter values come
+            # from list_tags (exact stored strings).
             for tag in tags:
-                q = q.filter(KnowledgeItem.tags.contains(tag))
+                q = q.filter(KnowledgeItem.tags.contains(f'"{tag}"'))
+        if topics:
+            real = [s for s in topics if s != "uncategorised"]
+            want_uncat = "uncategorised" in topics
+            conds = []
+            if real:
+                assigned_to_slug = (
+                    select(ItemTopic.knowledge_item_id)
+                    .join(Topic, Topic.id == ItemTopic.topic_id)
+                    .where(
+                        ItemTopic.knowledge_item_id == KnowledgeItem.id,
+                        Topic.slug.in_(real),
+                    )
+                )
+                conds.append(assigned_to_slug.exists())
+            if want_uncat:
+                any_topic = select(ItemTopic.knowledge_item_id).where(
+                    ItemTopic.knowledge_item_id == KnowledgeItem.id
+                )
+                conds.append(~any_topic.exists())
+            if conds:
+                q = q.filter(or_(*conds))
         # Keyword search. `ordered_ids` is the match set in best-first order
         # (bm25, or fuzzy similarity for the fallback) — used directly when
         # sort="relevance", or as an `IN (...)` filter for the other sorts.
@@ -293,7 +331,7 @@ class KnowledgeItemRepository:
         item.summary = None
         item.summary_length = None
         item.llm_model = None
-        item.topics = None
+        item.sections = None
         item.status = "pending"
         item.error_message = None
         item.updated_at = datetime.now(UTC)

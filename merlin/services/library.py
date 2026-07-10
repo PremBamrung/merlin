@@ -11,11 +11,31 @@ from merlin.db.engine import SessionFactory
 from merlin.db.repositories.knowledge import KnowledgeItemRepository
 
 
-def serialize_item(item, include_content: bool = False) -> dict:
+def _topics_from_relationship(item) -> list[dict]:
+    """Assigned topics [{slug, label, is_primary}], primary first, via the
+    lazy item_topics relationship (single-item callers). The list path passes
+    a pre-batched list instead to avoid N+1."""
+    out = [
+        {
+            "slug": it.topic.slug,
+            "label": it.topic.label,
+            "is_primary": bool(it.is_primary),
+        }
+        for it in item.item_topics
+        if it.topic is not None
+    ]
+    out.sort(key=lambda t: (not t["is_primary"], t["label"].lower()))
+    return out
+
+
+def serialize_item(
+    item, include_content: bool = False, topics: list[dict] | None = None
+) -> dict:
     """Flatten a KnowledgeItem (+ youtube_metadata) into a plain dict.
 
     Must be called while the owning session is open (touches the
-    youtube_metadata relationship).
+    youtube_metadata / item_topics relationships). `topics` may be passed
+    pre-batched (list path); when None it is loaded from the relationship.
     """
     meta = item.youtube_metadata
     d = {
@@ -29,7 +49,8 @@ def serialize_item(item, include_content: bool = False) -> dict:
         "summary": item.summary,
         "summary_length": item.summary_length,
         "tags": _parse_json(item.tags, []),
-        "topics": _parse_json(item.topics, {}),
+        "topics": topics if topics is not None else _topics_from_relationship(item),
+        "sections": _parse_json(item.sections, {}),
         "llm_model": item.llm_model,
         "word_count": item.word_count,
         "status": item.status,
@@ -58,6 +79,7 @@ def list_items(
     status: str | None = None,
     search: str | None = None,
     tags: list[str] | None = None,
+    topics: list[str] | None = None,
     read: bool | None = None,
     saved: bool | None = None,
     page: int = 1,
@@ -65,6 +87,8 @@ def list_items(
     sort: str = "newest",
     search_transcripts: bool = False,
 ) -> dict:
+    from merlin.db.repositories.topics import TopicRepository
+
     with SessionFactory() as session:
         items, total = KnowledgeItemRepository.list_all(
             session,
@@ -72,6 +96,7 @@ def list_items(
             status=status,
             search=search,
             tags=tags,
+            topics=topics,
             read=read,
             saved=saved,
             page=page,
@@ -79,8 +104,14 @@ def list_items(
             sort=sort,
             search_transcripts=search_transcripts,
         )
+        # Batch-load topic assignments for the page (avoids N+1 per card).
+        assignments = TopicRepository.assignments_for_items(
+            session, [i.id for i in items]
+        )
         return {
-            "items": [serialize_item(i) for i in items],
+            "items": [
+                serialize_item(i, topics=assignments.get(i.id, [])) for i in items
+            ],
             "total": total,
             "page": page,
             "per_page": per_page,

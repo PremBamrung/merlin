@@ -15,6 +15,7 @@ import uuid
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -23,6 +24,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -61,7 +63,10 @@ class KnowledgeItem(Base):
 
     # Organisation
     tags = Column(Text)  # JSON array string: ["ai","python"]
-    topics = Column(Text)  # JSON object: {"Topic": "timestamp"}
+    # Per-item section map scraped from the summary ({"heading": "12:34"}), used
+    # to jump *within* one summary. NOT the cross-corpus taxonomy — that's the
+    # `topics`/`item_topics` tables. (Renamed from `topics`; migration 009.)
+    sections = Column(Text)  # JSON object: {"Section heading": "timestamp"}
 
     # Processing metadata
     llm_model = Column(String(100))
@@ -86,6 +91,9 @@ class KnowledgeItem(Base):
     background_tasks = relationship("BackgroundTask", back_populates="knowledge_item")
     embeddings = relationship(
         "Embedding", back_populates="knowledge_item", cascade="all, delete-orphan"
+    )
+    item_topics = relationship(
+        "ItemTopic", back_populates="knowledge_item", cascade="all, delete-orphan"
     )
 
     __table_args__ = (
@@ -169,6 +177,99 @@ class Embedding(Base):
     __table_args__ = (
         Index("ix_embeddings_item", "knowledge_item_id", "chunk_index", unique=True),
     )
+
+
+class Topic(Base):
+    """A cross-corpus navigation category — the Feed's primary filter.
+
+    Closed, user-curated taxonomy (small: ~10–30 rows). The LLM classifier
+    only ever *picks from* active topics; new topics are born via the batch
+    proposal pipeline (services.topics.propose_topics) and a human accept step.
+    `slug` is the stable url/filter key; `status` is active|archived (a pending
+    proposal lives in topic_proposals, not here). `origin` records provenance:
+    seed (seeded script) | user (created by hand) | proposed (from a pipeline).
+    """
+
+    __tablename__ = "topics"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    label = Column(String(120), nullable=False)  # display name, e.g. "Coding"
+    slug = Column(String(120), nullable=False, unique=True)  # filter key, "coding"
+    status = Column(String(20), nullable=False, default="active")  # active|archived
+    origin = Column(String(20), nullable=False, default="user")  # seed|user|proposed
+    description = Column(Text)  # optional disambiguator, also fed to the classifier
+    created_at = Column(DateTime, default=_now)
+
+    item_topics = relationship(
+        "ItemTopic", back_populates="topic", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (Index("ix_topics_status", "status"),)
+
+
+class ItemTopic(Base):
+    """Assignment of a topic to a knowledge item (many-to-many).
+
+    Each item gets one primary topic + up to 2 secondary. `is_primary` is the
+    Feed's default grouping; a partial unique index (see migration 010) enforces
+    at most one primary per item. `assigned_by` is llm|user — user rows are never
+    clobbered by re-classification (see services.classify).
+    """
+
+    __tablename__ = "item_topics"
+
+    knowledge_item_id = Column(
+        String(36),
+        ForeignKey("knowledge_items.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    topic_id = Column(
+        String(36),
+        ForeignKey("topics.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    is_primary = Column(Boolean, nullable=False, default=False)
+    assigned_by = Column(String(20), nullable=False, default="llm")  # llm|user
+    confidence = Column(Float)  # optional, LLM self-report
+    created_at = Column(DateTime, default=_now)
+
+    knowledge_item = relationship("KnowledgeItem", back_populates="item_topics")
+    topic = relationship("Topic", back_populates="item_topics")
+
+    __table_args__ = (
+        Index("ix_item_topics_topic", "topic_id"),
+        # At most one primary topic per item. Partial unique index — SQLite
+        # supports the WHERE clause (also created by hand in migration 010).
+        Index(
+            "ux_item_topics_primary",
+            "knowledge_item_id",
+            unique=True,
+            sqlite_where=text("is_primary"),
+        ),
+    )
+
+
+class TopicProposal(Base):
+    """A candidate topic emitted by the batch proposal pipeline (§7), awaiting a
+    human accept/merge/reject.
+
+    `item_ids` is a JSON snapshot of the member item ids at propose time (may go
+    stale — accept tolerates drift). `batch_id` groups one pipeline run's
+    proposals; a new run supersedes still-pending rows from prior batches.
+    `status` is pending|accepted|rejected|superseded.
+    """
+
+    __tablename__ = "topic_proposals"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    proposed_label = Column(String(120), nullable=False)
+    item_ids = Column(Text, nullable=False)  # JSON array of member item ids
+    rationale = Column(Text)  # one line: what these items share
+    status = Column(String(20), nullable=False, default="pending")
+    batch_id = Column(String(36))
+    created_at = Column(DateTime, default=_now)
+
+    __table_args__ = (Index("ix_topic_proposals_status", "status"),)
 
 
 class ShareToken(Base):
