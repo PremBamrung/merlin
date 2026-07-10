@@ -71,6 +71,9 @@ def _clean_tables(_migrate_temp_db):
             "youtube_metadata",
             "embeddings",
             "llm_usage",
+            "item_topics",
+            "topic_proposals",
+            "topics",
             "knowledge_items",
             "chat_messages",
             "chat_threads",
@@ -92,7 +95,7 @@ def make_item():
         item_id = overrides.pop("id", str(uuid.uuid4()))
         video_id = overrides.pop("source_id", f"vid_{item_id[:8]}")
         tags = overrides.pop("tags", ["ai", "python"])
-        topics = overrides.pop("topics", {"Overview": "00:00:00"})
+        sections = overrides.pop("sections", {"Overview": "00:00:00"})
         timestamps = overrides.pop("timestamps", {"Overview": 0})
         channel = overrides.pop("channel", "Test Channel")
         description = overrides.pop("description", None)
@@ -107,7 +110,7 @@ def make_item():
             summary_length=overrides.pop("summary_length", "short"),
             raw_content=overrides.pop("raw_content", "Full transcript text here."),
             tags=json.dumps(tags),
-            topics=json.dumps(topics),
+            sections=json.dumps(sections),
             word_count=overrides.pop("word_count", 1944),
             llm_model=overrides.pop("llm_model", "deepseek/test"),
             status=overrides.pop("status", "completed"),

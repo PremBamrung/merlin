@@ -18,7 +18,7 @@ def test_list_items_returns_seeded_item(client, make_item):
     assert item["title"] == "Attention Is All You Need"
     # JSON-in-text fields arrive parsed, not as strings.
     assert item["tags"] == ["ai", "python"]
-    assert item["topics"] == {"Overview": "00:00:00"}
+    assert item["sections"] == {"Overview": "00:00:00"}
     # List items omit the transcript (contract §6.1).
     assert "raw_content" not in item
 
