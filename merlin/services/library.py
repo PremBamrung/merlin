@@ -283,16 +283,21 @@ def list_source_types() -> list[dict]:
     ]
 
 
-def list_tags() -> list[dict]:
-    """Unique tags with counts across all items, most frequent first."""
+def list_tags(unread_only: bool = False) -> list[dict]:
+    """Unique tags with counts across all items, most frequent first.
+
+    ``unread_only`` scopes the tally to unread items (``read_at IS NULL``) — the
+    Feed's Refine chips only surface tags present in the queue.
+    """
     from merlin.db.models import KnowledgeItem
 
     with SessionFactory() as session:
-        rows = (
-            session.query(KnowledgeItem.tags)
-            .filter(KnowledgeItem.tags.isnot(None))
-            .all()
+        q = session.query(KnowledgeItem.tags).filter(
+            KnowledgeItem.tags.isnot(None)
         )
+        if unread_only:
+            q = q.filter(KnowledgeItem.read_at.is_(None))
+        rows = q.all()
     counts: dict[str, int] = {}
     for (raw,) in rows:
         tags = _parse_json(raw, None)

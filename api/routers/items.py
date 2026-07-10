@@ -139,8 +139,12 @@ def set_item_topics(item_id: str, body: SetItemTopicsRequest):
 
 
 @router.get("/tags", response_model=list[NameCount])
-def list_tags():
-    return library.list_tags()
+def list_tags(
+    unread: bool = Query(
+        default=False, description="Scope tag counts to unread items (the Feed)."
+    ),
+):
+    return library.list_tags(unread_only=unread)
 
 
 @router.get("/source-types", response_model=list[NameCount])

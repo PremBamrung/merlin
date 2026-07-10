@@ -69,7 +69,8 @@ export const getUnreadCount = () =>
 export const markAllRead = () =>
   client.post<components["schemas"]["CountResponse"]>("/api/items/read-all");
 
-export const getTags = () => client.get<NameCount[]>("/api/tags");
+export const getTags = (unread = false) =>
+  client.get<NameCount[]>("/api/tags", { unread });
 export const getSourceTypes = () => client.get<NameCount[]>("/api/source-types");
 
 // --- Topics (cross-corpus taxonomy) ---------------------------------------

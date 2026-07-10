@@ -96,7 +96,7 @@ function FeedReader({
   const q = useFeedQueue(filter);
   const topics = useTopics("active", true); // unread-scoped: only topics in the queue
   const uncategorised = useUncategorisedCount(true);
-  const tags = useTags();
+  const tags = useTags(true); // unread-scoped: only tags present in the queue
   const markRead = useMarkRead();
   const markUnread = useMarkUnread();
   const markAllRead = useMarkAllRead();

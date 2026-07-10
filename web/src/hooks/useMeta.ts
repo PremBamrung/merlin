@@ -15,8 +15,13 @@ export function useSourceTypes() {
   });
 }
 
-export function useTags() {
-  return useQuery({ queryKey: keys.tags(), queryFn: getTags, staleTime: 30_000 });
+/** Tags with counts. ``unread`` scopes the tally to unread items (Feed Refine). */
+export function useTags(unread = false) {
+  return useQuery({
+    queryKey: [...keys.tags(), unread ? "unread" : "all"],
+    queryFn: () => getTags(unread),
+    staleTime: 30_000,
+  });
 }
 
 export function useHealth() {

@@ -99,6 +99,20 @@ def test_tags_endpoint(client, make_item):
     assert tags["python"] == 1
 
 
+def test_tags_unread_scoped(client, make_item):
+    """?unread=true counts tags only on unread items (the Feed Refine chips)."""
+    make_item(tags=["ai", "python"])
+    read = make_item(source_id="vid2", tags=["ai"])
+    assert client.post(f"/api/items/{read}/read").status_code == 200
+
+    unread = {
+        t["name"]: t["count"]
+        for t in client.get("/api/tags", params={"unread": True}).json()
+    }
+    # The read item's "ai" no longer counts; "python" (unread) stays.
+    assert unread == {"ai": 1, "python": 1}
+
+
 def test_source_types_endpoint(client, make_item):
     make_item()
     make_item(source_id="a2", source_type="article")
