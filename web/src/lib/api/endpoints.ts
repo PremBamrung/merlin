@@ -92,6 +92,14 @@ export const patchTopic = (
 export const deleteTopic = (id: string) =>
   client.delete<void>(`/api/topics/${id}`);
 
+/** Re-scan a topic's members against the current taxonomy (background task). */
+export const reclassifyTopic = (id: string) =>
+  client.post<TaskId>(`/api/topics/${id}/reclassify`);
+
+/** Re-scan the whole library against the current taxonomy (background task). */
+export const reclassifyAll = () =>
+  client.post<TaskId>("/api/topics/reclassify-all");
+
 export const setItemTopics = (
   id: string,
   body: components["schemas"]["SetItemTopicsRequest"],

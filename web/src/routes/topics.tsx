@@ -9,6 +9,7 @@ import {
   GitMerge,
   Plus,
   Layers,
+  RefreshCw,
   Tags as TagsIcon,
 } from "lucide-react";
 import {
@@ -19,6 +20,8 @@ import {
   usePatchTopic,
   useProposals,
   useProposeTopics,
+  useReclassifyAll,
+  useReclassifyTopic,
   useRejectProposal,
   useTopics,
   useUncategorisedCount,
@@ -44,6 +47,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/common/EmptyState";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
@@ -56,6 +64,8 @@ export default function TopicsRoute() {
   const uncategorised = useUncategorisedCount();
   const propose = useProposeTopics();
   const backfill = useBackfill();
+  const reclassify = useReclassifyTopic();
+  const reclassifyAll = useReclassifyAll();
   const cancel = useCancelTask();
   const qc = useQueryClient();
 
@@ -64,7 +74,11 @@ export default function TopicsRoute() {
   // the completion toast + progress copy; `running` is derived from live status,
   // so the effect never needs to write state.
   const [taskId, setTaskId] = useState<string | null>(null);
-  const [kind, setKind] = useState<"discovery" | "backfill" | null>(null);
+  const [kind, setKind] = useState<
+    "discovery" | "backfill" | "rescan" | "rescan-all" | null
+  >(null);
+  // The topic being re-scanned, for the progress/toast copy.
+  const [rescanLabel, setRescanLabel] = useState<string | null>(null);
   const task = useQuery({
     queryKey: keys.task(taskId ?? ""),
     queryFn: () => getTask(taskId!),
@@ -81,7 +95,14 @@ export default function TopicsRoute() {
     qc.invalidateQueries({ queryKey: keys.topics() });
     qc.invalidateQueries({ queryKey: keys.items() });
     qc.invalidateQueries({ queryKey: keys.feed() });
-    const noun = kind === "backfill" ? "Backfill" : "Topic discovery";
+    const noun =
+      kind === "backfill"
+        ? "Backfill"
+        : kind === "rescan"
+          ? "Re-scan"
+          : kind === "rescan-all"
+            ? "Full re-scan"
+            : "Topic discovery";
     const wasCancelled = !!task.data?.result_data?.cancelled;
     if (status === "failed") toast.error(`${noun} failed`);
     else if (wasCancelled) toast.success(`${noun} stopped — kept the work done so far`);
@@ -89,7 +110,12 @@ export default function TopicsRoute() {
   }, [task.data?.status, task.data?.result_data, kind, qc]);
 
   const running = !!taskId && !TERMINAL.has(task.data?.status ?? "");
-  const busy = running || propose.isPending || backfill.isPending;
+  const busy =
+    running ||
+    propose.isPending ||
+    backfill.isPending ||
+    reclassify.isPending ||
+    reclassifyAll.isPending;
   // Cancel POST returns instantly ("cancelling"), but the task keeps running to
   // its next checkpoint — keep the button in "Stopping…" until it terminates.
   const stopping =
@@ -109,10 +135,30 @@ export default function TopicsRoute() {
         setTaskId(r.task_id);
       },
     });
+  const startRescan = (topic: TopicItem) =>
+    reclassify.mutate(topic.id, {
+      onSuccess: (r) => {
+        setKind("rescan");
+        setRescanLabel(topic.label);
+        setTaskId(r.task_id);
+      },
+    });
+  const startRescanAll = () =>
+    reclassifyAll.mutate(undefined, {
+      onSuccess: (r) => {
+        setKind("rescan-all");
+        setTaskId(r.task_id);
+      },
+    });
 
   const pending = proposals.data ?? [];
   const uncat = uncategorised.data ?? 0;
   const hasTopics = (topics.data?.length ?? 0) > 0;
+  // Upper-bound estimate of a full re-scan's LLM calls, for the confirm dialog:
+  // every categorised item (topic counts over-count multi-topic items) + the
+  // uncategorised pile. The task reports the exact count once it starts.
+  const totalEstimate =
+    (topics.data?.reduce((sum, t) => sum + t.count, 0) ?? 0) + uncat;
 
   return (
     <div className="mx-auto max-w-[900px] space-y-8">
@@ -124,6 +170,11 @@ export default function TopicsRoute() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <ReclassifyAllButton
+            total={totalEstimate}
+            disabled={busy || !hasTopics}
+            onConfirm={startRescanAll}
+          />
           <BackfillButton
             uncat={uncat}
             disabled={busy || !hasTopics}
@@ -147,7 +198,11 @@ export default function TopicsRoute() {
             {task.data?.message ||
               (kind === "backfill"
                 ? "Classifying uncategorised items…"
-                : "Clustering uncategorised items…")}
+                : kind === "rescan"
+                  ? `Re-scanning ${rescanLabel ?? "topic"}…`
+                  : kind === "rescan-all"
+                    ? "Re-scanning your whole library…"
+                    : "Clustering uncategorised items…")}
             {typeof task.data?.progress === "number" && ` (${task.data.progress}%)`}
           </span>
           <Button
@@ -194,7 +249,13 @@ export default function TopicsRoute() {
         ) : (
           <ul className="divide-y divide-border rounded-lg border border-border">
             {topics.data!.map((t) => (
-              <TopicRow key={t.id} topic={t} all={topics.data!} />
+              <TopicRow
+                key={t.id}
+                topic={t}
+                all={topics.data!}
+                busy={busy}
+                onRescan={startRescan}
+              />
             ))}
           </ul>
         )}
@@ -250,6 +311,127 @@ function BackfillButton({
           >
             <Layers className="size-4" />
             Classify {uncat}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// Full re-scan: re-decide the WHOLE library against the current taxonomy
+// (behind a cost confirm — one LLM call per item across the whole corpus)
+// --------------------------------------------------------------------------- //
+
+function ReclassifyAllButton({
+  total,
+  disabled,
+  onConfirm,
+}: {
+  total: number;
+  disabled: boolean;
+  onConfirm: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="secondary" disabled={disabled}>
+          <RefreshCw className="size-4" />
+          Re-scan all
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Re-scan your whole library?</DialogTitle>
+          <DialogDescription>
+            This re-checks every categorised and uncategorised item (up to ~{total}{" "}
+            LLM call{total === 1 ? "" : "s"}, which costs money) against your
+            current topics, and may move items between topics — use it after adding
+            new topics you want applied everywhere. Items you've assigned by hand
+            are left alone. To speed it up, raise <code>CLASSIFY_CONCURRENCY</code>.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="mt-4 flex justify-end gap-2">
+          <DialogClose asChild>
+            <Button size="sm" variant="ghost">
+              Cancel
+            </Button>
+          </DialogClose>
+          <Button
+            size="sm"
+            onClick={() => {
+              setOpen(false);
+              onConfirm();
+            }}
+          >
+            <RefreshCw className="size-4" />
+            Re-scan everything
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// Per-topic re-scan: re-check a topic's members against the current taxonomy
+// (behind a cost confirm, since it costs one LLM call per member and moves items)
+// --------------------------------------------------------------------------- //
+
+function RescanButton({
+  topic,
+  disabled,
+  onConfirm,
+}: {
+  topic: TopicItem;
+  disabled: boolean;
+  onConfirm: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const n = topic.count;
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DialogTrigger asChild>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              disabled={disabled}
+              aria-label="Re-scan members"
+            >
+              <RefreshCw className="size-3.5" />
+            </Button>
+          </DialogTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Re-scan items for a better-fitting topic</TooltipContent>
+      </Tooltip>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Re-scan “{topic.label}”?</DialogTitle>
+          <DialogDescription>
+            This re-checks its {n} item{n === 1 ? "" : "s"} against your current
+            topics — one LLM call each (~{n} call{n === 1 ? "" : "s"}), which costs
+            money — and may move items to a better-fitting topic. Items you've
+            assigned by hand are left alone.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="mt-4 flex justify-end gap-2">
+          <DialogClose asChild>
+            <Button size="sm" variant="ghost">
+              Cancel
+            </Button>
+          </DialogClose>
+          <Button
+            size="sm"
+            onClick={() => {
+              setOpen(false);
+              onConfirm();
+            }}
+          >
+            <RefreshCw className="size-4" />
+            Re-scan {n}
           </Button>
         </div>
       </DialogContent>
@@ -369,7 +551,17 @@ function CreateTopicRow() {
   );
 }
 
-function TopicRow({ topic, all }: { topic: TopicItem; all: TopicItem[] }) {
+function TopicRow({
+  topic,
+  all,
+  busy,
+  onRescan,
+}: {
+  topic: TopicItem;
+  all: TopicItem[];
+  busy: boolean;
+  onRescan: (topic: TopicItem) => void;
+}) {
   const patch = usePatchTopic();
   const del = useDeleteTopic();
   const [editing, setEditing] = useState(false);
@@ -420,16 +612,31 @@ function TopicRow({ topic, all }: { topic: TopicItem; all: TopicItem[] }) {
             </span>
           )}
           <div className="ml-auto flex items-center gap-0.5">
-            <Button size="icon-sm" variant="ghost" onClick={() => setEditing(true)} aria-label="Rename">
-              <Pencil className="size-3.5" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="icon-sm" variant="ghost" onClick={() => setEditing(true)} aria-label="Rename">
+                  <Pencil className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Rename topic</TooltipContent>
+            </Tooltip>
+            <RescanButton
+              topic={topic}
+              disabled={busy || topic.count === 0}
+              onConfirm={() => onRescan(topic)}
+            />
             {others.length > 0 && (
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="icon-sm" variant="ghost" aria-label="Merge into">
-                    <GitMerge className="size-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="icon-sm" variant="ghost" aria-label="Merge into">
+                        <GitMerge className="size-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>Merge into another topic</TooltipContent>
+                </Tooltip>
                 <DropdownMenuContent align="end">
                   {others.map((t) => (
                     <DropdownMenuItem
@@ -444,23 +651,33 @@ function TopicRow({ topic, all }: { topic: TopicItem; all: TopicItem[] }) {
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              onClick={() => patch.mutate({ id: topic.id, body: { archive: true } })}
-              aria-label="Archive"
-            >
-              <Archive className="size-3.5" />
-            </Button>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              onClick={() => del.mutate(topic.id)}
-              aria-label="Delete"
-              className={cn("text-fg-subtle hover:text-red-500")}
-            >
-              <X className="size-3.5" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  onDoubleClick={() => patch.mutate({ id: topic.id, body: { archive: true } })}
+                  aria-label="Archive topic (double-click to confirm)"
+                >
+                  <Archive className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Archive topic (double-click) — hides it, keeps its items</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  onDoubleClick={() => del.mutate(topic.id)}
+                  aria-label="Delete topic (double-click to confirm)"
+                  className={cn("text-fg-subtle hover:text-red-500")}
+                >
+                  <X className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Delete topic (double-click) — unassigns its items</TooltipContent>
+            </Tooltip>
           </div>
         </>
       )}

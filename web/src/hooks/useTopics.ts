@@ -9,6 +9,8 @@ import {
   getUncategorisedCount,
   patchTopic,
   proposeTopics,
+  reclassifyAll,
+  reclassifyTopic,
   rejectProposal,
   setItemTopics,
   type TopicItem,
@@ -119,6 +121,27 @@ export function useBackfill() {
     mutationFn: () => backfillTopics(),
     onError: (e: Error) =>
       toast.error("Couldn't start backfill", { description: e.message }),
+  });
+}
+
+/** Re-scan one topic's members so a better-fitting topic can claim them.
+ * Returns a task_id to poll; the caller invalidates the topic/item views on
+ * completion (same as backfill). */
+export function useReclassifyTopic() {
+  return useMutation({
+    mutationFn: (id: string) => reclassifyTopic(id),
+    onError: (e: Error) =>
+      toast.error("Couldn't start re-scan", { description: e.message }),
+  });
+}
+
+/** Re-scan the whole library against the current taxonomy. Returns a task_id to
+ * poll; the caller invalidates the topic/item views on completion. */
+export function useReclassifyAll() {
+  return useMutation({
+    mutationFn: () => reclassifyAll(),
+    onError: (e: Error) =>
+      toast.error("Couldn't start full re-scan", { description: e.message }),
   });
 }
 
