@@ -92,6 +92,45 @@ def test_assign_sets_primary_and_serializes_on_item(client, make_item):
     assert counts == {"ai": 1, "coding": 1}
 
 
+def test_unread_scoped_topics_drop_read_and_recount(client, make_item):
+    """?unread=true scopes counts to unread items and hides emptied topics."""
+    coding = _create_topic(client, "Coding")
+    gaming = _create_topic(client, "Gaming")
+    a = make_item(title="A")
+    b = make_item(title="B")
+    c = make_item(title="C")
+    _assign(client, a, [coding["id"]])
+    _assign(client, b, [coding["id"]])
+    _assign(client, c, [gaming["id"]])
+
+    # Unscoped: both topics present with full counts.
+    all_counts = {t["slug"]: t["count"] for t in client.get("/api/topics").json()}
+    assert all_counts == {"coding": 2, "gaming": 1}
+
+    # Read one Coding item and the only Gaming item.
+    assert client.post(f"/api/items/{a}/read").status_code == 200
+    assert client.post(f"/api/items/{c}/read").status_code == 200
+
+    unread = client.get("/api/topics", params={"unread": True}).json()
+    unread_counts = {t["slug"]: t["count"] for t in unread}
+    # Coding drops to its 1 unread item; Gaming (fully read) disappears.
+    assert unread_counts == {"coding": 1}
+
+
+def test_unread_scoped_uncategorised_count(client, make_item):
+    """?unread=true on the uncategorised count excludes read items."""
+    make_item(title="unread-uncat")
+    read = make_item(title="read-uncat")
+    assert client.post(f"/api/items/{read}/read").status_code == 200
+
+    total = client.get("/api/topics/uncategorised-count").json()["count"]
+    unread = client.get(
+        "/api/topics/uncategorised-count", params={"unread": True}
+    ).json()["count"]
+    assert total == 2
+    assert unread == 1
+
+
 def test_reassign_replaces_previous(client, make_item):
     a = _create_topic(client, "A")
     b = _create_topic(client, "B")
