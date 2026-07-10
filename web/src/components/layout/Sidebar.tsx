@@ -6,6 +6,7 @@ import {
   MessageSquare,
   BarChart3,
   MonitorPlay,
+  Tags,
   type LucideIcon,
 } from "lucide-react";
 import { useSourceTypes, useLibraryCount } from "@/hooks/useMeta";
@@ -19,6 +20,7 @@ const WORKSPACE: NavItem[] = [
   { to: "/", label: "Today", icon: Home, end: true },
   { to: "/feed", label: "Feed", icon: Layers },
   { to: "/library", label: "Library", icon: Library },
+  { to: "/topics", label: "Topics", icon: Tags },
   { to: "/chat", label: "Chat", icon: MessageSquare },
   { to: "/insights", label: "Insights", icon: BarChart3 },
 ];

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle2, Inbox as InboxIcon } from "lucide-react";
+import { CheckCircle2, Inbox as InboxIcon, Sparkles, X } from "lucide-react";
 import { CheckCheck } from "lucide-react";
 import {
   useFeedQueue,
@@ -9,6 +9,8 @@ import {
   useMarkUnread,
   useToggleSaved,
 } from "@/hooks/useFeed";
+import { useTopics, useUncategorisedCount } from "@/hooks/useTopics";
+import { useTags } from "@/hooks/useMeta";
 import { FeedCard } from "@/components/feed/FeedCard";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
@@ -22,13 +24,79 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toaster";
+import type { FeedFilter } from "@/lib/api/endpoints";
 import { cn } from "@/lib/utils";
 
 const SWIPE_THRESHOLD = 64; // px of horizontal travel to commit a page-turn
 const PREFETCH_AHEAD = 3; // load the next page this many cards before the end
+const UNCATEGORISED = "uncategorised"; // sentinel slug for the "no topic" slice
+const MAX_REFINE_TAGS = 10; // top-N tags offered as refine chips
 
+/**
+ * Owns the navigation filter (topic slice + tag refine). The reading stack is a
+ * child keyed by the filter signature, so switching filter *remounts* it — a
+ * fresh queue, cursor, and read-set with no manual reset (idiomatic React
+ * "reset state with a key").
+ */
 export default function FeedRoute() {
-  const q = useFeedQueue();
+  const [topic, setTopic] = useState<string | null>(null); // slug | sentinel | null
+  const [refineTags, setRefineTags] = useState<string[]>([]);
+  const filter = useMemo<FeedFilter>(
+    () => ({
+      topics: topic ? [topic] : undefined,
+      tags: refineTags.length ? refineTags : undefined,
+    }),
+    [topic, refineTags],
+  );
+  const filterSig = `${topic ?? ""}|${[...refineTags].sort().join(",")}`;
+
+  const toggleTag = useCallback(
+    (t: string) =>
+      setRefineTags((cur) =>
+        cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t],
+      ),
+    [],
+  );
+  const clearFilter = useCallback(() => {
+    setTopic(null);
+    setRefineTags([]);
+  }, []);
+
+  return (
+    <FeedReader
+      key={filterSig}
+      filter={filter}
+      filtered={!!topic || refineTags.length > 0}
+      topic={topic}
+      onTopic={setTopic}
+      refineTags={refineTags}
+      onToggleTag={toggleTag}
+      onClearFilter={clearFilter}
+    />
+  );
+}
+
+function FeedReader({
+  filter,
+  filtered,
+  topic,
+  onTopic,
+  refineTags,
+  onToggleTag,
+  onClearFilter,
+}: {
+  filter: FeedFilter;
+  filtered: boolean;
+  topic: string | null;
+  onTopic: (t: string | null) => void;
+  refineTags: string[];
+  onToggleTag: (t: string) => void;
+  onClearFilter: () => void;
+}) {
+  const q = useFeedQueue(filter);
+  const topics = useTopics();
+  const uncategorised = useUncategorisedCount();
+  const tags = useTags();
   const markRead = useMarkRead();
   const markUnread = useMarkUnread();
   const markAllRead = useMarkAllRead();
@@ -80,8 +148,6 @@ export default function FeedRoute() {
     const leaving = queue[index];
     const leavingIdx = index;
     if (leaving && markReadOnce(leaving.id)) {
-      // Single, self-replacing toast (stable id) — the safety net for an
-      // accidental swipe. Undo re-opens the card and walks back to it.
       toast("Marked read", {
         id: "feed-read",
         duration: 4000,
@@ -89,8 +155,8 @@ export default function FeedRoute() {
       });
     }
     if (index < queue.length - 1) setIndex(index + 1);
-    else if (hasNextPage) fetchNextPage(); // advance once the page lands
-    else setIndex(queue.length); // past the end → caught-up screen
+    else if (hasNextPage) fetchNextPage();
+    else setIndex(queue.length);
   }, [queue, index, hasNextPage, fetchNextPage, markReadOnce, undoRead]);
 
   const goPrev = useCallback(() => {
@@ -114,13 +180,9 @@ export default function FeedRoute() {
   }, [goNext, goPrev]);
 
   // --- pointer-based horizontal swipe (touch + mouse) --------------------- //
-  // touch-action: pan-y on the frame lets the summary scroll vertically while
-  // we own horizontal drags. We only translate once horizontal intent is clear.
   const drag = useRef<{ x: number; y: number; axis: "" | "x" | "y" } | null>(null);
 
   const onPointerDown = (e: React.PointerEvent) => {
-    // Mouse uses native text selection (so you can copy the summary); desktop
-    // navigates via the ‹ › buttons / arrow keys. Only touch & pen swipe.
     if (e.pointerType === "mouse") return;
     drag.current = { x: e.clientX, y: e.clientY, axis: "" };
   };
@@ -145,99 +207,102 @@ export default function FeedRoute() {
     setDragX(0);
   };
 
-  // --- render states ------------------------------------------------------ //
-  if (q.isLoading) return <FeedFrame><ReaderSkeleton /></FeedFrame>;
-  if (q.isError)
-    return (
-      <FeedFrame>
-        <ErrorState error={q.error} onRetry={() => q.refetch()} />
-      </FeedFrame>
-    );
+  const filterBar = (
+    <FilterBar
+      topic={topic}
+      onTopic={onTopic}
+      topics={topics.data ?? []}
+      uncategorisedCount={uncategorised.data ?? 0}
+      tags={(tags.data ?? []).slice(0, MAX_REFINE_TAGS).map((t) => t.name)}
+      activeTags={refineTags}
+      onToggleTag={onToggleTag}
+      total={total}
+      onMarkAll={() => setConfirmAll(true)}
+      markAllPending={markAllRead.isPending}
+    />
+  );
 
-  if (total === 0)
-    return (
-      <FeedFrame>
-        <EmptyState
-          icon={InboxIcon}
-          title="Nothing to read"
-          description="No unread summaries. Ingest something, or browse what you've already read in the Library."
-          action={
-            <Button asChild size="sm">
-              <Link to="/library">Open library</Link>
-            </Button>
-          }
+  // --- body per state (filter bar stays mounted so you can always re-slice) //
+  let body: React.ReactNode;
+  if (q.isLoading) {
+    body = <ReaderSkeleton />;
+  } else if (q.isError) {
+    body = <ErrorState error={q.error} onRetry={() => q.refetch()} />;
+  } else if (total === 0) {
+    body = filtered ? (
+      <EmptyState
+        icon={InboxIcon}
+        title="Nothing in this slice"
+        description="No unread items match this filter. Clear it to see the rest of your queue."
+        action={
+          <Button size="sm" variant="secondary" onClick={onClearFilter}>
+            Clear filter
+          </Button>
+        }
+      />
+    ) : (
+      <EmptyState
+        icon={InboxIcon}
+        title="Nothing to read"
+        description="No unread summaries. Ingest something, or browse what you've already read in the Library."
+        action={
+          <Button asChild size="sm">
+            <Link to="/library">Open library</Link>
+          </Button>
+        }
+      />
+    );
+  } else if (index >= queue.length && !hasNextPage) {
+    body = (
+      <EmptyState
+        icon={CheckCircle2}
+        title="You're all caught up"
+        description={`Read ${readCount} ${readCount === 1 ? "summary" : "summaries"} this session. New ingests will show up here.`}
+        action={
+          <Button asChild size="sm" variant="secondary">
+            <Link to="/library">Browse library</Link>
+          </Button>
+        }
+      />
+    );
+  } else {
+    const item = queue[Math.min(index, queue.length - 1)];
+    body = !item ? (
+      <ReaderSkeleton />
+    ) : (
+      <div
+        className={cn(
+          "h-full touch-pan-y will-change-transform",
+          dragX === 0
+            ? "transition-transform duration-200 ease-out motion-reduce:transition-none"
+            : "select-none transition-none",
+        )}
+        style={{ transform: `translateX(${dragX}px)` }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        <FeedCard
+          key={item.id}
+          item={item}
+          position={Math.min(index + 1, total)}
+          total={total}
+          saved={!!item.saved_at}
+          onSave={() => toggleSaved.mutate({ id: item.id, saved: !item.saved_at })}
+          onPrev={goPrev}
+          onNext={goNext}
+          hasPrev={index > 0}
         />
-      </FeedFrame>
+      </div>
     );
-
-  const atEnd = index >= queue.length && !hasNextPage;
-  if (atEnd)
-    return (
-      <FeedFrame>
-        <EmptyState
-          icon={CheckCircle2}
-          title="You're all caught up"
-          description={`Read ${readCount} ${readCount === 1 ? "summary" : "summaries"} this session. New ingests will show up here.`}
-          action={
-            <Button asChild size="sm" variant="secondary">
-              <Link to="/library">Browse library</Link>
-            </Button>
-          }
-        />
-      </FeedFrame>
-    );
-
-  const item = queue[Math.min(index, queue.length - 1)];
-  if (!item) return <FeedFrame><ReaderSkeleton /></FeedFrame>;
+  }
 
   return (
     <FeedFrame>
       <div className="flex h-full flex-col">
-        {/* Header: queue size + bulk action */}
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="eyebrow">{total} unread</p>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setConfirmAll(true)}
-            disabled={markAllRead.isPending}
-          >
-            <CheckCheck className="size-3.5" /> Mark all read
-          </Button>
-        </div>
-
-        {/* Card stack */}
-        <div
-          className={cn(
-            "min-h-0 flex-1 touch-pan-y will-change-transform",
-            // Smooth snap when settled; no transition mid-drag. Honors
-            // prefers-reduced-motion via the motion-reduce variant.
-            // select-none only while actively swiping (touch) — keeps the
-            // summary selectable/copyable at rest.
-            dragX === 0
-              ? "transition-transform duration-200 ease-out motion-reduce:transition-none"
-              : "select-none transition-none",
-          )}
-          style={{ transform: `translateX(${dragX}px)` }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-        >
-          <FeedCard
-            key={item.id}
-            item={item}
-            position={Math.min(index + 1, total)}
-            total={total}
-            saved={!!item.saved_at}
-            onSave={() =>
-              toggleSaved.mutate({ id: item.id, saved: !item.saved_at })
-            }
-            onPrev={goPrev}
-            onNext={goNext}
-            hasPrev={index > 0}
-          />
-        </div>
+        {filterBar}
+        <div className="min-h-0 flex-1">{body}</div>
       </div>
 
       <Dialog open={confirmAll} onOpenChange={setConfirmAll}>
@@ -245,8 +310,9 @@ export default function FeedRoute() {
           <DialogHeader>
             <DialogTitle>Mark all as read?</DialogTitle>
             <DialogDescription>
-              All {total} unread {total === 1 ? "summary" : "summaries"} will be
-              marked read and cleared from the Feed. They stay in your Library.
+              All {total} unread {total === 1 ? "summary" : "summaries"} in this
+              view will be marked read and cleared from the Feed. They stay in
+              your Library.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-1">
@@ -270,6 +336,136 @@ export default function FeedRoute() {
         </DialogContent>
       </Dialog>
     </FeedFrame>
+  );
+}
+
+type TopicChip = { slug: string; label: string; count: number };
+
+function FilterBar({
+  topic,
+  onTopic,
+  topics,
+  uncategorisedCount,
+  tags,
+  activeTags,
+  onToggleTag,
+  total,
+  onMarkAll,
+  markAllPending,
+}: {
+  topic: string | null;
+  onTopic: (t: string | null) => void;
+  topics: TopicChip[];
+  uncategorisedCount: number;
+  tags: string[];
+  activeTags: string[];
+  onToggleTag: (t: string) => void;
+  total: number;
+  onMarkAll: () => void;
+  markAllPending: boolean;
+}) {
+  const select = (slug: string) => onTopic(topic === slug ? null : slug);
+  return (
+    <div className="mb-3 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="eyebrow">{total} unread</p>
+        <div className="flex items-center gap-1">
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/topics">
+              <Sparkles className="size-3.5" /> Organise
+              {uncategorisedCount > 0 && (
+                <span className="ml-1 font-mono text-[11px] tabular-nums text-fg-subtle">
+                  {uncategorisedCount}
+                </span>
+              )}
+            </Link>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onMarkAll} disabled={markAllPending}>
+            <CheckCheck className="size-3.5" /> Mark all read
+          </Button>
+        </div>
+      </div>
+
+      {/* Topic slice chips (single-select) */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <FilterChip active={topic === null} onClick={() => onTopic(null)}>
+          All
+        </FilterChip>
+        {uncategorisedCount > 0 && (
+          <FilterChip
+            active={topic === UNCATEGORISED}
+            onClick={() => select(UNCATEGORISED)}
+          >
+            Uncategorised
+            <Count n={uncategorisedCount} />
+          </FilterChip>
+        )}
+        {topics.map((t) => (
+          <FilterChip key={t.slug} active={topic === t.slug} onClick={() => select(t.slug)}>
+            {t.label}
+            <Count n={t.count} />
+          </FilterChip>
+        ))}
+      </div>
+
+      {/* Tag refine chips (multi-select) — only when tags exist */}
+      {tags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-fg-subtle">Refine:</span>
+          {tags.map((t) => {
+            const on = activeTags.includes(t);
+            return (
+              <button
+                key={t}
+                onClick={() => onToggleTag(t)}
+                aria-pressed={on}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 font-mono text-[11px] transition-colors",
+                  on
+                    ? "border-accent-border bg-accent-subtle text-accent"
+                    : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
+                )}
+              >
+                #{t}
+                {on && <X className="size-3" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
+        active
+          ? "border-accent-border bg-accent-subtle text-fg"
+          : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Count({ n }: { n: number }) {
+  return (
+    <span className="ml-1.5 font-mono text-[10px] tabular-nums text-fg-subtle">
+      {n}
+    </span>
   );
 }
 

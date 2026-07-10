@@ -19,6 +19,7 @@ export type ItemQuery = {
   source_type?: string;
   status?: string;
   tags?: string[];
+  topics?: string[];
   read?: boolean;
   saved?: boolean;
   sort?: string;
@@ -26,6 +27,15 @@ export type ItemQuery = {
   per_page?: number;
   search_transcripts?: boolean;
 };
+
+// Topic taxonomy types (from the generated schema).
+export type TopicItem = components["schemas"]["TopicItem"];
+export type ItemTopicRef = components["schemas"]["ItemTopicRef"];
+export type TopicProposal = components["schemas"]["TopicProposalResponse"];
+
+/** Feed navigation filter — a topic slug (or the "uncategorised" sentinel) plus
+ *  optional tag refinement. */
+export type FeedFilter = { topics?: string[]; tags?: string[] };
 
 export type ItemStatus = "queued" | "processing" | "completed" | "failed" | "pending";
 
@@ -61,6 +71,54 @@ export const markAllRead = () =>
 
 export const getTags = () => client.get<NameCount[]>("/api/tags");
 export const getSourceTypes = () => client.get<NameCount[]>("/api/source-types");
+
+// --- Topics (cross-corpus taxonomy) ---------------------------------------
+export const getTopics = (status = "active") =>
+  client.get<TopicItem[]>("/api/topics", { status });
+
+export const getUncategorisedCount = () =>
+  client.get<components["schemas"]["CountResponse"]>(
+    "/api/topics/uncategorised-count",
+  );
+
+export const createTopic = (body: components["schemas"]["CreateTopicRequest"]) =>
+  client.post<TopicItem>("/api/topics", body);
+
+export const patchTopic = (
+  id: string,
+  body: components["schemas"]["PatchTopicRequest"],
+) => client.patch<TopicItem>(`/api/topics/${id}`, body);
+
+export const deleteTopic = (id: string) =>
+  client.delete<void>(`/api/topics/${id}`);
+
+export const setItemTopics = (
+  id: string,
+  body: components["schemas"]["SetItemTopicsRequest"],
+) =>
+  client.post<components["schemas"]["ItemTopicsResponse"]>(
+    `/api/items/${id}/topics`,
+    body,
+  );
+
+// --- Topic proposals (batch discovery pipeline) ---------------------------
+export const getProposals = () =>
+  client.get<TopicProposal[]>("/api/topics/proposals");
+
+export const proposeTopics = () =>
+  client.post<TaskId>("/api/topics/proposals");
+
+export const acceptProposal = (
+  id: string,
+  body: components["schemas"]["AcceptProposalRequest"] = {},
+) =>
+  client.post<components["schemas"]["AcceptProposalResponse"]>(
+    `/api/topics/proposals/${id}/accept`,
+    body,
+  );
+
+export const rejectProposal = (id: string) =>
+  client.post<void>(`/api/topics/proposals/${id}/reject`);
 
 // --- Ingest / tasks --------------------------------------------------------
 export type TaskId = components["schemas"]["TaskIdResponse"];

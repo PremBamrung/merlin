@@ -14,6 +14,9 @@ import {
   Search,
   Play,
   MessageSquare,
+  Star,
+  Plus,
+  X,
 } from "lucide-react";
 import {
   useItem,
@@ -22,6 +25,7 @@ import {
   useClearSummary,
   useAdjacentItems,
 } from "@/hooks/useItems";
+import { useTopics, useSetItemTopics } from "@/hooks/useTopics";
 import { useResummarize, useRetry } from "@/hooks/useIngest";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -134,9 +138,9 @@ function Reader({
   const watchUrl = isYouTube ? youtubeUrl(item.source_id) : null;
   const thumb = thumbnailUrl(item);
 
-  const topics = (item.topics ?? {}) as Record<string, unknown>;
+  const sections = (item.sections ?? {}) as Record<string, unknown>;
   const timestamps = (item.timestamps ?? {}) as Record<string, unknown>;
-  const rail = Object.keys(topics).length ? topics : timestamps;
+  const rail = Object.keys(sections).length ? sections : timestamps;
   const railEntries = Object.entries(rail);
 
   const meta = [
@@ -305,6 +309,13 @@ function Reader({
             <TagInput
               tags={item.tags ?? []}
               onChange={(next) => update.mutate({ tags: next })}
+            />
+          </div>
+
+          <div className="mt-3">
+            <TopicAssign
+              itemId={item.id}
+              assigned={item.topics ?? []}
             />
           </div>
 
@@ -589,5 +600,97 @@ function Highlight({ text, term }: { text: string; term: string }) {
       <mark className="bg-accent/30 text-fg">{text.slice(idx, idx + term.length)}</mark>
       {text.slice(idx + term.length)}
     </>
+  );
+}
+
+/** Manual topic assignment for a single item. Chips show assigned topics
+ *  (primary starred); click a chip to make it primary, the × to remove, and
+ *  the ＋ menu to add from the active taxonomy. Writes the full set via
+ *  set_item_topics (assigned_by="user", so the classifier won't clobber it). */
+function TopicAssign({
+  itemId,
+  assigned,
+}: {
+  itemId: string;
+  assigned: { slug: string; label: string; is_primary?: boolean }[];
+}) {
+  const topics = useTopics();
+  const setTopics = useSetItemTopics(itemId);
+  const slugToId = useMemo(
+    () => Object.fromEntries((topics.data ?? []).map((t) => [t.slug, t.id])),
+    [topics.data],
+  );
+  const assignedSlugs = assigned.map((a) => a.slug);
+  const primarySlug = assigned.find((a) => a.is_primary)?.slug ?? assignedSlugs[0];
+
+  // Resolve slugs → ids (drops any unresolvable, e.g. an archived topic) and
+  // persist the full set with a single primary.
+  const commit = (slugs: string[], primary: string | undefined) => {
+    const ids = slugs.map((s) => slugToId[s]).filter(Boolean) as string[];
+    const primaryId =
+      primary && slugToId[primary] ? slugToId[primary] : (ids[0] ?? null);
+    setTopics.mutate({ topic_ids: ids, primary_id: primaryId });
+  };
+  const remove = (slug: string) =>
+    commit(
+      assignedSlugs.filter((s) => s !== slug),
+      primarySlug === slug ? undefined : primarySlug,
+    );
+  const add = (slug: string) => {
+    if (assignedSlugs.includes(slug)) return;
+    commit([...assignedSlugs, slug], primarySlug ?? slug);
+  };
+  const makePrimary = (slug: string) => commit(assignedSlugs, slug);
+
+  const available = (topics.data ?? []).filter(
+    (t) => !assignedSlugs.includes(t.slug),
+  );
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {assigned.map((a) => (
+        <span
+          key={a.slug}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px]",
+            a.is_primary
+              ? "border-accent-border bg-accent-subtle text-accent"
+              : "border-border text-fg-muted",
+          )}
+        >
+          <button
+            onClick={() => makePrimary(a.slug)}
+            title={a.is_primary ? "Primary topic" : "Make primary"}
+            className="inline-flex items-center gap-1"
+          >
+            {a.is_primary && <Star className="size-3 fill-accent" />}
+            {a.label}
+          </button>
+          <button onClick={() => remove(a.slug)} aria-label={`Remove ${a.label}`}>
+            <X className="size-3" />
+          </button>
+        </span>
+      ))}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-1 text-[11px] text-fg-subtle transition-colors hover:text-fg">
+            <Plus className="size-3" /> Topic
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {available.length === 0 ? (
+            <DropdownMenuItem disabled>
+              {topics.data?.length ? "All topics assigned" : "No topics yet"}
+            </DropdownMenuItem>
+          ) : (
+            available.map((t) => (
+              <DropdownMenuItem key={t.id} onSelect={() => add(t.slug)}>
+                {t.label}
+              </DropdownMenuItem>
+            ))
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }

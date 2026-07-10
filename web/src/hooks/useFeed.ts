@@ -13,6 +13,7 @@ import {
   markUnread,
   saveItem,
   unsaveItem,
+  type FeedFilter,
   type ItemList,
   type ListItem,
 } from "@/lib/api/endpoints";
@@ -27,11 +28,18 @@ const PER_PAGE = 20;
  * card list stays stable and you can swipe back to undo. A fresh visit
  * (remount) refetches and drops anything already read.
  */
-export function useFeedQueue() {
+export function useFeedQueue(filter?: FeedFilter) {
   return useInfiniteQuery({
-    queryKey: keys.feed(),
+    queryKey: keys.feed(filter),
     queryFn: ({ pageParam }) =>
-      getItems({ read: false, sort: "newest", per_page: PER_PAGE, page: pageParam }),
+      getItems({
+        read: false,
+        sort: "newest",
+        per_page: PER_PAGE,
+        page: pageParam,
+        topics: filter?.topics,
+        tags: filter?.tags,
+      }),
     initialPageParam: 1,
     getNextPageParam: (last, pages) => {
       const loaded = pages.reduce((n, p) => n + p.items.length, 0);
@@ -105,13 +113,14 @@ export function useMarkUnread() {
   });
 }
 
-/** Patch one item inside the cached feed pages (for instant ★ feedback). */
+/** Patch one item across every cached feed page (any active filter). Targets
+ *  the ["feed"] prefix via setQueriesData so it hits the filter-aware keys too. */
 function patchFeedItem(
   qc: ReturnType<typeof useQueryClient>,
   id: string,
   patch: Partial<ListItem>,
 ) {
-  qc.setQueryData<InfiniteData<ItemList>>(keys.feed(), (old) =>
+  qc.setQueriesData<InfiniteData<ItemList>>({ queryKey: keys.feed() }, (old) =>
     old
       ? {
           ...old,

@@ -159,6 +159,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/items/{item_id}/topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Item Topics
+         * @description Manually assign an item's topics (writes assigned_by="user").
+         */
+        post: operations["set_item_topics_api_items__item_id__topics_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tags": {
         parameters: {
             query?: never;
@@ -191,6 +211,119 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Topics */
+        get: operations["list_topics_api_topics_get"];
+        put?: never;
+        /** Create Topic */
+        post: operations["create_topic_api_topics_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/topics/uncategorised-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Uncategorised Count */
+        get: operations["uncategorised_count_api_topics_uncategorised_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/topics/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Proposals */
+        get: operations["list_proposals_api_topics_proposals_get"];
+        put?: never;
+        /**
+         * Propose Topics
+         * @description Trigger the batch proposal pipeline (background task; poll the task_id).
+         */
+        post: operations["propose_topics_api_topics_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/topics/proposals/{proposal_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Proposal */
+        post: operations["accept_proposal_api_topics_proposals__proposal_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/topics/proposals/{proposal_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Proposal */
+        post: operations["reject_proposal_api_topics_proposals__proposal_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/topics/{topic_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Topic */
+        delete: operations["delete_topic_api_topics__topic_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Topic
+         * @description Rename, archive, or merge a topic (one action per request).
+         *
+         *     `merge_into` folds this topic into the target and returns the *target*.
+         */
+        patch: operations["patch_topic_api_topics__topic_id__patch"];
         trace?: never;
     };
     "/api/ingest/youtube": {
@@ -547,6 +680,25 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AcceptProposalRequest
+         * @description Accept a proposal: create a new topic (`label`) OR merge its members into
+         *     an existing one (`topic_id`). Both optional — omit to use the proposed label.
+         */
+        AcceptProposalRequest: {
+            /** Label */
+            label?: string | null;
+            /** Topic Id */
+            topic_id?: string | null;
+        };
+        /** AcceptProposalResponse */
+        AcceptProposalResponse: {
+            topic: components["schemas"]["TopicItem"];
+            /** Assigned */
+            assigned: number;
+            /** Requested */
+            requested: number;
+        };
         /** CancelTaskResponse */
         CancelTaskResponse: {
             /** Task Id */
@@ -611,6 +763,13 @@ export interface components {
         CountResponse: {
             /** Count */
             count: number;
+        };
+        /** CreateTopicRequest */
+        CreateTopicRequest: {
+            /** Label */
+            label: string;
+            /** Description */
+            description?: string | null;
         };
         /** DigestActionRequest */
         DigestActionRequest: {
@@ -726,7 +885,9 @@ export interface components {
             /** Tags */
             tags?: string[];
             /** Topics */
-            topics?: {
+            topics?: components["schemas"]["ItemTopicRef"][];
+            /** Sections */
+            sections?: {
                 [key: string]: unknown;
             };
             /** Llm Model */
@@ -776,6 +937,28 @@ export interface components {
             per_page: number;
         };
         /**
+         * ItemTopicRef
+         * @description A topic assigned to an item, as it appears on the item payload.
+         */
+        ItemTopicRef: {
+            /** Slug */
+            slug: string;
+            /** Label */
+            label: string;
+            /**
+             * Is Primary
+             * @default false
+             */
+            is_primary: boolean;
+        };
+        /** ItemTopicsResponse */
+        ItemTopicsResponse: {
+            /** Item Id */
+            item_id: string;
+            /** Topics */
+            topics?: components["schemas"]["ItemTopicRef"][];
+        };
+        /**
          * ListItem
          * @description A knowledge item as returned by list endpoints (no `raw_content`).
          */
@@ -801,7 +984,9 @@ export interface components {
             /** Tags */
             tags?: string[];
             /** Topics */
-            topics?: {
+            topics?: components["schemas"]["ItemTopicRef"][];
+            /** Sections */
+            sections?: {
                 [key: string]: unknown;
             };
             /** Llm Model */
@@ -844,6 +1029,25 @@ export interface components {
             /** Count */
             count: number;
         };
+        /**
+         * PatchTopicRequest
+         * @description Rename, archive, or merge a topic — mutually exclusive in practice.
+         */
+        PatchTopicRequest: {
+            /** Label */
+            label?: string | null;
+            /** Archive */
+            archive?: boolean | null;
+            /** Merge Into */
+            merge_into?: string | null;
+        };
+        /** ProposalMemberItem */
+        ProposalMemberItem: {
+            /** Id */
+            id: string;
+            /** Title */
+            title?: string | null;
+        };
         /** RenameThreadRequest */
         RenameThreadRequest: {
             /** Title */
@@ -884,6 +1088,16 @@ export interface components {
             id: string;
             /** Title */
             title?: string | null;
+        };
+        /**
+         * SetItemTopicsRequest
+         * @description Manual assignment: the full topic set for an item + which is primary.
+         */
+        SetItemTopicsRequest: {
+            /** Topic Ids */
+            topic_ids?: string[];
+            /** Primary Id */
+            primary_id?: string | null;
         };
         /** Task */
         Task: {
@@ -926,6 +1140,55 @@ export interface components {
             date: string;
             /** Count */
             count: number;
+        };
+        /**
+         * TopicItem
+         * @description A topic row with its assigned-item count (list/manage responses).
+         */
+        TopicItem: {
+            /** Id */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+            /**
+             * Origin
+             * @default user
+             */
+            origin: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+        };
+        /** TopicProposalResponse */
+        TopicProposalResponse: {
+            /** Id */
+            id: string;
+            /** Proposed Label */
+            proposed_label: string;
+            /** Rationale */
+            rationale?: string | null;
+            /** Batch Id */
+            batch_id?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Item Count
+             * @default 0
+             */
+            item_count: number;
+            /** Items */
+            items?: components["schemas"]["ProposalMemberItem"][];
         };
         /** UpdateItemRequest */
         UpdateItemRequest: {
@@ -1011,6 +1274,7 @@ export interface operations {
                 source_type?: string | null;
                 status?: string | null;
                 tags?: string[] | null;
+                topics?: string[] | null;
                 read?: boolean | null;
                 saved?: boolean | null;
                 sort?: string;
@@ -1332,6 +1596,41 @@ export interface operations {
             };
         };
     };
+    set_item_topics_api_items__item_id__topics_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetItemTopicsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemTopicsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_tags_api_tags_get: {
         parameters: {
             query?: never;
@@ -1368,6 +1667,269 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NameCount"][];
+                };
+            };
+        };
+    };
+    list_topics_api_topics_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_topic_api_topics_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTopicRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    uncategorised_count_api_topics_uncategorised_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CountResponse"];
+                };
+            };
+        };
+    };
+    list_proposals_api_topics_proposals_get: {
+        parameters: {
+            query?: {
+                batch_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicProposalResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    propose_topics_api_topics_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskIdResponse"];
+                };
+            };
+        };
+    };
+    accept_proposal_api_topics_proposals__proposal_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptProposalResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_proposal_api_topics_proposals__proposal_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_topic_api_topics__topic_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_topic_api_topics__topic_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchTopicRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

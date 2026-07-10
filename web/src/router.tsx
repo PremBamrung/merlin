@@ -11,6 +11,7 @@ import FeedRoute from "@/routes/feed";
 const InsightsRoute = lazy(() => import("@/routes/insights"));
 // Chat pulls in the Vercel AI SDK — lazy-load so it stays in its own chunk.
 const ChatRoute = lazy(() => import("@/routes/chat"));
+const TopicsRoute = lazy(() => import("@/routes/topics"));
 
 export const router = createBrowserRouter([
   {
@@ -21,6 +22,14 @@ export const router = createBrowserRouter([
       { path: "feed", element: <FeedRoute /> },
       { path: "library", element: <LibraryRoute /> },
       { path: "library/:id", element: <ReaderRoute /> },
+      {
+        path: "topics",
+        element: (
+          <Suspense fallback={<ReaderSkeleton />}>
+            <TopicsRoute />
+          </Suspense>
+        ),
+      },
       {
         path: "chat",
         element: (
