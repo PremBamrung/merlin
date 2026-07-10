@@ -269,6 +269,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/topics/backfill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Backfill Topics
+         * @description Classify the uncategorised backlog against existing topics (background
+         *     task; poll the task_id).
+         */
+        post: operations["backfill_topics_api_topics_backfill_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/topics/proposals/{proposal_id}/accept": {
         parameters: {
             query?: never;
@@ -1787,6 +1808,26 @@ export interface operations {
         };
     };
     propose_topics_api_topics_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskIdResponse"];
+                };
+            };
+        };
+    };
+    backfill_topics_api_topics_backfill_post: {
         parameters: {
             query?: never;
             header?: never;

@@ -8,10 +8,12 @@ import {
   Archive,
   GitMerge,
   Plus,
+  Layers,
   Tags as TagsIcon,
 } from "lucide-react";
 import {
   useAcceptProposal,
+  useBackfill,
   useCreateTopic,
   useDeleteTopic,
   usePatchTopic,
@@ -22,10 +24,20 @@ import {
   useUncategorisedCount,
   type TopicItem,
 } from "@/hooks/useTopics";
+import { useCancelTask } from "@/hooks/useIngest";
 import { getTask, type TopicProposal } from "@/lib/api/endpoints";
 import { keys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,12 +55,16 @@ export default function TopicsRoute() {
   const proposals = useProposals();
   const uncategorised = useUncategorisedCount();
   const propose = useProposeTopics();
+  const backfill = useBackfill();
+  const cancel = useCancelTask();
   const qc = useQueryClient();
 
-  // Poll the background proposal task until it settles, then refresh the lists.
-  // taskId is left set once terminal (polling just stops); `running` is derived
-  // from the live status, so the effect never needs to write state.
+  // A single background task runs at a time (the two buttons are mutually
+  // exclusive). Poll it until it settles, then refresh the lists. `kind` drives
+  // the completion toast + progress copy; `running` is derived from live status,
+  // so the effect never needs to write state.
   const [taskId, setTaskId] = useState<string | null>(null);
+  const [kind, setKind] = useState<"discovery" | "backfill" | null>(null);
   const task = useQuery({
     queryKey: keys.task(taskId ?? ""),
     queryFn: () => getTask(taskId!),
@@ -62,16 +78,41 @@ export default function TopicsRoute() {
     // React to the external task completing: refresh the lists (no setState).
     qc.invalidateQueries({ queryKey: keys.proposals() });
     qc.invalidateQueries({ queryKey: keys.uncategorisedCount() });
-    if (status === "failed") toast.error("Topic discovery failed");
-    else toast.success("Topic discovery complete");
-  }, [task.data?.status, qc]);
+    qc.invalidateQueries({ queryKey: keys.topics() });
+    qc.invalidateQueries({ queryKey: keys.items() });
+    qc.invalidateQueries({ queryKey: keys.feed() });
+    const noun = kind === "backfill" ? "Backfill" : "Topic discovery";
+    const wasCancelled = !!task.data?.result_data?.cancelled;
+    if (status === "failed") toast.error(`${noun} failed`);
+    else if (wasCancelled) toast.success(`${noun} stopped — kept the work done so far`);
+    else toast.success(`${noun} complete`);
+  }, [task.data?.status, task.data?.result_data, kind, qc]);
 
   const running = !!taskId && !TERMINAL.has(task.data?.status ?? "");
+  const busy = running || propose.isPending || backfill.isPending;
+  // Cancel POST returns instantly ("cancelling"), but the task keeps running to
+  // its next checkpoint — keep the button in "Stopping…" until it terminates.
+  const stopping =
+    cancel.isPending ||
+    (cancel.isSuccess && cancel.variables === taskId && running);
   const startDiscovery = () =>
-    propose.mutate(undefined, { onSuccess: (r) => setTaskId(r.task_id) });
+    propose.mutate(undefined, {
+      onSuccess: (r) => {
+        setKind("discovery");
+        setTaskId(r.task_id);
+      },
+    });
+  const startBackfill = () =>
+    backfill.mutate(undefined, {
+      onSuccess: (r) => {
+        setKind("backfill");
+        setTaskId(r.task_id);
+      },
+    });
 
   const pending = proposals.data ?? [];
   const uncat = uncategorised.data ?? 0;
+  const hasTopics = (topics.data?.length ?? 0) > 0;
 
   return (
     <div className="mx-auto max-w-[900px] space-y-8">
@@ -82,21 +123,42 @@ export default function TopicsRoute() {
             Your navigation taxonomy — the buckets the Feed filters by.
           </p>
         </div>
-        <Button size="sm" onClick={startDiscovery} disabled={running || propose.isPending}>
-          <Sparkles className="size-4" />
-          {running ? "Finding topics…" : "Find topics"}
-          {uncat > 0 && !running && (
-            <span className="ml-1 font-mono text-[11px] tabular-nums opacity-80">
-              {uncat}
-            </span>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <BackfillButton
+            uncat={uncat}
+            disabled={busy || !hasTopics}
+            onConfirm={startBackfill}
+          />
+          <Button size="sm" onClick={startDiscovery} disabled={busy}>
+            <Sparkles className="size-4" />
+            {running && kind === "discovery" ? "Finding topics…" : "Find topics"}
+            {uncat > 0 && !running && (
+              <span className="ml-1 font-mono text-[11px] tabular-nums opacity-80">
+                {uncat}
+              </span>
+            )}
+          </Button>
+        </div>
       </div>
 
       {running && (
-        <div className="rounded-lg border border-border bg-surface/40 p-4 text-[13px] text-fg-muted">
-          {task.data?.message || "Clustering uncategorised items…"}
-          {typeof task.data?.progress === "number" && ` (${task.data.progress}%)`}
+        <div className="flex items-center gap-3 rounded-lg border border-border bg-surface/40 p-4 text-[13px] text-fg-muted">
+          <span className="flex-1">
+            {task.data?.message ||
+              (kind === "backfill"
+                ? "Classifying uncategorised items…"
+                : "Clustering uncategorised items…")}
+            {typeof task.data?.progress === "number" && ` (${task.data.progress}%)`}
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={stopping || !taskId}
+            onClick={() => taskId && cancel.mutate(taskId)}
+          >
+            <X className="size-3.5" />
+            {stopping ? "Stopping…" : "Cancel"}
+          </Button>
         </div>
       )}
 
@@ -138,6 +200,60 @@ export default function TopicsRoute() {
         )}
       </section>
     </div>
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// Backfill: fit uncategorised items to EXISTING topics (behind a cost confirm)
+// --------------------------------------------------------------------------- //
+
+function BackfillButton({
+  uncat,
+  disabled,
+  onConfirm,
+}: {
+  uncat: number;
+  disabled: boolean;
+  onConfirm: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="secondary" disabled={disabled || uncat === 0}>
+          <Layers className="size-4" />
+          Classify {uncat} uncategorised
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Classify uncategorised items?</DialogTitle>
+          <DialogDescription>
+            This fits your {uncat} uncategorised item{uncat === 1 ? "" : "s"} to
+            the topics you already have — one LLM call each (~{uncat} calls), which
+            costs money. It never touches items you've assigned by hand. New topics
+            aren't created here; use “Find topics” for that.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="mt-4 flex justify-end gap-2">
+          <DialogClose asChild>
+            <Button size="sm" variant="ghost">
+              Cancel
+            </Button>
+          </DialogClose>
+          <Button
+            size="sm"
+            onClick={() => {
+              setOpen(false);
+              onConfirm();
+            }}
+          >
+            <Layers className="size-4" />
+            Classify {uncat}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   acceptProposal,
+  backfillTopics,
   createTopic,
   deleteTopic,
   getProposals,
@@ -108,6 +109,16 @@ export function useProposeTopics() {
     mutationFn: () => proposeTopics(),
     onError: (e: Error) =>
       toast.error("Couldn't start topic discovery", { description: e.message }),
+  });
+}
+
+/** Classify the uncategorised backlog against existing topics. Returns a task_id
+ * to poll; the caller invalidates the topic/item views on completion. */
+export function useBackfill() {
+  return useMutation({
+    mutationFn: () => backfillTopics(),
+    onError: (e: Error) =>
+      toast.error("Couldn't start backfill", { description: e.message }),
   });
 }
 

@@ -108,6 +108,10 @@ export const getProposals = () =>
 export const proposeTopics = () =>
   client.post<TaskId>("/api/topics/proposals");
 
+/** Classify the uncategorised backlog against existing topics (background task). */
+export const backfillTopics = () =>
+  client.post<TaskId>("/api/topics/backfill");
+
 export const acceptProposal = (
   id: string,
   body: components["schemas"]["AcceptProposalRequest"] = {},
