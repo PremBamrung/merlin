@@ -203,7 +203,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
 
         request.report(50, "Generating summary…")
         summary_lang = self._pick_summary_language(detected_language, user_languages)
-        summary, topics, timestamps = self.summarizer.summarize(
+        summary, sections, timestamps = self.summarizer.summarize(
             subtitles=raw_text,
             title=video_info["title"],
             channel=video_info["channel"],
@@ -246,7 +246,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             summary=summary,
             summary_length=summary_length,
             tags=[],
-            topics=topics,
+            sections=sections,
             word_count=len(raw_text.split()),
             llm_model=settings.llm_model_name,
             summarize_input_tokens=summ_usage.get("input_tokens"),
@@ -286,7 +286,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
         this only re-runs the summariser (e.g. to change the summary length or
         language). `description` is the (possibly self-healed) video description
         the caller wants to ground the summary with. Returns
-        (summary, topics, timestamps).
+        (summary, sections, timestamps).
         """
         summary_lang = self._pick_summary_language(
             detected_language or "", user_languages

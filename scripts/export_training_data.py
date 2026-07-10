@@ -39,7 +39,7 @@ def fetch_rows(conn: sqlite3.Connection) -> list[dict]:
             ki.summary,
             ki.summary_length,
             ki.tags,
-            ki.topics,
+            ki.sections AS topics,
             ki.llm_model,
             ki.word_count,
             ki.status,

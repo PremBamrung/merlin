@@ -55,7 +55,9 @@ class IngestResult:
     summary_length: str = "short"
 
     tags: list[str] = field(default_factory=list)
-    topics: dict[str, str] = field(default_factory=dict)
+    # Per-item section map ({"heading": "12:34"}) for in-summary navigation —
+    # NOT the cross-corpus topic taxonomy (see merlin.services.topics).
+    sections: dict[str, str] = field(default_factory=dict)
 
     word_count: int = 0
     llm_model: str = ""

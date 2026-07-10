@@ -105,7 +105,7 @@ def migrate():
                     (id, source_type, source_id, title, author,
                      published_at, ingested_at, updated_at,
                      raw_content, summary, summary_length,
-                     tags, topics, llm_model, word_count, status, error_message)
+                     tags, sections, llm_model, word_count, status, error_message)
                 VALUES (?, 'youtube', ?, ?, ?,
                         ?, ?, ?,
                         ?, ?, ?,

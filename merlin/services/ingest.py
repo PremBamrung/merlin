@@ -70,7 +70,7 @@ def persist_result(task_id: str, result) -> None:
             "summary": result.summary,
             "summary_length": result.summary_length,
             "tags": json.dumps(result.tags),
-            "topics": json.dumps(result.topics),
+            "sections": json.dumps(result.sections),
             "llm_model": result.llm_model,
             "word_count": result.word_count,
             "status": "completed",
@@ -95,7 +95,12 @@ def persist_result(task_id: str, result) -> None:
         session.commit()
 
     _record_ingest_usage(item_id, result)
-    _index_for_search(item_id, result.title, result.summary, result.tags)
+    # Classify BEFORE embedding: the classifier is what writes real tags now
+    # (the plugin emits tags=[]), and the item vector is built from
+    # title+tags+summary. Embedding first would bake in empty tags permanently
+    # (heal_missing_embeddings never revisits an item that already has a vector).
+    _classify(item_id)
+    _index_for_search(item_id)
 
 
 def _record_ingest_usage(item_id: str, result) -> None:
@@ -127,8 +132,19 @@ def _record_ingest_usage(item_id: str, result) -> None:
         )
 
 
-def _index_for_search(item_id: str, title, summary, tags) -> None:
+def _classify(item_id: str) -> None:
+    """Best-effort topic + tag classification (see services.classify). Swallows
+    its own errors so it can never fail an otherwise-successful ingest."""
+    from merlin.services import classify
+
+    classify.classify_and_persist(item_id)
+
+
+def _index_for_search(item_id: str) -> None:
     """Best-effort: embed the item for semantic search after a successful ingest.
+
+    Re-reads title/summary/tags from the DB (not the IngestResult) so it embeds
+    with the tags the classifier just wrote — must run AFTER `_classify`.
 
     Inert under `NullEmbedder` (EMBEDDING_PROVIDER=none). A Jina failure is
     logged and swallowed — it must never fail an otherwise-successful ingest;
@@ -140,8 +156,16 @@ def _index_for_search(item_id: str, title, summary, tags) -> None:
         if not get_embedder().enabled:
             return
         with SessionFactory() as session:
+            item = KnowledgeItemRepository.get_by_id(session, item_id)
+            if not item:
+                return
+            tags = _parse_json(item.tags, []) or []
             if store_item_embedding(
-                session, item_id=item_id, title=title, summary=summary, tags=tags
+                session,
+                item_id=item_id,
+                title=item.title,
+                summary=item.summary,
+                tags=tags,
             ):
                 session.commit()
     except Exception:
@@ -284,7 +308,7 @@ def resummarize(
         langs = languages or [
             lang for lang in (detected.split("-")[0].lower(), "en", "fr") if lang
         ]
-        summary, topics, timestamps = plugin.resummarize(
+        summary, sections, timestamps = plugin.resummarize(
             raw_text=raw_text,
             title=title,
             channel=channel,
@@ -302,7 +326,7 @@ def resummarize(
                 raise ValueError("Item not found")
             item.summary = summary
             item.summary_length = length
-            item.topics = json.dumps(topics)
+            item.sections = json.dumps(sections)
             item.llm_model = settings.llm_model_name
             item.status = "completed"
             item.error_message = None
@@ -332,6 +356,12 @@ def resummarize(
                 cost_usd=summ_usage.get("cost_usd"),
                 knowledge_item_id=item_id,
             )
+
+        # Re-classify (refreshes topics; leaves user-assigned rows + existing
+        # tags untouched) then re-embed. Re-summarise previously left a stale
+        # vector — same classify-then-embed order as the fresh ingest path.
+        _classify(item_id)
+        _index_for_search(item_id)
 
     return task_queue.submit_callable(
         work,
