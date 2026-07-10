@@ -41,6 +41,29 @@ class UpdateItemRequest(BaseModel):
     title: str | None = None
 
 
+# --- Topics (cross-corpus taxonomy) ----------------------------------------
+
+
+class CreateTopicRequest(BaseModel):
+    label: str
+    description: str | None = None
+
+
+class PatchTopicRequest(BaseModel):
+    """Rename, archive, or merge a topic — mutually exclusive in practice."""
+
+    label: str | None = None
+    archive: bool | None = None
+    merge_into: str | None = None  # topic id to fold this one into
+
+
+class SetItemTopicsRequest(BaseModel):
+    """Manual assignment: the full topic set for an item + which is primary."""
+
+    topic_ids: list[str] = Field(default_factory=list)
+    primary_id: str | None = None
+
+
 # Chat speaks the Vercel AI SDK data-stream protocol (the route reads the raw
 # AI SDK message body via `Request`), so there is no ChatRequest model. These
 # two document the *extra* `filters` field the client adds to that body and the
@@ -80,6 +103,63 @@ class RenameThreadRequest(BaseModel):
 # --------------------------------------------------------------------------- #
 
 
+class ItemTopicRef(BaseModel):
+    """A topic assigned to an item, as it appears on the item payload."""
+
+    slug: str
+    label: str
+    is_primary: bool = False
+
+
+class TopicItem(BaseModel):
+    """A topic row with its assigned-item count (list/manage responses)."""
+
+    id: str
+    slug: str
+    label: str
+    status: str = "active"
+    origin: str = "user"
+    description: str | None = None
+    count: int = 0
+
+
+class ItemTopicsResponse(BaseModel):
+    item_id: str
+    topics: list[ItemTopicRef] = Field(default_factory=list)
+
+
+# --- Topic proposals (batch discovery pipeline, §7) ------------------------
+
+
+class ProposalMemberItem(BaseModel):
+    id: str
+    title: str | None = None
+
+
+class TopicProposalResponse(BaseModel):
+    id: str
+    proposed_label: str
+    rationale: str | None = None
+    batch_id: str | None = None
+    created_at: str | None = None
+    item_count: int = 0
+    items: list[ProposalMemberItem] = Field(default_factory=list)
+
+
+class AcceptProposalRequest(BaseModel):
+    """Accept a proposal: create a new topic (`label`) OR merge its members into
+    an existing one (`topic_id`). Both optional — omit to use the proposed label."""
+
+    label: str | None = None
+    topic_id: str | None = None
+
+
+class AcceptProposalResponse(BaseModel):
+    topic: TopicItem
+    assigned: int  # members actually assigned (drift-tolerant)
+    requested: int  # members in the proposal snapshot
+
+
 class ListItem(BaseModel):
     """A knowledge item as returned by list endpoints (no `raw_content`)."""
 
@@ -93,7 +173,10 @@ class ListItem(BaseModel):
     summary: str | None = None
     summary_length: str | None = None
     tags: list[str] = Field(default_factory=list)
-    topics: dict = Field(default_factory=dict)
+    # Cross-corpus taxonomy assignments (navigation). Primary-first.
+    topics: list[ItemTopicRef] = Field(default_factory=list)
+    # Per-item in-summary section map {"heading": "12:34"} (was `topics`).
+    sections: dict = Field(default_factory=dict)
     llm_model: str | None = None
     word_count: int | None = None
     status: str | None = None

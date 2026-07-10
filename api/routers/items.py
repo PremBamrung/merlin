@@ -9,15 +9,17 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query, Response
 
-from merlin.services import library
+from merlin.services import library, topics as topics_service
 
 from ..errors import not_found
 from ..schemas import (
     CountResponse,
     Item,
     ItemListResponse,
+    ItemTopicsResponse,
     ListItem,
     NameCount,
+    SetItemTopicsRequest,
     UpdateItemRequest,
 )
 
@@ -30,6 +32,7 @@ def list_items(
     source_type: str | None = None,
     status: str | None = None,
     tags: list[str] | None = Query(default=None),
+    topics: list[str] | None = Query(default=None),
     read: bool | None = Query(default=None),
     saved: bool | None = Query(default=None),
     sort: str = "newest",
@@ -42,6 +45,7 @@ def list_items(
         source_type=source_type,
         status=status,
         tags=tags,
+        topics=topics,
         read=read,
         saved=saved,
         sort=sort,
@@ -123,6 +127,15 @@ def unsave_item(item_id: str):
     if item is None:
         raise not_found("Item not found.")
     return item
+
+
+@router.post("/items/{item_id}/topics", response_model=ItemTopicsResponse)
+def set_item_topics(item_id: str, body: SetItemTopicsRequest):
+    """Manually assign an item's topics (writes assigned_by="user")."""
+    result = topics_service.set_item_topics(item_id, body.topic_ids, body.primary_id)
+    if result is None:
+        raise not_found("Item not found.")
+    return result
 
 
 @router.get("/tags", response_model=list[NameCount])

@@ -66,6 +66,10 @@ def not_found(message: str = "Not found.") -> APIError:
     return APIError(404, "not_found", message)
 
 
+def invalid_input(message: str = "Invalid input.") -> APIError:
+    return APIError(400, "invalid_input", message)
+
+
 def install_error_handlers(app: FastAPI) -> None:
     """Register the handlers that turn exceptions into the §5 envelope."""
 
