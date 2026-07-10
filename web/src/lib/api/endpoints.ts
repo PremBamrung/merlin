@@ -73,12 +73,13 @@ export const getTags = () => client.get<NameCount[]>("/api/tags");
 export const getSourceTypes = () => client.get<NameCount[]>("/api/source-types");
 
 // --- Topics (cross-corpus taxonomy) ---------------------------------------
-export const getTopics = (status = "active") =>
-  client.get<TopicItem[]>("/api/topics", { status });
+export const getTopics = (status = "active", unread = false) =>
+  client.get<TopicItem[]>("/api/topics", { status, unread });
 
-export const getUncategorisedCount = () =>
+export const getUncategorisedCount = (unread = false) =>
   client.get<components["schemas"]["CountResponse"]>(
     "/api/topics/uncategorised-count",
+    { unread },
   );
 
 export const createTopic = (body: components["schemas"]["CreateTopicRequest"]) =>

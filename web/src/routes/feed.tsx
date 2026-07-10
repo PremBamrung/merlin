@@ -94,8 +94,8 @@ function FeedReader({
   onClearFilter: () => void;
 }) {
   const q = useFeedQueue(filter);
-  const topics = useTopics();
-  const uncategorised = useUncategorisedCount();
+  const topics = useTopics("active", true); // unread-scoped: only topics in the queue
+  const uncategorised = useUncategorisedCount(true);
   const tags = useTags();
   const markRead = useMarkRead();
   const markUnread = useMarkUnread();

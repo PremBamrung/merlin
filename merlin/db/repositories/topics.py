@@ -37,13 +37,22 @@ class TopicRepository:
         return q.order_by(Topic.label.asc()).all()
 
     @staticmethod
-    def counts_by_topic(session: Session) -> dict[str, int]:
-        """topic_id -> number of items assigned it (any primary/secondary)."""
-        rows = (
-            session.query(ItemTopic.topic_id, func.count(ItemTopic.knowledge_item_id))
-            .group_by(ItemTopic.topic_id)
-            .all()
+    def counts_by_topic(
+        session: Session, *, unread_only: bool = False
+    ) -> dict[str, int]:
+        """topic_id -> number of items assigned it (any primary/secondary).
+
+        ``unread_only`` restricts the tally to unread items (``read_at IS NULL``)
+        — the per-topic counts shown on the Feed picker.
+        """
+        q = session.query(
+            ItemTopic.topic_id, func.count(ItemTopic.knowledge_item_id)
         )
+        if unread_only:
+            q = q.join(
+                KnowledgeItem, KnowledgeItem.id == ItemTopic.knowledge_item_id
+            ).filter(KnowledgeItem.read_at.is_(None))
+        rows = q.group_by(ItemTopic.topic_id).all()
         return dict(rows)
 
     @staticmethod
@@ -214,18 +223,23 @@ class TopicRepository:
         return row
 
     @staticmethod
-    def uncategorised_count(session: Session) -> int:
-        """Completed items with no item_topics row at all."""
+    def uncategorised_count(session: Session, *, unread_only: bool = False) -> int:
+        """Completed items with no item_topics row at all.
+
+        ``unread_only`` restricts the tally to unread items (``read_at IS NULL``)
+        — the "Uncategorised" chip count on the Feed picker.
+        """
         assigned = select(ItemTopic.knowledge_item_id).where(
             ItemTopic.knowledge_item_id == KnowledgeItem.id
         )
-        return (
+        q = (
             session.query(func.count(KnowledgeItem.id))
             .filter(KnowledgeItem.status == "completed")
             .filter(~assigned.exists())
-            .scalar()
-            or 0
         )
+        if unread_only:
+            q = q.filter(KnowledgeItem.read_at.is_(None))
+        return q.scalar() or 0
 
     @staticmethod
     def uncategorised_items(

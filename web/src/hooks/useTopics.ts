@@ -19,20 +19,22 @@ import type { components } from "@/lib/api/schema";
 import { keys } from "@/lib/queryKeys";
 import { toast } from "@/components/ui/toaster";
 
-/** The active taxonomy (with per-topic counts) — drives the Feed picker + manage page. */
-export function useTopics(status = "active") {
+/** The active taxonomy (with per-topic counts) — drives the Feed picker + manage
+ * page. ``unread`` scopes counts to unread items and drops empty topics (Feed). */
+export function useTopics(status = "active", unread = false) {
   return useQuery({
-    queryKey: [...keys.topics(), status],
-    queryFn: () => getTopics(status),
+    queryKey: [...keys.topics(), status, unread ? "unread" : "all"],
+    queryFn: () => getTopics(status, unread),
     staleTime: 30_000,
   });
 }
 
-/** Count of completed items with no topic yet — drives the "find topics" affordance. */
-export function useUncategorisedCount() {
+/** Count of completed items with no topic yet — drives the "find topics"
+ * affordance. ``unread`` scopes the tally to unread items (the Feed chip). */
+export function useUncategorisedCount(unread = false) {
   return useQuery({
-    queryKey: keys.uncategorisedCount(),
-    queryFn: async () => (await getUncategorisedCount()).count,
+    queryKey: [...keys.uncategorisedCount(), unread ? "unread" : "all"],
+    queryFn: async () => (await getUncategorisedCount(unread)).count,
     staleTime: 15_000,
   });
 }

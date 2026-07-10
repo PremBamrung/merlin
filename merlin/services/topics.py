@@ -48,12 +48,23 @@ def _serialize_topic(topic, count: int = 0) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def list_topics(status: str | None = "active") -> list[dict]:
-    """Topics (default active) with their assigned-item counts, label-sorted."""
+def list_topics(
+    status: str | None = "active", *, unread_only: bool = False
+) -> list[dict]:
+    """Topics (default active) with their assigned-item counts, label-sorted.
+
+    ``unread_only`` scopes the counts to unread items and drops topics with no
+    unread items — the Feed picker only surfaces topics present in the queue.
+    """
     with SessionFactory() as session:
         topics = TopicRepository.list_active(session, status=status)
-        counts = TopicRepository.counts_by_topic(session)
-        return [_serialize_topic(t, counts.get(t.id, 0)) for t in topics]
+        counts = TopicRepository.counts_by_topic(session, unread_only=unread_only)
+        serialized = [
+            _serialize_topic(t, counts.get(t.id, 0)) for t in topics
+        ]
+        if unread_only:
+            serialized = [t for t in serialized if t["count"] > 0]
+        return serialized
 
 
 def create_topic(
@@ -169,10 +180,16 @@ def set_item_topics(
 # ---------------------------------------------------------------------------
 
 
-def count_uncategorised() -> int:
-    """Completed items with no topic assignment yet."""
+def count_uncategorised(unread_only: bool = False) -> int:
+    """Completed items with no topic assignment yet.
+
+    ``unread_only`` scopes the tally to unread items — the Feed's Uncategorised
+    chip counts only what's still in the queue.
+    """
     with SessionFactory() as session:
-        return TopicRepository.uncategorised_count(session)
+        return TopicRepository.uncategorised_count(
+            session, unread_only=unread_only
+        )
 
 
 # ---------------------------------------------------------------------------

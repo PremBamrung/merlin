@@ -28,13 +28,24 @@ router = APIRouter(prefix="/api/topics", tags=["topics"])
 
 
 @router.get("", response_model=list[TopicItem])
-def list_topics(status: str | None = Query(default="active")):
-    return topics_service.list_topics(status=status)
+def list_topics(
+    status: str | None = Query(default="active"),
+    unread: bool = Query(
+        default=False,
+        description="Scope counts to unread items and drop topics with no "
+        "unread items (the Feed picker).",
+    ),
+):
+    return topics_service.list_topics(status=status, unread_only=unread)
 
 
 @router.get("/uncategorised-count", response_model=CountResponse)
-def uncategorised_count():
-    return {"count": topics_service.count_uncategorised()}
+def uncategorised_count(
+    unread: bool = Query(
+        default=False, description="Scope the tally to unread items."
+    ),
+):
+    return {"count": topics_service.count_uncategorised(unread_only=unread)}
 
 
 # -- Batch proposal pipeline (§7) ------------------------------------------
