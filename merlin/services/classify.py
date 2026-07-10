@@ -116,11 +116,13 @@ def _build_prompt(
     )
 
 
-def _record_usage(raw) -> None:
-    """Write a `surface="classify"` llm_usage row from the raw LLM response.
+def _record_usage(raw, *, surface: str = "classify") -> None:
+    """Write an llm_usage row (default `surface="classify"`) from the raw LLM
+    response.
 
     A UI-triggered ~1,100-call backfill makes invisible cost unacceptable
-    (TOPICS_BACKFILL_PLAN §G), so every classify call records its spend. Reads
+    (TOPICS_BACKFILL_PLAN §G), so every classify call records its spend; the
+    batch-discovery/clustering calls record under `surface="discover"`. Reads
     token counts off `usage_metadata` and the provider-reported cost the same way
     the summariser does; falls back to the pricing map (via usage.record) when the
     provider doesn't report cost. Best-effort — usage.record never raises."""
@@ -132,7 +134,7 @@ def _record_usage(raw) -> None:
         from merlin.services import usage
 
         usage.record(
-            surface="classify",
+            surface=surface,
             provider=settings.llm_provider,
             model=settings.llm_model_name,
             input_tokens=um.get("input_tokens"),
@@ -313,17 +315,19 @@ def _cluster_chunk(items: list[tuple[str, str, str]]) -> list[dict]:
         f"{idx}: {title} — {summary[:300]}"
         for idx, (_id, title, summary) in enumerate(items)
     )
-    llm, suffix = _structured(_ClusterResponse)
-    resp = llm.invoke(
+    llm, suffix = _structured(_ClusterResponse, include_raw=True)
+    raw = llm.invoke(
         [
             {"role": "system", "content": _CLUSTER_SYSTEM + suffix},
             {"role": "user", "content": f"ITEMS:\n{lines}"},
         ]
     )
+    parsed = raw.get("parsed") if isinstance(raw, dict) else raw
+    _record_usage(raw.get("raw") if isinstance(raw, dict) else raw, surface="discover")
     resp = (
-        resp
-        if isinstance(resp, _ClusterResponse)
-        else _ClusterResponse.model_validate(resp)
+        parsed
+        if isinstance(parsed, _ClusterResponse)
+        else _ClusterResponse.model_validate(parsed)
     )
     out: list[dict] = []
     for c in resp.clusters:
@@ -346,17 +350,21 @@ def _consolidate(round1: list[dict]) -> list[dict]:
     if len(labels) <= 1:
         return _merge_by_label(round1)
     try:
-        llm, suffix = _structured(_MergeResponse)
-        resp = llm.invoke(
+        llm, suffix = _structured(_MergeResponse, include_raw=True)
+        raw = llm.invoke(
             [
                 {"role": "system", "content": _MERGE_SYSTEM + suffix},
                 {"role": "user", "content": "LABELS:\n" + "\n".join(labels)},
             ]
         )
+        parsed = raw.get("parsed") if isinstance(raw, dict) else raw
+        _record_usage(
+            raw.get("raw") if isinstance(raw, dict) else raw, surface="discover"
+        )
         resp = (
-            resp
-            if isinstance(resp, _MergeResponse)
-            else _MergeResponse.model_validate(resp)
+            parsed
+            if isinstance(parsed, _MergeResponse)
+            else _MergeResponse.model_validate(parsed)
         )
     except Exception:
         logger.warning(

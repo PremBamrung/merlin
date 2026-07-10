@@ -86,8 +86,10 @@ const SURFACE_COLORS: Record<string, string> = {
   chat: "#ff4b4b",
   summarize: "#5b9df9",
   transcribe: "#f5a524",
+  classify: "#22c55e",
+  discover: "#a855f7",
 };
-const SURFACE_ORDER = ["chat", "summarize", "transcribe"];
+const SURFACE_ORDER = ["chat", "summarize", "transcribe", "classify", "discover"];
 
 function usd(n: number): string {
   if (!n) return "$0.00";
