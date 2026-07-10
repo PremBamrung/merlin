@@ -12,6 +12,7 @@ import {
   Library as LibraryIcon,
 } from "lucide-react";
 import { useItems } from "@/hooks/useItems";
+import { useTopics, useUncategorisedCount } from "@/hooks/useTopics";
 import { useDebounced } from "@/hooks/useDebounced";
 import { useUi, type Density } from "@/store/ui";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,8 @@ const SORTS = [
   { value: "title", label: "Title A→Z" },
 ];
 const DENSITIES: Density[] = ["comfortable", "cozy", "compact"];
+/** Sentinel slug for items that have no topic assigned (matches the Feed + backend). */
+const UNCATEGORISED = "uncategorised";
 
 /** True when focus is in a text field — grid shortcuts are suppressed there. */
 function inEditable(el: EventTarget | null): boolean {
@@ -62,6 +65,7 @@ export default function LibraryRoute() {
   const sort = params.get("sort") ?? "newest";
   const page = Math.max(1, Number(params.get("page") ?? 1));
   const tags = params.getAll("tags");
+  const topics = params.getAll("topics");
   const savedOnly = params.get("saved") === "true";
   const searchTranscripts = params.get("search_transcripts") === "true";
 
@@ -107,21 +111,32 @@ export default function LibraryRoute() {
       source_type: sourceType || undefined,
       sort,
       tags: tags.length ? tags : undefined,
+      topics: topics.length ? topics : undefined,
       saved: savedOnly || undefined,
       search_transcripts: searchTranscripts || undefined,
       page,
       per_page: PER_PAGE,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [search, sourceType, sort, page, tags.join(","), savedOnly, searchTranscripts],
+    [search, sourceType, sort, page, tags.join(","), topics.join(","), savedOnly, searchTranscripts],
   );
 
   const q = useItems(query);
+  const { data: topicList } = useTopics();
+  const { data: uncatCount = 0 } = useUncategorisedCount();
   const total = q.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "Newest";
 
-  const hasFilters = !!(search || sourceType || tags.length || savedOnly);
+  // Multi-select topics — toggle a slug in/out of the URL (backend ORs them).
+  const toggleTopic = (slug: string) => {
+    const next = topics.includes(slug)
+      ? topics.filter((s) => s !== slug)
+      : [...topics, slug];
+    update({ topics: next.length ? next : undefined, page: undefined });
+  };
+
+  const hasFilters = !!(search || sourceType || tags.length || topics.length || savedOnly);
   const items = q.data?.items ?? [];
 
   const goToPage = (p: number) => {
@@ -132,7 +147,7 @@ export default function LibraryRoute() {
 
   // Reset keyboard focus whenever the result set changes (render-time pattern,
   // matching the search box above — no effect, no cascading render).
-  const resultSig = `${search}|${sourceType}|${sort}|${page}|${tags.join(",")}|${savedOnly}|${searchTranscripts}`;
+  const resultSig = `${search}|${sourceType}|${sort}|${page}|${tags.join(",")}|${topics.join(",")}|${savedOnly}|${searchTranscripts}`;
   const [prevSig, setPrevSig] = useState(resultSig);
   if (resultSig !== prevSig) {
     setPrevSig(resultSig);
@@ -246,6 +261,35 @@ export default function LibraryRoute() {
           </DropdownMenu>
         )}
       </div>
+
+      {/* Topic filter chips (multi-select) */}
+      {((topicList && topicList.length > 0) || uncatCount > 0) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Chip
+            active={!topics.length}
+            onClick={() => update({ topics: undefined, page: undefined })}
+          >
+            All topics
+          </Chip>
+          {uncatCount > 0 && (
+            <Chip
+              active={topics.includes(UNCATEGORISED)}
+              onClick={() => toggleTopic(UNCATEGORISED)}
+            >
+              Uncategorised <Count n={uncatCount} />
+            </Chip>
+          )}
+          {topicList?.map((t) => (
+            <Chip
+              key={t.slug}
+              active={topics.includes(t.slug)}
+              onClick={() => toggleTopic(t.slug)}
+            >
+              {t.label} <Count n={t.count} />
+            </Chip>
+          ))}
+        </div>
+      )}
 
       {/* Source-type chips + active tag filters */}
       <div className="flex flex-wrap items-center gap-2">
@@ -381,6 +425,15 @@ function Chip({
     >
       {children}
     </button>
+  );
+}
+
+/** Small tabular count badge shown inside a filter chip. */
+function Count({ n }: { n: number }) {
+  return (
+    <span className="ml-1 font-mono text-[11px] tabular-nums text-fg-subtle">
+      {thousands(n)}
+    </span>
   );
 }
 
