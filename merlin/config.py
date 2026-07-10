@@ -60,11 +60,13 @@ class Settings(BaseSettings):
         """Model id for the chat agent — explicit override or OpenRouter default."""
         return self.chat_model or self.openrouter_model_deployment
 
-    # Classification / backfill (non-ingestion bulk LLM jobs — topic backfill and
-    # the clustering pipeline run through merlin.core.parallel_llm). Conservative
-    # defaults so a UI-triggered ~1,100-call run is safe out of the box; all
-    # env-driven so they can be tuned per provider without a redeploy.
-    classify_concurrency: int = 4  # CLASSIFY_CONCURRENCY — parallel LLM calls
+    # Classification / backfill (non-ingestion bulk LLM jobs — topic backfill,
+    # per-topic + full re-scan, and the clustering pipeline all run through
+    # merlin.core.parallel_llm). 10-way concurrency by default for throughput on a
+    # UI-triggered ~1,100-call run; a 429 trips the cooldown/retry below, so an
+    # over-aggressive provider self-corrects. All env-driven so they can be tuned
+    # per provider without a redeploy.
+    classify_concurrency: int = 10  # CLASSIFY_CONCURRENCY — parallel LLM calls
     classify_min_interval: float = 0.0  # CLASSIFY_MIN_INTERVAL — seconds between calls
     classify_cooldown_seconds: float = 20.0  # 429 backoff base (doubles on repeat)
     classify_max_retries: int = 4
