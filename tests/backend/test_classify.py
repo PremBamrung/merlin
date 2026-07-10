@@ -141,11 +141,13 @@ def test_classify_item_uses_structured_llm(monkeypatch):
     class FakeStructured:
         def invoke(self, messages):
             captured["messages"] = messages
-            return ClassifyResult(primary="coding", tags=["t"])
+            # include_raw=True wraps the parse in {"raw", "parsed", "parsing_error"}.
+            return {"raw": None, "parsed": ClassifyResult(primary="coding", tags=["t"])}
 
     class FakeLLM:
-        def with_structured_output(self, schema):
+        def with_structured_output(self, schema, **kwargs):
             captured["schema"] = schema
+            captured["kwargs"] = kwargs
             return FakeStructured()
 
     monkeypatch.setattr(type(settings), "llm", property(lambda self: FakeLLM()))
@@ -154,9 +156,39 @@ def test_classify_item_uses_structured_llm(monkeypatch):
     )
     assert out.primary == "coding"
     assert captured["schema"] is ClassifyResult
+    assert captured["kwargs"].get("include_raw") is True
+    # The configured structured-output method is passed through (json_mode by
+    # default — the only method our thinking-mode OpenRouter model accepts).
+    assert captured["kwargs"].get("method") == settings.llm_structured_method
     # Prompt carries the topic slug and the tag vocabulary.
     user_msg = captured["messages"][-1]["content"]
     assert "coding" in user_msg and "python" in user_msg
+
+
+def test_structured_json_mode_injects_json_instructions(monkeypatch):
+    """json_mode requires the literal word 'json' + the schema in the prompt
+    (DeepSeek 400s otherwise). Other methods enforce the shape natively → no
+    suffix."""
+    from merlin.config import settings
+
+    called = {}
+
+    class FakeLLM:
+        def with_structured_output(self, schema, **kwargs):
+            called["kwargs"] = kwargs
+            return "runnable"
+
+    monkeypatch.setattr(type(settings), "llm", property(lambda self: FakeLLM()))
+    monkeypatch.setattr(settings, "llm_structured_method", "json_mode")
+
+    runnable, suffix = classify_mod._structured(ClassifyResult, include_raw=True)
+    assert runnable == "runnable"
+    assert called["kwargs"] == {"method": "json_mode", "include_raw": True}
+    assert "json" in suffix.lower()  # provider requires the word "json"
+
+    monkeypatch.setattr(settings, "llm_structured_method", "json_schema")
+    _, suffix2 = classify_mod._structured(ClassifyResult)
+    assert suffix2 == ""  # native shape enforcement — no prompt padding
 
 
 def test_ingest_embeds_with_classifier_tags(client, make_item, monkeypatch):

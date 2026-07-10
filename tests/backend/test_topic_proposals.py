@@ -120,7 +120,7 @@ def test_propose_run_supersedes_prior_pending(client, make_item, monkeypatch):
     monkeypatch.setattr(
         classify_mod,
         "propose_clusters",
-        lambda data, report=None: [
+        lambda data, report=None, sink=None: [
             {
                 "proposed_label": "Fresh",
                 "item_ids": [d[0] for d in data],
@@ -145,6 +145,53 @@ def test_propose_run_supersedes_prior_pending(client, make_item, monkeypatch):
         assert TopicRepository.get_proposal(session, stale).status == "superseded"
 
 
+def test_propose_cancel_preserves_completed_clusters(client, make_item, monkeypatch):
+    """Cancelling mid-clustering keeps the batches that already finished: the
+    partial clusters are saved as proposals and the task completes (cancelled)."""
+    from merlin.core.task_queue import TaskCancelled, task_queue
+    from merlin.db.repositories.tasks import BackgroundTaskRepository
+
+    make_item(title="an uncategorised item")  # so the run has data
+
+    # Fake clustering: push one completed cluster into the sink, then cancel
+    # (as parallel_map would after a completed chunk when report() cancels).
+    def fake_clusters(data, report=None, sink=None):
+        if sink is not None:
+            sink.append(
+                {
+                    "proposed_label": "Partial Topic",
+                    "item_ids": [d[0] for d in data],
+                    "rationale": "done before cancel",
+                }
+            )
+        raise TaskCancelled()
+
+    monkeypatch.setattr(classify_mod, "propose_clusters", fake_clusters)
+
+    def fake_submit(work, task_type=None, input_data=None):
+        with SessionFactory() as s:
+            BackgroundTaskRepository.create(
+                s, task_id="ct", task_type=task_type, input_data=input_data or {}
+            )
+            s.commit()
+        work("ct", lambda *a, **k: None)
+        return "ct"
+
+    monkeypatch.setattr(task_queue, "submit_callable", fake_submit)
+    topics_service.propose_topics()
+
+    # The completed cluster survived as a pending proposal.
+    pending = client.get("/api/topics/proposals").json()
+    assert {p["proposed_label"] for p in pending} == {"Partial Topic"}
+    # Task recorded as completed-with-cancelled (not failed).
+    with SessionFactory() as s:
+        task = BackgroundTaskRepository.get(s, "ct")
+    import json
+
+    assert task.status == "completed"
+    assert json.loads(task.result_data)["cancelled"] is True
+
+
 def test_propose_run_noop_when_nothing_uncategorised(client, monkeypatch):
     # No items → early return, no proposals, nothing raised.
     from merlin.core.task_queue import task_queue
@@ -167,8 +214,6 @@ def test_propose_clusters_consolidates_labels(monkeypatch):
     # Two chunks (>50 items) produce near-duplicate labels; consolidation merges.
     items = [(f"id{i}", f"title {i}", "summary") for i in range(60)]
 
-    calls = {"n": 0}
-
     class FakeStructured:
         def __init__(self, schema):
             self.schema = schema
@@ -181,12 +226,14 @@ def test_propose_clusters_consolidates_labels(monkeypatch):
                 _MergeResponse,
             )
 
+            content = messages[-1]["content"]
             if self.schema is _ClusterResponse:
-                calls["n"] += 1
-                # Chunk 1 → "Smart Home", chunk 2 → "Home Automation".
-                label = "Smart Home" if calls["n"] == 1 else "Home Automation"
+                # Chunks now run in parallel (non-deterministic order), so pick the
+                # label from the chunk's *content*, not a call counter: chunk 2
+                # holds items 50-59, chunk 1 holds 0-49.
+                label = "Home Automation" if "title 50 " in content else "Smart Home"
                 # indices are per-chunk-local
-                n = len(messages[-1]["content"].splitlines()) - 1
+                n = len(content.splitlines()) - 1
                 return _ClusterResponse(
                     clusters=[_Cluster(label=label, item_indices=list(range(n)))]
                 )
@@ -200,7 +247,7 @@ def test_propose_clusters_consolidates_labels(monkeypatch):
             )
 
     class FakeLLM:
-        def with_structured_output(self, schema):
+        def with_structured_output(self, schema, **kwargs):
             return FakeStructured(schema)
 
     monkeypatch.setattr(type(settings), "llm", property(lambda self: FakeLLM()))
