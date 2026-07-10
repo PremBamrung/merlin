@@ -250,6 +250,43 @@ def propose_topics() -> str:
     return task_queue.submit_callable(work, task_type="propose_topics", input_data={})
 
 
+def _run_classify(task_id: str, report, ids: list[str]) -> bool:
+    """Run `classify_and_persist` over `ids` bounded-parallel + rate-limited.
+
+    The shared body of `backfill_topics` and `reclassify_topic`: both feed a list
+    of item ids through the same classifier + limiter with live progress. Returns
+    whether the run was cancelled (each caller writes its own result_data since
+    the completion metrics differ). `classify_and_persist` commits per item, so
+    items done before a cancel are already saved — nothing to preserve.
+    """
+    from merlin.config import settings
+    from merlin.core.parallel_llm import parallel_map
+    from merlin.core.rate_limit import MinIntervalRateLimiter
+    from merlin.core.task_queue import TaskCancelled
+    from merlin.services.classify import classify_and_persist
+
+    limiter = MinIntervalRateLimiter(
+        settings.classify_min_interval,
+        name="classify",
+        cooldown_seconds=settings.classify_cooldown_seconds,
+        cooldown_max=settings.classify_cooldown_seconds * 8,
+    )
+    try:
+        parallel_map(
+            ids,
+            classify_and_persist,
+            concurrency=settings.classify_concurrency,
+            limiter=limiter,
+            report=report,
+            label="Classified",
+            progress_range=(5, 95),
+            max_retries=settings.classify_max_retries,
+        )
+    except TaskCancelled:
+        return True
+    return False
+
+
 def backfill_topics() -> str:
     """Classify the uncategorised backlog against the EXISTING taxonomy.
 
@@ -259,12 +296,8 @@ def backfill_topics() -> str:
     the ~1,100 LLM calls bounded-parallel + rate-limited through
     `parallel_map`, with live progress. Returns a task_id to poll.
     """
-    from merlin.config import settings
-    from merlin.core.parallel_llm import parallel_map
-    from merlin.core.rate_limit import MinIntervalRateLimiter
-    from merlin.core.task_queue import TaskCancelled, task_queue
+    from merlin.core.task_queue import task_queue
     from merlin.db.repositories.tasks import BackgroundTaskRepository
-    from merlin.services.classify import classify_and_persist
 
     def work(task_id: str, report) -> None:
         report(2, "Gathering uncategorised items…")
@@ -281,28 +314,7 @@ def backfill_topics() -> str:
                 session.commit()
             return
 
-        limiter = MinIntervalRateLimiter(
-            settings.classify_min_interval,
-            name="classify",
-            cooldown_seconds=settings.classify_cooldown_seconds,
-            cooldown_max=settings.classify_cooldown_seconds * 8,
-        )
-        # classify_and_persist commits per item, so items done before a cancel are
-        # already saved — nothing to preserve, just stop and record the count.
-        cancelled = False
-        try:
-            parallel_map(
-                ids,
-                classify_and_persist,
-                concurrency=settings.classify_concurrency,
-                limiter=limiter,
-                report=report,
-                label="Classified",
-                progress_range=(5, 95),
-                max_retries=settings.classify_max_retries,
-            )
-        except TaskCancelled:
-            cancelled = True
+        cancelled = _run_classify(task_id, report, ids)
 
         with SessionFactory() as session:
             remaining = TopicRepository.uncategorised_count(session)
@@ -320,6 +332,106 @@ def backfill_topics() -> str:
 
     return task_queue.submit_callable(
         work, task_type="backfill_topics", input_data={}
+    )
+
+
+def reclassify_topic(topic_id: str) -> str | None:
+    """Re-run the classifier over the items currently filed under `topic_id`.
+
+    Same pipeline as `backfill_topics`, but the feeder is a topic's LLM-assigned
+    members (`llm_member_ids`) instead of the uncategorised pile. Lets a newly
+    added, more specific topic claim the items that fit it better: each member is
+    re-decided against the *current* taxonomy, so this topic may be dropped or
+    demoted on an item ("Dofus wins over Gaming"). Manual assignments are excluded
+    by the feeder. Returns a task_id to poll, or None if the topic doesn't exist.
+    """
+    from merlin.core.task_queue import task_queue
+    from merlin.db.repositories.tasks import BackgroundTaskRepository
+
+    with SessionFactory() as session:
+        if TopicRepository.get(session, topic_id) is None:
+            return None
+
+    def work(task_id: str, report) -> None:
+        report(2, "Gathering topic members…")
+        with SessionFactory() as session:
+            ids = TopicRepository.llm_member_ids(session, topic_id)
+
+        if not ids:
+            with SessionFactory() as session:
+                BackgroundTaskRepository.set_completed(
+                    session, task_id, {"reclassified": 0, "requested": 0}
+                )
+                session.commit()
+            return
+
+        cancelled = _run_classify(task_id, report, ids)
+
+        with SessionFactory() as session:
+            # How many no longer carry this topic as an LLM assignment — i.e. moved.
+            remaining = len(TopicRepository.llm_member_ids(session, topic_id))
+            BackgroundTaskRepository.set_completed(
+                session,
+                task_id,
+                {
+                    "reclassified": len(ids),
+                    "requested": len(ids),
+                    "moved": len(ids) - remaining,
+                    "cancelled": cancelled,
+                },
+            )
+            session.commit()
+
+    return task_queue.submit_callable(
+        work, task_type="reclassify_topic", input_data={"topic_id": topic_id}
+    )
+
+
+def reclassify_all() -> str:
+    """Re-run the classifier over EVERY classifiable item against the current
+    taxonomy — the full-corpus counterpart to `reclassify_topic`.
+
+    Where backfill only fits the *uncategorised* pile, this re-decides items that
+    already carry an LLM topic too, so a taxonomy change (e.g. a new, more
+    specific topic) can reshuffle the whole library in one pass. Expensive — one
+    LLM call per item; hand-assigned items are excluded. Returns a task_id.
+    """
+    from merlin.core.task_queue import task_queue
+    from merlin.db.repositories.tasks import BackgroundTaskRepository
+
+    def work(task_id: str, report) -> None:
+        report(2, "Gathering items…")
+        with SessionFactory() as session:
+            ids = TopicRepository.classifiable_item_ids(session)
+
+        if not ids:
+            with SessionFactory() as session:
+                BackgroundTaskRepository.set_completed(
+                    session,
+                    task_id,
+                    {"reclassified": 0, "requested": 0, "still_uncategorised": 0},
+                )
+                session.commit()
+            return
+
+        cancelled = _run_classify(task_id, report, ids)
+
+        with SessionFactory() as session:
+            remaining = TopicRepository.uncategorised_count(session)
+            BackgroundTaskRepository.set_completed(
+                session,
+                task_id,
+                {
+                    "reclassified": len(ids),
+                    "requested": len(ids),
+                    "still_uncategorised": remaining,
+                    "cancelled": cancelled,
+                },
+            )
+            session.commit()
+
+    return task_queue.submit_callable(
+        work, task_type="reclassify_all", input_data={}
     )
 
 

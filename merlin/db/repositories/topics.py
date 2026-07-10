@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import json
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from merlin.db.models import ItemTopic, KnowledgeItem, Topic, TopicProposal
 
@@ -245,6 +245,55 @@ class TopicRepository:
         if limit is not None:
             q = q.limit(limit)
         return q.all()
+
+    @staticmethod
+    def classifiable_item_ids(session: Session) -> list[str]:
+        """Completed items with no user-assigned topic — the full re-scan feeder.
+
+        Covers uncategorised items AND already-LLM-classified ones, so a full
+        re-scan can re-decide the whole library against the current taxonomy
+        (unlike backfill, which only touches the uncategorised pile). User-pinned
+        items are excluded: `classify_and_persist` would discard the result.
+        Newest first.
+        """
+        has_user = select(ItemTopic.knowledge_item_id).where(
+            ItemTopic.knowledge_item_id == KnowledgeItem.id,
+            ItemTopic.assigned_by == "user",
+        )
+        q = (
+            session.query(KnowledgeItem.id)
+            .filter(KnowledgeItem.status == "completed")
+            .filter(~has_user.exists())
+            .order_by(KnowledgeItem.ingested_at.desc())
+        )
+        return [r[0] for r in q.all()]
+
+    @staticmethod
+    def llm_member_ids(session: Session, topic_id: str) -> list[str]:
+        """Completed items where `topic_id` is an LLM-assigned topic (primary or
+        secondary) AND the item has no user-assigned topic — the re-scan feeder.
+
+        User-assigned items are excluded: `classify_and_persist` would discard the
+        result (§10.4), so re-classifying them just wastes an LLM call. Newest
+        first, mirroring `uncategorised_items`.
+        """
+        # Aliased so this subquery keeps its own item_topics FROM instead of
+        # auto-correlating away the outer ItemTopic join.
+        user_it = aliased(ItemTopic)
+        has_user = select(user_it.knowledge_item_id).where(
+            user_it.knowledge_item_id == KnowledgeItem.id,
+            user_it.assigned_by == "user",
+        )
+        q = (
+            session.query(KnowledgeItem.id)
+            .join(ItemTopic, ItemTopic.knowledge_item_id == KnowledgeItem.id)
+            .filter(KnowledgeItem.status == "completed")
+            .filter(ItemTopic.topic_id == topic_id)
+            .filter(ItemTopic.assigned_by == "llm")
+            .filter(~has_user.exists())
+            .order_by(KnowledgeItem.ingested_at.desc())
+        )
+        return [r[0] for r in q.all()]
 
     @staticmethod
     def member_items(session: Session, ids: list[str]) -> list[dict]:

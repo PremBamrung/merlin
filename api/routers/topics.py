@@ -60,6 +60,24 @@ def backfill_topics():
     return {"task_id": topics_service.backfill_topics()}
 
 
+@router.post("/reclassify-all", response_model=TaskIdResponse, status_code=202)
+def reclassify_all():
+    """Re-scan the WHOLE library against the current taxonomy — re-decides every
+    classifiable item, not just the uncategorised pile (background task; poll the
+    task_id)."""
+    return {"task_id": topics_service.reclassify_all()}
+
+
+@router.post("/{topic_id}/reclassify", response_model=TaskIdResponse, status_code=202)
+def reclassify_topic(topic_id: str):
+    """Re-scan a topic's members against the current taxonomy (background task;
+    poll the task_id) so a better-fitting topic can claim them."""
+    task_id = topics_service.reclassify_topic(topic_id)
+    if task_id is None:
+        raise not_found("Topic not found.")
+    return {"task_id": task_id}
+
+
 @router.post("/proposals/{proposal_id}/accept", response_model=AcceptProposalResponse)
 def accept_proposal(proposal_id: str, body: AcceptProposalRequest):
     result = topics_service.accept_proposal(
