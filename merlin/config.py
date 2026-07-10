@@ -60,6 +60,23 @@ class Settings(BaseSettings):
         """Model id for the chat agent — explicit override or OpenRouter default."""
         return self.chat_model or self.openrouter_model_deployment
 
+    # Classification / backfill (non-ingestion bulk LLM jobs — topic backfill and
+    # the clustering pipeline run through merlin.core.parallel_llm). Conservative
+    # defaults so a UI-triggered ~1,100-call run is safe out of the box; all
+    # env-driven so they can be tuned per provider without a redeploy.
+    classify_concurrency: int = 4  # CLASSIFY_CONCURRENCY — parallel LLM calls
+    classify_min_interval: float = 0.0  # CLASSIFY_MIN_INTERVAL — seconds between calls
+    classify_cooldown_seconds: float = 20.0  # 429 backoff base (doubles on repeat)
+    classify_max_retries: int = 4
+    # How structured-output calls (topic classify + clustering) steer the model:
+    # "json_mode" | "json_schema" | "function_calling" (langchain method names).
+    # Default json_mode is the broadest-compatible: our OpenRouter DeepSeek preset
+    # runs in *thinking* mode, which rejects both json_schema (`response_format`
+    # type unavailable) and function_calling (`tool_choice` unsupported) — only
+    # json_object works. json_schema is more reliable where a model supports it
+    # (e.g. Azure gpt-4.1); switch via LLM_STRUCTURED_METHOD if you change models.
+    llm_structured_method: str = "json_mode"
+
     # Groq (audio transcription fallback)
     groq_api_key: str = ""
     # Max upload size for Groq's /audio/transcriptions endpoint. Files above

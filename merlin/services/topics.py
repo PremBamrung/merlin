@@ -208,15 +208,29 @@ def propose_topics() -> str:
                 session.commit()
             return
 
-        from merlin.services.classify import propose_clusters
+        from merlin.core.task_queue import TaskCancelled
+        from merlin.services.classify import _merge_by_label, propose_clusters
 
         batch_id = str(uuid.uuid4())
-        clusters = propose_clusters(data, report=report)
+        # `partial` collects completed chunks so a mid-run cancel keeps that work.
+        partial: list[dict] = []
+        cancelled = False
+        try:
+            clusters = propose_clusters(data, report=report, sink=partial)
+        except TaskCancelled:
+            # Stop, but don't discard the batches that already finished: merge
+            # them by label (skip the extra consolidation LLM call — we're
+            # cancelling) and persist them as proposals.
+            cancelled = True
+            clusters = _merge_by_label(partial)
 
-        report(90, "Saving proposals…")
+        # No report() after a cancel — it would re-raise TaskCancelled and abort
+        # the save (the cancel flag is still set until the task ends).
+        if not cancelled:
+            report(90, "Saving proposals…")
         with SessionFactory() as session:
-            # Supersede only now (after clustering succeeded) so a failed run
-            # never wipes the existing pending proposals.
+            # Supersede only now (after clustering finished/stopped) so a failed
+            # run never wipes the existing pending proposals.
             TopicRepository.supersede_pending(session)
             for c in clusters:
                 TopicRepository.create_proposal(
@@ -229,11 +243,84 @@ def propose_topics() -> str:
             BackgroundTaskRepository.set_completed(
                 session,
                 task_id,
-                {"batch_id": batch_id, "count": len(clusters)},
+                {"batch_id": batch_id, "count": len(clusters), "cancelled": cancelled},
             )
             session.commit()
 
     return task_queue.submit_callable(work, task_type="propose_topics", input_data={})
+
+
+def backfill_topics() -> str:
+    """Classify the uncategorised backlog against the EXISTING taxonomy.
+
+    The counterpart to `propose_topics`: where *discovery* invents new topics from
+    the pile, *backfill* fits each still-uncategorised item to a topic that
+    already exists (via `classify.classify_and_persist`, reused unchanged). Runs
+    the ~1,100 LLM calls bounded-parallel + rate-limited through
+    `parallel_map`, with live progress. Returns a task_id to poll.
+    """
+    from merlin.config import settings
+    from merlin.core.parallel_llm import parallel_map
+    from merlin.core.rate_limit import MinIntervalRateLimiter
+    from merlin.core.task_queue import TaskCancelled, task_queue
+    from merlin.db.repositories.tasks import BackgroundTaskRepository
+    from merlin.services.classify import classify_and_persist
+
+    def work(task_id: str, report) -> None:
+        report(2, "Gathering uncategorised items…")
+        with SessionFactory() as session:
+            ids = [i.id for i in TopicRepository.uncategorised_items(session)]
+
+        if not ids:
+            with SessionFactory() as session:
+                BackgroundTaskRepository.set_completed(
+                    session,
+                    task_id,
+                    {"classified": 0, "requested": 0, "still_uncategorised": 0},
+                )
+                session.commit()
+            return
+
+        limiter = MinIntervalRateLimiter(
+            settings.classify_min_interval,
+            name="classify",
+            cooldown_seconds=settings.classify_cooldown_seconds,
+            cooldown_max=settings.classify_cooldown_seconds * 8,
+        )
+        # classify_and_persist commits per item, so items done before a cancel are
+        # already saved — nothing to preserve, just stop and record the count.
+        cancelled = False
+        try:
+            parallel_map(
+                ids,
+                classify_and_persist,
+                concurrency=settings.classify_concurrency,
+                limiter=limiter,
+                report=report,
+                label="Classified",
+                progress_range=(5, 95),
+                max_retries=settings.classify_max_retries,
+            )
+        except TaskCancelled:
+            cancelled = True
+
+        with SessionFactory() as session:
+            remaining = TopicRepository.uncategorised_count(session)
+            BackgroundTaskRepository.set_completed(
+                session,
+                task_id,
+                {
+                    "classified": len(ids) - remaining,
+                    "requested": len(ids),
+                    "still_uncategorised": remaining,
+                    "cancelled": cancelled,
+                },
+            )
+            session.commit()
+
+    return task_queue.submit_callable(
+        work, task_type="backfill_topics", input_data={}
+    )
 
 
 def _serialize_proposal(session, proposal) -> dict:

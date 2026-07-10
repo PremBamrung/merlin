@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 
+from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 
 from merlin.config import settings
@@ -32,6 +33,28 @@ from merlin.db.repositories.topics import TopicRepository
 _MAX_TAGS_IN_PROMPT = 40
 _MAX_SECONDARY = 2
 _MAX_TAGS_OUT = 4
+
+
+def _structured(schema, *, include_raw: bool = False):
+    """Build a structured-output runnable + the system-prompt suffix it needs.
+
+    The method is config-driven (`settings.llm_structured_method`). json_mode is
+    the only method our thinking-mode OpenRouter model accepts, but it (a) requires
+    the literal word "json" in the prompt and (b) doesn't inject the schema — so we
+    append PydanticOutputParser format instructions to the system message. The
+    suffix is empty for json_schema/function_calling, which enforce the shape
+    natively. Returns ``(runnable, system_suffix)``."""
+    method = settings.llm_structured_method
+    runnable = settings.llm.with_structured_output(
+        schema, method=method, include_raw=include_raw
+    )
+    suffix = ""
+    if method == "json_mode":
+        instructions = PydanticOutputParser(
+            pydantic_object=schema
+        ).get_format_instructions()
+        suffix = f"\n\n{instructions}"
+    return runnable, suffix
 
 
 class ClassifyResult(BaseModel):
@@ -93,6 +116,33 @@ def _build_prompt(
     )
 
 
+def _record_usage(raw) -> None:
+    """Write a `surface="classify"` llm_usage row from the raw LLM response.
+
+    A UI-triggered ~1,100-call backfill makes invisible cost unacceptable
+    (TOPICS_BACKFILL_PLAN §G), so every classify call records its spend. Reads
+    token counts off `usage_metadata` and the provider-reported cost the same way
+    the summariser does; falls back to the pricing map (via usage.record) when the
+    provider doesn't report cost. Best-effort — usage.record never raises."""
+    try:
+        um = getattr(raw, "usage_metadata", None) or {}
+        meta = getattr(raw, "response_metadata", None) or {}
+        token_usage = meta.get("token_usage", {}) if isinstance(meta, dict) else {}
+        cost = token_usage.get("cost")
+        from merlin.services import usage
+
+        usage.record(
+            surface="classify",
+            provider=settings.llm_provider,
+            model=settings.llm_model_name,
+            input_tokens=um.get("input_tokens"),
+            output_tokens=um.get("output_tokens"),
+            cost_usd=float(cost) if cost is not None else None,
+        )
+    except Exception:  # pragma: no cover - defensive; tracking is best-effort
+        logger.warning("Failed to record classify usage", exc_info=True)
+
+
 def classify_item(
     title: str,
     summary: str,
@@ -101,19 +151,22 @@ def classify_item(
 ) -> ClassifyResult:
     """One structured LLM call. Returns a primary slug (or None), up to 2
     secondary slugs, and 2-4 tags. Chooses topics only from `active_topics`;
-    the caller still validates the slugs against the live taxonomy."""
-    llm = settings.llm.with_structured_output(ClassifyResult)
+    the caller still validates the slugs against the live taxonomy. Records a
+    `surface="classify"` usage row (§G) as a side effect."""
+    llm, suffix = _structured(ClassifyResult, include_raw=True)
     prompt = _build_prompt(title, summary, active_topics, top_tags)
-    result = llm.invoke(
+    raw = llm.invoke(
         [
-            {"role": "system", "content": _SYSTEM},
+            {"role": "system", "content": _SYSTEM + suffix},
             {"role": "user", "content": prompt},
         ]
     )
-    # with_structured_output may return the model or a dict depending on backend.
-    if isinstance(result, ClassifyResult):
-        return result
-    return ClassifyResult.model_validate(result)
+    # include_raw wraps the parse: {"raw": AIMessage, "parsed": …, "parsing_error"}.
+    parsed = raw.get("parsed") if isinstance(raw, dict) else raw
+    _record_usage(raw.get("raw") if isinstance(raw, dict) else raw)
+    if isinstance(parsed, ClassifyResult):
+        return parsed
+    return ClassifyResult.model_validate(parsed)
 
 
 def _clean_tags(tags: list[str]) -> list[str]:
@@ -260,10 +313,10 @@ def _cluster_chunk(items: list[tuple[str, str, str]]) -> list[dict]:
         f"{idx}: {title} — {summary[:300]}"
         for idx, (_id, title, summary) in enumerate(items)
     )
-    llm = settings.llm.with_structured_output(_ClusterResponse)
+    llm, suffix = _structured(_ClusterResponse)
     resp = llm.invoke(
         [
-            {"role": "system", "content": _CLUSTER_SYSTEM},
+            {"role": "system", "content": _CLUSTER_SYSTEM + suffix},
             {"role": "user", "content": f"ITEMS:\n{lines}"},
         ]
     )
@@ -293,10 +346,10 @@ def _consolidate(round1: list[dict]) -> list[dict]:
     if len(labels) <= 1:
         return _merge_by_label(round1)
     try:
-        llm = settings.llm.with_structured_output(_MergeResponse)
+        llm, suffix = _structured(_MergeResponse)
         resp = llm.invoke(
             [
-                {"role": "system", "content": _MERGE_SYSTEM},
+                {"role": "system", "content": _MERGE_SYSTEM + suffix},
                 {"role": "user", "content": "LABELS:\n" + "\n".join(labels)},
             ]
         )
@@ -347,26 +400,55 @@ def _merge_by_label(clusters: list[dict]) -> list[dict]:
     return list(by_label.values())
 
 
-def propose_clusters(items: list[tuple[str, str, str]], report=None) -> list[dict]:
+def propose_clusters(
+    items: list[tuple[str, str, str]], report=None, sink: list[dict] | None = None
+) -> list[dict]:
     """Cluster + label a set of (id, title, summary) items into topic proposals.
 
     Chunks over `_CLUSTER_CHUNK` items per call, then consolidates near-duplicate
     labels in a cheap second pass. Steady-state (a handful of items) is a single
     call. Returns [{proposed_label, item_ids, rationale}]. `report(pct, msg)` is
-    an optional progress callback (the background task's reporter)."""
+    an optional progress callback (the background task's reporter).
+
+    `sink`, when given, receives the raw round-1 clusters as each chunk completes.
+    On a mid-run cancel (`report` raising `TaskCancelled`), the return value is
+    lost but `sink` still holds the completed chunks — so the caller can persist
+    the work done so far. Merge it with `_merge_by_label(sink)`."""
     if not items:
         return []
     chunks = [
         items[i : i + _CLUSTER_CHUNK] for i in range(0, len(items), _CLUSTER_CHUNK)
     ]
     logger.info("propose_clusters: %d items in %d chunk(s)", len(items), len(chunks))
-    round1: list[dict] = []
-    for n, chunk in enumerate(chunks, 1):
-        if report:
-            report(
-                10 + int(70 * n / len(chunks)), f"Clustering batch {n}/{len(chunks)}…"
-            )
-        round1.extend(_cluster_chunk(chunk))
+
+    # Cold start can be ~24 chunk-calls; run them bounded-parallel + rate-limited
+    # instead of serially (TOPICS_BACKFILL_PLAN §D). Each chunk is independent.
+    from merlin.core.parallel_llm import parallel_map
+    from merlin.core.rate_limit import MinIntervalRateLimiter
+
+    limiter = MinIntervalRateLimiter(
+        settings.classify_min_interval,
+        name="cluster",
+        cooldown_seconds=settings.classify_cooldown_seconds,
+        cooldown_max=settings.classify_cooldown_seconds * 8,
+    )
+
+    def _collect(_idx: int, chunk_out: list[dict] | None) -> None:
+        if chunk_out and sink is not None:
+            sink.extend(chunk_out)
+
+    per_chunk = parallel_map(
+        chunks,
+        _cluster_chunk,
+        concurrency=settings.classify_concurrency,
+        limiter=limiter,
+        report=report,
+        label="Clustering batch",
+        progress_range=(10, 80),
+        max_retries=settings.classify_max_retries,
+        on_result=_collect,
+    )
+    round1: list[dict] = [c for chunk_out in per_chunk if chunk_out for c in chunk_out]
     if len(chunks) == 1:
         return _merge_by_label(round1)
     if report:

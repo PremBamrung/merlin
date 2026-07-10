@@ -53,6 +53,13 @@ def list_proposals(batch_id: str | None = Query(default=None)):
     return topics_service.list_proposals(batch_id=batch_id)
 
 
+@router.post("/backfill", response_model=TaskIdResponse, status_code=202)
+def backfill_topics():
+    """Classify the uncategorised backlog against existing topics (background
+    task; poll the task_id)."""
+    return {"task_id": topics_service.backfill_topics()}
+
+
 @router.post("/proposals/{proposal_id}/accept", response_model=AcceptProposalResponse)
 def accept_proposal(proposal_id: str, body: AcceptProposalRequest):
     result = topics_service.accept_proposal(
