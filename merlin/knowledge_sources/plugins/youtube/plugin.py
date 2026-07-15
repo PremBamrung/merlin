@@ -125,7 +125,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
     @property
     def summarizer(self) -> VideoSummarizer:
         if self._summarizer is None:
-            self._summarizer = VideoSummarizer(llm=settings.llm)
+            self._summarizer = VideoSummarizer()
         return self._summarizer
 
     # ------------------------------------------------------------------
@@ -209,7 +209,6 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             channel=video_info["channel"],
             lang=summary_lang,
             summary_length=summary_length,
-            streaming=False,
             description=video_info.get("description", ""),
         )
         # Token counts + provider-reported cost from the call just made.
@@ -248,9 +247,13 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             tags=[],
             sections=sections,
             word_count=len(raw_text.split()),
-            llm_model=settings.llm_model_name,
+            # Prefer the resolved model from the response (e.g.
+            # deepseek/deepseek-v4-flash) so the pricing map can price it; our
+            # configured id is an unpriceable @preset/… .
+            llm_model=summ_usage.get("model") or settings.openrouter_model_deployment,
             summarize_input_tokens=summ_usage.get("input_tokens"),
             summarize_output_tokens=summ_usage.get("output_tokens"),
+            summarize_cache_read_tokens=summ_usage.get("cache_read_tokens"),
             summarize_cost_usd=summ_usage.get("cost_usd"),
             transcribe_audio_seconds=transcribe_audio_seconds,
             transcribe_model="whisper-large-v3-turbo"
@@ -297,7 +300,6 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             channel=channel or "",
             lang=summary_lang,
             summary_length=summary_length,
-            streaming=False,
             description=description,
         )
 

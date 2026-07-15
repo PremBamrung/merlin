@@ -1,9 +1,6 @@
 from datetime import datetime
 import re
 import threading
-from typing import Generator
-
-from langchain_core.prompts import PromptTemplate
 
 from merlin.core.logging import logger
 
@@ -11,20 +8,21 @@ from merlin.core.logging import logger
 class VideoSummarizer:
     """Handles video content summarization using LLM."""
 
-    def __init__(self, llm=None):
+    def __init__(self, model=None):
         """Initialize summarizer with prompt templates.
 
         Args:
-            llm: LangChain LLM instance. If None, loaded lazily from settings.
+            model: Pydantic AI model instance. If None, loaded lazily from
+                merlin.rag.model.build_ingest_model (tests inject a TestModel).
         """
-        self._llm = llm
-        # Usage of the most recent (non-streaming) summarize call: token counts +
-        # provider-reported cost, read off the response by the plugin so the
-        # service layer can persist a cost row. **Thread-local** because this
-        # summarizer is a singleton shared across the ingest thread-pool workers —
-        # a plain attribute would let one ingest's usage clobber another's (wrong
-        # cost attributed to the wrong item). Each worker writes then reads back
-        # the usage it produced on its own thread. None until a summary runs.
+        self._model = model
+        # Usage of the most recent summarize call: token counts + the resolved
+        # model, read off the response by the plugin so the service layer can
+        # persist a cost row. **Thread-local** because this summarizer is a
+        # singleton shared across the ingest thread-pool workers — a plain
+        # attribute would let one ingest's usage clobber another's (wrong cost
+        # attributed to the wrong item). Each worker writes then reads back the
+        # usage it produced on its own thread. None until a summary runs.
         self._usage = threading.local()
 
         TEMPLATE_SHORT = """Given the subtitles of a Youtube video, create a short summary that includes:
@@ -182,27 +180,12 @@ Subtitles: {subtitles}
 
 # Answer (begin directly with "## Overview"; use English markdown headers ("## Overview", "## Main Topics", "## Key Points", ...) for the sections, with the Key Points as a numbered list; do not number the headers themselves): """
 
+        # Raw template strings; formatted with str.format(**vars) at call time.
+        # The placeholders ({subtitles}, {lang}, {title}, {channel},
+        # {description_block}) are the only braces in these templates.
         self.templates = {
-            "short": PromptTemplate(
-                template=TEMPLATE_SHORT,
-                input_variables=[
-                    "subtitles",
-                    "lang",
-                    "title",
-                    "channel",
-                    "description_block",
-                ],
-            ),
-            "long": PromptTemplate(
-                template=TEMPLATE_LONG,
-                input_variables=[
-                    "subtitles",
-                    "lang",
-                    "title",
-                    "channel",
-                    "description_block",
-                ],
-            ),
+            "short": TEMPLATE_SHORT,
+            "long": TEMPLATE_LONG,
         }
 
     @property
@@ -231,12 +214,12 @@ Subtitles: {subtitles}
         )
 
     @property
-    def llm(self):
-        if self._llm is None:
-            from merlin.config import settings
+    def model(self):
+        if self._model is None:
+            from merlin.rag.model import build_ingest_model
 
-            self._llm = settings.llm
-        return self._llm
+            self._model = build_ingest_model()
+        return self._model
 
     def extract_topics_and_timestamps(
         self, summary_text: str, summary_length: str = "short"
@@ -314,92 +297,34 @@ Subtitles: {subtitles}
         return topics, timestamps
 
     @staticmethod
-    def _extract_usage(response) -> dict | None:
-        """Pull token counts + provider-reported cost off a LangChain response.
+    def _extract_usage(result) -> dict | None:
+        """Pull token counts + the resolved model off a Pydantic AI run result.
 
-        `usage_metadata` carries the token counts; OpenRouter (with usage
-        accounting enabled in config) puts the call's actual cost in
-        `response_metadata['token_usage']['cost']`. Cost is None for providers
-        that don't report it (e.g. Azure) — the service falls back to the pricing
-        map there. Best-effort: any shape mismatch yields None.
+        Pydantic AI's usage carries the token counts (input/output + cache-read
+        sub-details) but **not** OpenRouter's per-call cost — so the service
+        prices the call from the pricing map using the resolved model name (e.g.
+        `deepseek/deepseek-v4-flash`, from the response, not our `@preset/…` id).
+        `cost_usd` is left None here; `usage.record` computes it. Best-effort: any
+        shape mismatch yields None.
         """
         try:
-            um = getattr(response, "usage_metadata", None) or {}
-            meta = getattr(response, "response_metadata", None) or {}
-            token_usage = meta.get("token_usage", {}) if isinstance(meta, dict) else {}
-            cost = token_usage.get("cost")
+            u = result.usage
+            if callable(u) and not hasattr(u, "input_tokens"):  # older pydantic-ai
+                u = u()
+            model = None
+            for msg in result.all_messages():
+                name = getattr(msg, "model_name", None)
+                if name:
+                    model = name
             return {
-                "input_tokens": um.get("input_tokens"),
-                "output_tokens": um.get("output_tokens"),
-                "cost_usd": float(cost) if cost is not None else None,
-                "model": meta.get("model_name") if isinstance(meta, dict) else None,
+                "input_tokens": getattr(u, "input_tokens", None),
+                "output_tokens": getattr(u, "output_tokens", None),
+                "cache_read_tokens": getattr(u, "cache_read_tokens", None),
+                "cost_usd": None,
+                "model": model,
             }
         except Exception:
             return None
-
-    def _summarize_non_streaming(
-        self,
-        subtitles: str,
-        title: str,
-        channel: str,
-        lang: str,
-        summary_length: str,
-        description: str | None = None,
-    ) -> tuple[str, dict, dict]:
-        """Generate a non-streaming summary of the video content.
-
-        This is a separate method to avoid yield statements, which would
-        make the function a generator even when streaming=False.
-        """
-        start_time = datetime.now()
-        logger.info(f"Starting summarization for video: {title}")
-        logger.debug(
-            f"Summarization parameters - Language: {lang}, Length: {summary_length}, Streaming: False"
-        )
-
-        # Get the appropriate template based on summary length
-        normalized_length = summary_length.lower()
-        if normalized_length not in self.templates:
-            logger.warning(
-                f"Unknown summary length '{summary_length}', defaulting to 'short'"
-            )
-            normalized_length = "short"
-
-        prompt_template = self.templates[normalized_length]
-        llm_chain = prompt_template | self.llm
-        prompt_input = {
-            "subtitles": subtitles,
-            "lang": lang,
-            "title": title,
-            "channel": channel,
-            "description_block": self._build_description_block(description),
-        }
-
-        self.last_usage = None
-        try:
-            # Use invoke() instead of deprecated run()
-            response = llm_chain.invoke(prompt_input)
-            self.last_usage = self._extract_usage(response)
-            # Extract content from response
-            if hasattr(response, "content"):
-                summary = response.content
-            elif isinstance(response, str):
-                summary = response
-            else:
-                summary = str(response)
-
-            duration = (datetime.now() - start_time).total_seconds()
-            logger.info(f"Summarization completed in {duration:.2f}s")
-
-            # Extract topics and timestamps
-            topics, timestamps = self.extract_topics_and_timestamps(
-                summary, normalized_length
-            )
-            return summary, topics, timestamps
-        except Exception as e:
-            duration = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Summarization failed after {duration:.2f}s: {str(e)}")
-            raise
 
     def summarize(
         self,
@@ -408,48 +333,30 @@ Subtitles: {subtitles}
         channel: str,
         lang: str = "english",
         summary_length: str = "short",
-        streaming: bool = False,
         description: str | None = None,
-    ) -> Generator[str, None, None] | tuple[str, dict, dict]:
+    ) -> tuple[str, dict, dict]:
         """Generate a summary of the video content.
+
+        Runs one tool-less Pydantic AI request and returns
+        ``(summary, topics, timestamps)``. Token counts + the resolved model are
+        stashed on `self.last_usage` for the plugin to persist a cost row.
 
         Args:
             subtitles: The video subtitles text
             title: The video title
             channel: The channel name
             lang: Target language for the summary
-            streaming: Whether to stream the response
-
-        Returns:
-            Either a generator yielding summary chunks (if streaming=True)
-            or a tuple of (summary, topics, timestamps) (if streaming=False)
+            summary_length: "short" or "long"
+            description: Optional video description for grounding context
         """
-        if streaming:
-            return self._summarize_streaming(
-                subtitles, title, channel, lang, summary_length, description
-            )
-        else:
-            return self._summarize_non_streaming(
-                subtitles, title, channel, lang, summary_length, description
-            )
+        from pydantic_ai import Agent
 
-    def _summarize_streaming(
-        self,
-        subtitles: str,
-        title: str,
-        channel: str,
-        lang: str,
-        summary_length: str,
-        description: str | None = None,
-    ) -> Generator[str, None, None]:
-        """Generate a streaming summary of the video content."""
         start_time = datetime.now()
         logger.info(f"Starting summarization for video: {title}")
         logger.debug(
-            f"Summarization parameters - Language: {lang}, Length: {summary_length}, Streaming: True"
+            f"Summarization parameters - Language: {lang}, Length: {summary_length}"
         )
 
-        # Get the appropriate template based on summary length
         normalized_length = summary_length.lower()
         if normalized_length not in self.templates:
             logger.warning(
@@ -457,30 +364,27 @@ Subtitles: {subtitles}
             )
             normalized_length = "short"
 
-        prompt_template = self.templates[normalized_length]
-        llm_chain = prompt_template | self.llm
-        prompt_input = {
-            "subtitles": subtitles,
-            "lang": lang,
-            "title": title,
-            "channel": channel,
-            "description_block": self._build_description_block(description),
-        }
+        prompt = self.templates[normalized_length].format(
+            subtitles=subtitles,
+            lang=lang,
+            title=title,
+            channel=channel,
+            description_block=self._build_description_block(description),
+        )
 
+        self.last_usage = None
         try:
-            logger.debug("Using streaming mode for summarization")
-            for chunk in llm_chain.stream(prompt_input):
-                # Handle different chunk types from langchain
-                if hasattr(chunk, "content"):
-                    content = chunk.content
-                elif isinstance(chunk, str):
-                    content = chunk
-                else:
-                    # Try to get content from AIMessage or similar
-                    content = str(chunk) if chunk else ""
+            result = Agent(self.model).run_sync(prompt)
+            self.last_usage = self._extract_usage(result)
+            summary = result.output
 
-                if content:
-                    yield content
+            duration = (datetime.now() - start_time).total_seconds()
+            logger.info(f"Summarization completed in {duration:.2f}s")
+
+            topics, timestamps = self.extract_topics_and_timestamps(
+                summary, normalized_length
+            )
+            return summary, topics, timestamps
         except Exception as e:
             duration = (datetime.now() - start_time).total_seconds()
             logger.error(f"Summarization failed after {duration:.2f}s: {str(e)}")

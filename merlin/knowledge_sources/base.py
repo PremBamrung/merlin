@@ -67,6 +67,7 @@ class IngestResult:
     # rows. None ⇒ not measured (older items / providers without passthrough).
     summarize_input_tokens: Optional[int] = None
     summarize_output_tokens: Optional[int] = None
+    summarize_cache_read_tokens: Optional[int] = None  # cached subset of input
     summarize_cost_usd: Optional[float] = None  # provider-reported when available
     transcribe_audio_seconds: Optional[float] = None  # set only when audio was used
     transcribe_model: Optional[str] = None

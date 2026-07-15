@@ -57,7 +57,7 @@ def _render(summarizer, length, description):
 
 
 def test_prompt_includes_description_block_both_lengths():
-    s = VideoSummarizer(llm=object())  # llm never touched by .format()
+    s = VideoSummarizer(model=object())  # llm never touched by .format()
     for length in ("short", "long"):
         rendered = _render(s, length, "Sponsored by Acme. See chapters below.")
         assert "Video description" in rendered
@@ -65,14 +65,14 @@ def test_prompt_includes_description_block_both_lengths():
 
 
 def test_prompt_omits_block_when_description_blank():
-    s = VideoSummarizer(llm=object())
+    s = VideoSummarizer(model=object())
     for length in ("short", "long"):
         rendered = _render(s, length, "   ")
         assert "Video description" not in rendered
 
 
 def test_description_block_is_truncated():
-    s = VideoSummarizer(llm=object())
+    s = VideoSummarizer(model=object())
     block = s._build_description_block("x" * (s._DESCRIPTION_CHAR_CAP + 500))
     assert "[description truncated]" in block
     # Capped near the limit, not the full oversized input.
