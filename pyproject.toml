@@ -12,10 +12,8 @@ dependencies = [
     # Database / migrations
     "sqlalchemy>=2.0.0",
     "alembic>=1.14.0",
-    # LLM
-    "langchain>=0.3.7",
-    "langchain-core>=0.3.19",
-    "langchain-openai>=0.2.8",
+    # LLM — Pydantic AI over OpenRouter (OpenAI-compatible); openai SDK is the
+    # transport pydantic-ai uses for OpenAIChatModel.
     "openai>=1.0.0",
     # YouTube processing
     "pytube>=15.0.0",

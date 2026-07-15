@@ -4,7 +4,6 @@ All environment variables are defined here — single source of truth.
 LLM instances are lazily created to avoid import-time failures.
 """
 
-from functools import cached_property
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -26,20 +25,15 @@ class Settings(BaseSettings):
     # main .db file.
     sqlite_journal_mode: str = "WAL"
 
-    # Azure OpenAI
-    azure_openai_endpoint: str = ""
-    azure_openai_key: str = ""
-    azure_openai_api_version: str = "2024-08-01-preview"
-    azure_model_deployment: str = ""
-
-    # OpenRouter (alternative LLM)
+    # OpenRouter — the sole LLM provider (OpenAI-compatible). Every LLM path
+    # (summarise, classify, chat) runs on it via Pydantic AI.
     openrouter_api_key: str = ""
     openrouter_model_deployment: str = ""
     openrouter_endpoint: str = "https://openrouter.ai/api/v1"
 
     # Agentic chat (Pydantic AI). The chat agent runs on OpenRouter independently
-    # of `settings.llm` (the summariser). `chat_model` is an optional override;
-    # it falls back to `openrouter_model_deployment` so no new required config.
+    # of the ingest model (summarise/classify). `chat_model` is an optional
+    # override; it falls back to `openrouter_model_deployment` so no new config.
     # The chosen model MUST support tool-calling (a reasoning model surfaces a
     # `reasoning` part in the UI; a standard one shows only the tool trace).
     chat_model: str = ""
@@ -70,13 +64,13 @@ class Settings(BaseSettings):
     classify_min_interval: float = 0.0  # CLASSIFY_MIN_INTERVAL — seconds between calls
     classify_cooldown_seconds: float = 20.0  # 429 backoff base (doubles on repeat)
     classify_max_retries: int = 4
-    # How structured-output calls (topic classify + clustering) steer the model:
-    # "json_mode" | "json_schema" | "function_calling" (langchain method names).
-    # Default json_mode is the broadest-compatible: our OpenRouter DeepSeek preset
-    # runs in *thinking* mode, which rejects both json_schema (`response_format`
-    # type unavailable) and function_calling (`tool_choice` unsupported) — only
-    # json_object works. json_schema is more reliable where a model supports it
-    # (e.g. Azure gpt-4.1); switch via LLM_STRUCTURED_METHOD if you change models.
+    # How structured-output calls (topic classify + clustering) steer the model,
+    # mapped to a Pydantic AI output mode (see services.classify._output_type):
+    # "json_mode"→PromptedOutput | "json_schema"→NativeOutput |
+    # "function_calling"→tool output. Default json_mode is broadest-compatible:
+    # our OpenRouter DeepSeek preset runs in *thinking* mode, which rejects both
+    # native response_format and tool_choice — only prompted JSON works. Switch
+    # via LLM_STRUCTURED_METHOD if you move to a model that enforces schemas.
     llm_structured_method: str = "json_mode"
 
     # Groq (audio transcription fallback)
@@ -87,9 +81,6 @@ class Settings(BaseSettings):
     groq_max_upload_mb: float = 24.0
     # Chunk length (seconds) when an audio file exceeds groq_max_upload_mb.
     groq_audio_chunk_seconds: int = 600
-
-    # Active LLM provider: "azure" | "openrouter"
-    llm_provider: str = "azure"
 
     # Embeddings / reranking (hybrid semantic search — see
     # docs/CHAT_AGENT_RETRIEVAL_PLAN.md "Fix 3" + docs/JINA_API_REFERENCE.md).
@@ -127,58 +118,6 @@ class Settings(BaseSettings):
     # fetch in between) escalate the pause by doubling, up to the _max cap.
     youtube_subtitle_cooldown: float = 1800.0  # 30 minutes
     youtube_subtitle_cooldown_max: float = 7200.0  # 2 hour escalation cap
-
-    @cached_property
-    def llm(self):
-        """Lazily create the LLM instance based on active provider."""
-
-        from langchain_openai import AzureChatOpenAI, ChatOpenAI
-
-        if self.llm_provider == "openrouter":
-            if not self.openrouter_api_key:
-                raise ValueError(
-                    "OPENROUTER_API_KEY is required for OpenRouter provider"
-                )
-            return ChatOpenAI(
-                model=self.openrouter_model_deployment,
-                base_url=self.openrouter_endpoint,
-                api_key=self.openrouter_api_key,
-                temperature=0.01,
-                max_tokens=None,
-                streaming=True,
-                # OpenRouter usage accounting: the response then carries the
-                # call's actual cost in response_metadata.token_usage.cost, so
-                # ingest cost tracking reads real spend instead of estimating it.
-                extra_body={"usage": {"include": True}},
-            )
-        else:
-            # Azure OpenAI (default)
-            missing = [
-                v
-                for v, val in [
-                    ("AZURE_OPENAI_ENDPOINT", self.azure_openai_endpoint),
-                    ("AZURE_OPENAI_KEY", self.azure_openai_key),
-                    ("AZURE_MODEL_DEPLOYMENT", self.azure_model_deployment),
-                ]
-                if not val
-            ]
-            if missing:
-                raise ValueError(f"Missing Azure OpenAI env vars: {', '.join(missing)}")
-            return AzureChatOpenAI(
-                deployment_name=self.azure_model_deployment,
-                azure_endpoint=self.azure_openai_endpoint,
-                api_key=self.azure_openai_key,
-                openai_api_version=self.azure_openai_api_version,
-                temperature=0.01,
-                max_tokens=None,
-                streaming=True,
-            )
-
-    @property
-    def llm_model_name(self) -> str:
-        if self.llm_provider == "openrouter":
-            return self.openrouter_model_deployment
-        return self.azure_model_deployment
 
 
 settings = Settings()

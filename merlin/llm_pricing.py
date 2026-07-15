@@ -1,11 +1,13 @@
-"""Static pricing map → USD cost for a usage record (FALLBACK ONLY).
+"""Static pricing map → USD cost for a usage record.
 
-The **primary** cost source is the provider's own reported spend: OpenRouter
-bills usage on the response (token LLMs return it inline in LangChain's
-`response_metadata`, and the chat path reads it back from the /generation
-endpoint). Use this map only when the provider doesn't report a cost — Azure
-token calls, and Groq audio transcription (which has no cost passthrough, so its
-cost is *always* computed here from audio duration).
+Who uses it:
+- **summarise + classify** — Pydantic AI doesn't surface OpenRouter's per-call
+  cost, so these price off this map using the *resolved* model the response
+  reports (e.g. `deepseek/deepseek-v4-flash`, not our `@preset/…` id).
+- **chat** — reads authoritative spend back from OpenRouter's /generation
+  endpoint, falling back to this map when the lookup lags/fails.
+- **Groq audio transcription** — no cost passthrough, so it is *always* computed
+  here from audio duration.
 
 The numbers are **estimates stamped with an as-of date** — they WILL go stale as
 providers change pricing. `cost()` returns ``None`` for any token model not in
