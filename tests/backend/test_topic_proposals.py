@@ -209,48 +209,53 @@ def test_propose_run_noop_when_nothing_uncategorised(client, monkeypatch):
 
 
 def test_propose_clusters_consolidates_labels(monkeypatch):
-    from merlin.config import settings
+    import json
+    import re
+
+    from pydantic_ai.messages import ModelResponse, TextPart
+    from pydantic_ai.models.function import FunctionModel
 
     # Two chunks (>50 items) produce near-duplicate labels; consolidation merges.
     items = [(f"id{i}", f"title {i}", "summary") for i in range(60)]
 
-    class FakeStructured:
-        def __init__(self, schema):
-            self.schema = schema
+    def _text(messages):
+        out = []
+        for m in messages:
+            for part in getattr(m, "parts", []):
+                c = getattr(part, "content", None)
+                if isinstance(c, str):
+                    out.append(c)
+                elif isinstance(c, list):
+                    out.extend(x for x in c if isinstance(x, str))
+        return "\n".join(out)
 
-        def invoke(self, messages):
-            from merlin.services.classify import (
-                _Cluster,
-                _ClusterResponse,
-                _MergeGroup,
-                _MergeResponse,
-            )
-
-            content = messages[-1]["content"]
-            if self.schema is _ClusterResponse:
-                # Chunks now run in parallel (non-deterministic order), so pick the
-                # label from the chunk's *content*, not a call counter: chunk 2
-                # holds items 50-59, chunk 1 holds 0-49.
-                label = "Home Automation" if "title 50 " in content else "Smart Home"
-                # indices are per-chunk-local
-                n = len(content.splitlines()) - 1
-                return _ClusterResponse(
-                    clusters=[_Cluster(label=label, item_indices=list(range(n)))]
-                )
-            return _MergeResponse(
-                groups=[
-                    _MergeGroup(
-                        final_label="Smart Home",
-                        source_labels=["Smart Home", "Home Automation"],
-                    )
+    def fn(messages, info):
+        text = _text(messages)
+        if "LABELS:" in text:  # the consolidation (merge) call
+            payload = {
+                "groups": [
+                    {
+                        "final_label": "Smart Home",
+                        "source_labels": ["Smart Home", "Home Automation"],
+                    }
                 ]
-            )
+            }
+        else:  # a clustering-chunk call
+            # Chunks run in parallel (non-deterministic order), so pick the label
+            # from the chunk's content: chunk 2 holds items 50-59, chunk 1 0-49.
+            label = "Home Automation" if "title 50 " in text else "Smart Home"
+            n = len([ln for ln in text.splitlines() if re.match(r"^\d+: ", ln)])
+            payload = {
+                "clusters": [
+                    {"label": label, "item_indices": list(range(n)), "rationale": None}
+                ]
+            }
+        return ModelResponse(parts=[TextPart(json.dumps(payload))])
 
-    class FakeLLM:
-        def with_structured_output(self, schema, **kwargs):
-            return FakeStructured(schema)
-
-    monkeypatch.setattr(type(settings), "llm", property(lambda self: FakeLLM()))
+    monkeypatch.setattr(
+        "merlin.rag.model.build_ingest_model", lambda: FunctionModel(fn)
+    )
+    monkeypatch.setattr("merlin.services.usage.record", lambda **k: None)
     out = classify_mod.propose_clusters(items)
     assert len(out) == 1
     assert out[0]["proposed_label"] == "Smart Home"

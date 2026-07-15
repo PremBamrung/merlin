@@ -132,63 +132,92 @@ def test_reclassify_replaces_llm_topics(client, make_item, monkeypatch):
     assert _topics_of(item) == {"gaming": True}
 
 
-def test_classify_item_uses_structured_llm(monkeypatch):
-    """classify_item drives settings.llm.with_structured_output(...).invoke(...)."""
-    from merlin.config import settings
+def _all_text(messages):
+    """Flatten every string in a list of Pydantic AI ModelMessages."""
+    out = []
+    for m in messages:
+        for part in getattr(m, "parts", []):
+            c = getattr(part, "content", None)
+            if isinstance(c, str):
+                out.append(c)
+            elif isinstance(c, list):
+                out.extend(x for x in c if isinstance(x, str))
+    return "\n".join(out)
+
+
+def test_classify_item_uses_prompted_structured_output(monkeypatch):
+    """classify_item runs a Pydantic AI agent whose prompt carries the topic
+    slug + tag vocabulary, and returns the parsed ClassifyResult."""
+    from pydantic_ai.messages import ModelResponse, TextPart
+    from pydantic_ai.models.function import FunctionModel
 
     captured = {}
 
-    class FakeStructured:
-        def invoke(self, messages):
-            captured["messages"] = messages
-            # include_raw=True wraps the parse in {"raw", "parsed", "parsing_error"}.
-            return {"raw": None, "parsed": ClassifyResult(primary="coding", tags=["t"])}
+    def fn(messages, info):
+        captured["prompt"] = _all_text(messages)
+        return ModelResponse(
+            parts=[TextPart('{"primary":"coding","secondary":[],"tags":["t"]}')]
+        )
 
-    class FakeLLM:
-        def with_structured_output(self, schema, **kwargs):
-            captured["schema"] = schema
-            captured["kwargs"] = kwargs
-            return FakeStructured()
+    monkeypatch.setattr(
+        "merlin.rag.model.build_ingest_model", lambda: FunctionModel(fn)
+    )
+    monkeypatch.setattr("merlin.services.usage.record", lambda **k: None)
 
-    monkeypatch.setattr(type(settings), "llm", property(lambda self: FakeLLM()))
     out = classify_mod.classify_item(
         "Title", "Summary", [{"slug": "coding", "label": "Coding"}], ["python"]
     )
     assert out.primary == "coding"
-    assert captured["schema"] is ClassifyResult
-    assert captured["kwargs"].get("include_raw") is True
-    # The configured structured-output method is passed through (json_mode by
-    # default — the only method our thinking-mode OpenRouter model accepts).
-    assert captured["kwargs"].get("method") == settings.llm_structured_method
+    assert out.tags == ["t"]
     # Prompt carries the topic slug and the tag vocabulary.
-    user_msg = captured["messages"][-1]["content"]
-    assert "coding" in user_msg and "python" in user_msg
+    assert "coding" in captured["prompt"] and "python" in captured["prompt"]
 
 
-def test_structured_json_mode_injects_json_instructions(monkeypatch):
-    """json_mode requires the literal word 'json' + the schema in the prompt
-    (DeepSeek 400s otherwise). Other methods enforce the shape natively → no
-    suffix."""
+def test_output_type_maps_structured_method(monkeypatch):
+    """`_output_type` maps the configured method to a Pydantic AI output mode.
+    json_mode→PromptedOutput is the only one the thinking-mode preset accepts."""
+    from pydantic_ai import NativeOutput, PromptedOutput
+
     from merlin.config import settings
 
-    called = {}
-
-    class FakeLLM:
-        def with_structured_output(self, schema, **kwargs):
-            called["kwargs"] = kwargs
-            return "runnable"
-
-    monkeypatch.setattr(type(settings), "llm", property(lambda self: FakeLLM()))
     monkeypatch.setattr(settings, "llm_structured_method", "json_mode")
-
-    runnable, suffix = classify_mod._structured(ClassifyResult, include_raw=True)
-    assert runnable == "runnable"
-    assert called["kwargs"] == {"method": "json_mode", "include_raw": True}
-    assert "json" in suffix.lower()  # provider requires the word "json"
+    assert isinstance(classify_mod._output_type(ClassifyResult), PromptedOutput)
 
     monkeypatch.setattr(settings, "llm_structured_method", "json_schema")
-    _, suffix2 = classify_mod._structured(ClassifyResult)
-    assert suffix2 == ""  # native shape enforcement — no prompt padding
+    assert isinstance(classify_mod._output_type(ClassifyResult), NativeOutput)
+
+    monkeypatch.setattr(settings, "llm_structured_method", "function_calling")
+    assert classify_mod._output_type(ClassifyResult) is ClassifyResult
+
+
+def test_record_usage_uses_resolved_model(monkeypatch):
+    """Regression (the summarize $0.00 bug): usage is recorded under the resolved
+    model (deepseek/…), not the unpriceable @preset id — so the pricing map can
+    price it and Insights shows real spend."""
+    from types import SimpleNamespace
+
+    from merlin import llm_pricing
+    from merlin.services import usage
+
+    captured = {}
+    monkeypatch.setattr(usage, "record", lambda **k: captured.update(k))
+    result = SimpleNamespace(
+        usage=SimpleNamespace(input_tokens=100, output_tokens=50, cache_read_tokens=0),
+        all_messages=lambda: [SimpleNamespace(model_name="deepseek/deepseek-v4-flash")],
+    )
+    classify_mod._record_usage(result, surface="classify")
+    assert captured["model"] == "deepseek/deepseek-v4-flash"
+    assert captured["provider"] == "openrouter"
+    # The recorded model must resolve to a real cost.
+    assert (
+        llm_pricing.cost(
+            "openrouter",
+            captured["model"],
+            input_tokens=captured["input_tokens"],
+            output_tokens=captured["output_tokens"],
+        )
+        is not None
+    )
 
 
 def test_ingest_embeds_with_classifier_tags(client, make_item, monkeypatch):

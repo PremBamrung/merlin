@@ -3,7 +3,7 @@
 Source-agnostic (works off `title` + `summary`, not the transcript), so it lives
 in the service layer, not the YouTube plugin: any future source type gets it for
 free, and the plugin stays DB-agnostic (the classifier needs the current
-vocabulary from the DB). `merlin/` may import langchain; no fastapi import, so
+vocabulary from the DB). `merlin/` may import pydantic_ai; no fastapi import, so
 tests/test_architecture.py stays green.
 
 The classifier NEVER invents a topic — it picks from the active taxonomy or
@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 
-from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 
 from merlin.config import settings
@@ -35,26 +34,42 @@ _MAX_SECONDARY = 2
 _MAX_TAGS_OUT = 4
 
 
-def _structured(schema, *, include_raw: bool = False):
-    """Build a structured-output runnable + the system-prompt suffix it needs.
+def _output_type(schema):
+    """Wrap `schema` in the Pydantic AI output mode set by
+    `settings.llm_structured_method`.
 
-    The method is config-driven (`settings.llm_structured_method`). json_mode is
-    the only method our thinking-mode OpenRouter model accepts, but it (a) requires
-    the literal word "json" in the prompt and (b) doesn't inject the schema — so we
-    append PydanticOutputParser format instructions to the system message. The
-    suffix is empty for json_schema/function_calling, which enforce the shape
-    natively. Returns ``(runnable, system_suffix)``."""
+    - ``json_mode`` (default) → ``PromptedOutput``: schema injected into the
+      prompt, JSON parsed client-side. The only mode our thinking-mode DeepSeek
+      preset accepts (it rejects both tool_choice and native response_format).
+    - ``json_schema`` → ``NativeOutput`` (provider-enforced response_format).
+    - ``function_calling`` → the bare schema (Pydantic AI's tool-calling output).
+    """
     method = settings.llm_structured_method
-    runnable = settings.llm.with_structured_output(
-        schema, method=method, include_raw=include_raw
+    if method == "json_schema":
+        from pydantic_ai import NativeOutput
+
+        return NativeOutput(schema)
+    if method == "function_calling":
+        return schema
+    from pydantic_ai import PromptedOutput
+
+    return PromptedOutput(schema)
+
+
+def _run_structured(schema, system: str, user: str, *, surface: str):
+    """One structured Pydantic AI call. Returns the validated `schema` instance
+    and records an llm_usage row under `surface` as a side effect. Exceptions
+    (incl. 429s) propagate so the caller's retry logic can act."""
+    from pydantic_ai import Agent
+
+    from merlin.rag.model import build_ingest_model
+
+    agent = Agent(
+        build_ingest_model(), output_type=_output_type(schema), system_prompt=system
     )
-    suffix = ""
-    if method == "json_mode":
-        instructions = PydanticOutputParser(
-            pydantic_object=schema
-        ).get_format_instructions()
-        suffix = f"\n\n{instructions}"
-    return runnable, suffix
+    result = agent.run_sync(user)
+    _record_usage(result, surface=surface)
+    return result.output
 
 
 class ClassifyResult(BaseModel):
@@ -116,30 +131,34 @@ def _build_prompt(
     )
 
 
-def _record_usage(raw, *, surface: str = "classify") -> None:
-    """Write an llm_usage row (default `surface="classify"`) from the raw LLM
-    response.
+def _record_usage(result, *, surface: str = "classify") -> None:
+    """Write an llm_usage row (default `surface="classify"`) from a Pydantic AI
+    run result.
 
     A UI-triggered ~1,100-call backfill makes invisible cost unacceptable
     (TOPICS_BACKFILL_PLAN §G), so every classify call records its spend; the
     batch-discovery/clustering calls record under `surface="discover"`. Reads
-    token counts off `usage_metadata` and the provider-reported cost the same way
-    the summariser does; falls back to the pricing map (via usage.record) when the
-    provider doesn't report cost. Best-effort — usage.record never raises."""
+    token counts + the resolved model off the result; cost is computed by the
+    pricing map (via usage.record) since Pydantic AI doesn't surface OpenRouter's
+    per-call cost. Best-effort — usage.record never raises."""
     try:
-        um = getattr(raw, "usage_metadata", None) or {}
-        meta = getattr(raw, "response_metadata", None) or {}
-        token_usage = meta.get("token_usage", {}) if isinstance(meta, dict) else {}
-        cost = token_usage.get("cost")
+        u = result.usage
+        if callable(u) and not hasattr(u, "input_tokens"):  # older pydantic-ai
+            u = u()
+        model = None
+        for msg in result.all_messages():
+            name = getattr(msg, "model_name", None)
+            if name:
+                model = name
         from merlin.services import usage
 
         usage.record(
             surface=surface,
-            provider=settings.llm_provider,
-            model=settings.llm_model_name,
-            input_tokens=um.get("input_tokens"),
-            output_tokens=um.get("output_tokens"),
-            cost_usd=float(cost) if cost is not None else None,
+            provider="openrouter",
+            model=model or settings.openrouter_model_deployment,
+            input_tokens=getattr(u, "input_tokens", None),
+            output_tokens=getattr(u, "output_tokens", None),
+            cache_read_tokens=getattr(u, "cache_read_tokens", None),
         )
     except Exception:  # pragma: no cover - defensive; tracking is best-effort
         logger.warning("Failed to record classify usage", exc_info=True)
@@ -155,20 +174,11 @@ def classify_item(
     secondary slugs, and 2-4 tags. Chooses topics only from `active_topics`;
     the caller still validates the slugs against the live taxonomy. Records a
     `surface="classify"` usage row (§G) as a side effect."""
-    llm, suffix = _structured(ClassifyResult, include_raw=True)
     prompt = _build_prompt(title, summary, active_topics, top_tags)
-    raw = llm.invoke(
-        [
-            {"role": "system", "content": _SYSTEM + suffix},
-            {"role": "user", "content": prompt},
-        ]
-    )
-    # include_raw wraps the parse: {"raw": AIMessage, "parsed": …, "parsing_error"}.
-    parsed = raw.get("parsed") if isinstance(raw, dict) else raw
-    _record_usage(raw.get("raw") if isinstance(raw, dict) else raw)
-    if isinstance(parsed, ClassifyResult):
-        return parsed
-    return ClassifyResult.model_validate(parsed)
+    result = _run_structured(ClassifyResult, _SYSTEM, prompt, surface="classify")
+    if isinstance(result, ClassifyResult):
+        return result
+    return ClassifyResult.model_validate(result)
 
 
 def _clean_tags(tags: list[str]) -> list[str]:
@@ -315,15 +325,9 @@ def _cluster_chunk(items: list[tuple[str, str, str]]) -> list[dict]:
         f"{idx}: {title} — {summary[:300]}"
         for idx, (_id, title, summary) in enumerate(items)
     )
-    llm, suffix = _structured(_ClusterResponse, include_raw=True)
-    raw = llm.invoke(
-        [
-            {"role": "system", "content": _CLUSTER_SYSTEM + suffix},
-            {"role": "user", "content": f"ITEMS:\n{lines}"},
-        ]
+    parsed = _run_structured(
+        _ClusterResponse, _CLUSTER_SYSTEM, f"ITEMS:\n{lines}", surface="discover"
     )
-    parsed = raw.get("parsed") if isinstance(raw, dict) else raw
-    _record_usage(raw.get("raw") if isinstance(raw, dict) else raw, surface="discover")
     resp = (
         parsed
         if isinstance(parsed, _ClusterResponse)
@@ -350,16 +354,11 @@ def _consolidate(round1: list[dict]) -> list[dict]:
     if len(labels) <= 1:
         return _merge_by_label(round1)
     try:
-        llm, suffix = _structured(_MergeResponse, include_raw=True)
-        raw = llm.invoke(
-            [
-                {"role": "system", "content": _MERGE_SYSTEM + suffix},
-                {"role": "user", "content": "LABELS:\n" + "\n".join(labels)},
-            ]
-        )
-        parsed = raw.get("parsed") if isinstance(raw, dict) else raw
-        _record_usage(
-            raw.get("raw") if isinstance(raw, dict) else raw, surface="discover"
+        parsed = _run_structured(
+            _MergeResponse,
+            _MERGE_SYSTEM,
+            "LABELS:\n" + "\n".join(labels),
+            surface="discover",
         )
         resp = (
             parsed
