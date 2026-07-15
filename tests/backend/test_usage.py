@@ -109,6 +109,26 @@ def test_record_writes_row_and_computes_cost(client):
     assert row.cost_usd == llm_pricing.TOKEN_PRICING["deepseek/deepseek-v4-flash"]["in"]
 
 
+def test_record_persists_cache_read_tokens(client):
+    """The cached subset of input is stored as a first-class column (so a stored
+    row's cost is reproducible) and billed at the discounted rate."""
+    from merlin.services import usage
+
+    usage.record(
+        surface="summarize",
+        provider="openrouter",
+        model="deepseek/deepseek-v4-flash",
+        input_tokens=1_000_000,
+        output_tokens=0,
+        cache_read_tokens=900_000,
+    )
+    row = _rows()[0]
+    assert row.cache_read_tokens == 900_000
+    # Cost reflects the cache-read discount, not the full input rate.
+    rates = llm_pricing.TOKEN_PRICING["deepseek/deepseek-v4-flash"]
+    assert row.cost_usd == pytest.approx(0.1 * rates["in"] + 0.9 * rates["cache_read"])
+
+
 def test_record_prefers_explicit_cost(client):
     from merlin.services import usage
 
@@ -251,5 +271,7 @@ def test_chat_turn_records_usage_row(client, monkeypatch, make_item):
     row = chat_rows[0]
     assert row.provider == "openrouter"
     assert (row.requests or 0) >= 1
-    # meta is JSON (cache/tool_calls); no generation id was available offline.
-    assert row.meta is None or "generation_id" not in json.loads(row.meta)
+    # cache-read is a column now, not stuffed in meta; no gen id offline either.
+    if row.meta is not None:
+        meta = json.loads(row.meta)
+        assert "cache_read" not in meta and "generation_id" not in meta

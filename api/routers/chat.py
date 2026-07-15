@@ -179,8 +179,9 @@ def _queue_chat_usage(background_tasks, result, *, item_id: str | None) -> None:
     u, gen_ids, model_name = _usage_and_generation_ids(result)
     if u is None:
         return
+    # cache-read tokens are persisted as a first-class column (via
+    # record_chat_turn → usage.record), so they no longer belong in meta.
     meta = {
-        "cache_read": getattr(u, "cache_read_tokens", None),
         "tool_calls": getattr(u, "tool_calls", None),
     }
     if item_id:

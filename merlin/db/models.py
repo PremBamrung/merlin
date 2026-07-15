@@ -301,8 +301,9 @@ class LlmUsage(Base):
     Nothing reads this to gate or throttle; it backs the Insights spend charts
     and per-item cost. `cost_usd` is the provider-reported cost when available,
     else computed from `merlin.llm_pricing`, else NULL (unknown model — Insights
-    treats NULL as "unknown", not "$0"). `meta` stashes cache tokens / tool_calls
-    / thread id as JSON.
+    treats NULL as "unknown", not "$0"). `cache_read_tokens` is the cached subset
+    of `input_tokens` (billed at the discounted rate). `meta` stashes tool_calls
+    / thread id / generation ids as JSON.
     """
 
     __tablename__ = "llm_usage"
@@ -314,6 +315,7 @@ class LlmUsage(Base):
     model = Column(String(100))
     input_tokens = Column(Integer)
     output_tokens = Column(Integer)
+    cache_read_tokens = Column(Integer)  # cached subset of input_tokens
     audio_seconds = Column(Float)
     requests = Column(Integer)  # model round-trips (chat tool loop)
     cost_usd = Column(Float)

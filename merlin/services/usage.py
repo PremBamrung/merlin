@@ -58,6 +58,7 @@ def record(
                     model=model,
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
+                    cache_read_tokens=cache_read_tokens,
                     audio_seconds=audio_seconds,
                     requests=requests,
                     cost_usd=cost_usd,
