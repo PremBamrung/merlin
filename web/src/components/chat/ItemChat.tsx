@@ -63,8 +63,10 @@ export function ItemChat({
   );
 
   // Focus the composer when the per-item chat mounts (Reader remounts per item).
+  // `preventScroll` is essential: the chat sits below the summary on narrow
+  // layouts, so a plain focus() would scroll the page straight down to it.
   useEffect(() => {
-    composerRef.current?.focus();
+    composerRef.current?.focus({ preventScroll: true });
   }, []);
 
   const submit = () => {
