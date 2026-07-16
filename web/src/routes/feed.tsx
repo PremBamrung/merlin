@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle2, Inbox as InboxIcon, Sparkles, X } from "lucide-react";
+import { CheckCircle2, Inbox as InboxIcon, Sparkles } from "lucide-react";
 import { CheckCheck } from "lucide-react";
 import {
   useFeedQueue,
@@ -10,7 +10,6 @@ import {
   useToggleSaved,
 } from "@/hooks/useFeed";
 import { useTopics, useUncategorisedCount } from "@/hooks/useTopics";
-import { useTags } from "@/hooks/useMeta";
 import { FeedCard } from "@/components/feed/FeedCard";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
@@ -30,47 +29,30 @@ import { cn } from "@/lib/utils";
 const SWIPE_THRESHOLD = 64; // px of horizontal travel to commit a page-turn
 const PREFETCH_AHEAD = 3; // load the next page this many cards before the end
 const UNCATEGORISED = "uncategorised"; // sentinel slug for the "no topic" slice
-const MAX_REFINE_TAGS = 10; // top-N tags offered as refine chips
 
 /**
- * Owns the navigation filter (topic slice + tag refine). The reading stack is a
+ * Owns the navigation filter (topic slice). The reading stack is a
  * child keyed by the filter signature, so switching filter *remounts* it — a
  * fresh queue, cursor, and read-set with no manual reset (idiomatic React
  * "reset state with a key").
  */
 export default function FeedRoute() {
   const [topic, setTopic] = useState<string | null>(null); // slug | sentinel | null
-  const [refineTags, setRefineTags] = useState<string[]>([]);
   const filter = useMemo<FeedFilter>(
-    () => ({
-      topics: topic ? [topic] : undefined,
-      tags: refineTags.length ? refineTags : undefined,
-    }),
-    [topic, refineTags],
+    () => ({ topics: topic ? [topic] : undefined }),
+    [topic],
   );
-  const filterSig = `${topic ?? ""}|${[...refineTags].sort().join(",")}`;
+  const filterSig = topic ?? "";
 
-  const toggleTag = useCallback(
-    (t: string) =>
-      setRefineTags((cur) =>
-        cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t],
-      ),
-    [],
-  );
-  const clearFilter = useCallback(() => {
-    setTopic(null);
-    setRefineTags([]);
-  }, []);
+  const clearFilter = useCallback(() => setTopic(null), []);
 
   return (
     <FeedReader
       key={filterSig}
       filter={filter}
-      filtered={!!topic || refineTags.length > 0}
+      filtered={!!topic}
       topic={topic}
       onTopic={setTopic}
-      refineTags={refineTags}
-      onToggleTag={toggleTag}
       onClearFilter={clearFilter}
     />
   );
@@ -81,22 +63,17 @@ function FeedReader({
   filtered,
   topic,
   onTopic,
-  refineTags,
-  onToggleTag,
   onClearFilter,
 }: {
   filter: FeedFilter;
   filtered: boolean;
   topic: string | null;
   onTopic: (t: string | null) => void;
-  refineTags: string[];
-  onToggleTag: (t: string) => void;
   onClearFilter: () => void;
 }) {
   const q = useFeedQueue(filter);
   const topics = useTopics("active", true); // unread-scoped: only topics in the queue
   const uncategorised = useUncategorisedCount(true);
-  const tags = useTags(true); // unread-scoped: only tags present in the queue
   const markRead = useMarkRead();
   const markUnread = useMarkUnread();
   const markAllRead = useMarkAllRead();
@@ -213,9 +190,6 @@ function FeedReader({
       onTopic={onTopic}
       topics={topics.data ?? []}
       uncategorisedCount={uncategorised.data ?? 0}
-      tags={(tags.data ?? []).slice(0, MAX_REFINE_TAGS).map((t) => t.name)}
-      activeTags={refineTags}
-      onToggleTag={onToggleTag}
       total={total}
       onMarkAll={() => setConfirmAll(true)}
       markAllPending={markAllRead.isPending}
@@ -346,9 +320,6 @@ function FilterBar({
   onTopic,
   topics,
   uncategorisedCount,
-  tags,
-  activeTags,
-  onToggleTag,
   total,
   onMarkAll,
   markAllPending,
@@ -357,9 +328,6 @@ function FilterBar({
   onTopic: (t: string | null) => void;
   topics: TopicChip[];
   uncategorisedCount: number;
-  tags: string[];
-  activeTags: string[];
-  onToggleTag: (t: string) => void;
   total: number;
   onMarkAll: () => void;
   markAllPending: boolean;
@@ -386,8 +354,9 @@ function FilterBar({
         </div>
       </div>
 
-      {/* Topic slice chips (single-select) */}
-      <div className="flex flex-wrap items-center gap-1.5">
+      {/* Topic slice chips (single-select). Single-row horizontal scroll on
+          mobile so the many topics don't crush the card; wrap on sm+. */}
+      <div className="no-scrollbar -mx-4 flex items-center gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
         <FilterChip active={topic === null} onClick={() => onTopic(null)}>
           All
         </FilterChip>
@@ -407,32 +376,6 @@ function FilterBar({
           </FilterChip>
         ))}
       </div>
-
-      {/* Tag refine chips (multi-select) — only when tags exist */}
-      {tags.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] text-fg-subtle">Refine:</span>
-          {tags.map((t) => {
-            const on = activeTags.includes(t);
-            return (
-              <button
-                key={t}
-                onClick={() => onToggleTag(t)}
-                aria-pressed={on}
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 font-mono text-[11px] transition-colors",
-                  on
-                    ? "border-accent-border bg-accent-subtle text-accent"
-                    : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
-                )}
-              >
-                #{t}
-                {on && <X className="size-3" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
@@ -450,7 +393,7 @@ function FilterChip({
     <button
       onClick={onClick}
       className={cn(
-        "inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
+        "inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
         active
           ? "border-accent-border bg-accent-subtle text-fg"
           : "border-border text-fg-muted hover:border-border-strong hover:text-fg",

@@ -100,6 +100,14 @@
     text-transform: uppercase;
     color: var(--color-fg-subtle);
   }
+
+  /* Hide the scrollbar on horizontal chip strips (kept scrollable by touch) */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Reduced motion: kill transforms/shimmer (§7) */
