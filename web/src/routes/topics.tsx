@@ -162,14 +162,14 @@ export default function TopicsRoute() {
 
   return (
     <div className="mx-auto max-w-[900px] space-y-8">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-[24px] font-semibold">Topics</h1>
           <p className="mt-1 text-[13px] text-fg-muted">
             Your navigation taxonomy — the buckets the Feed filters by.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ReclassifyAllButton
             total={totalEstimate}
             disabled={busy || !hasTopics}
