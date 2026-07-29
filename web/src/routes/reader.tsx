@@ -170,8 +170,12 @@ function Reader({
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
-      {/* Top bar: back + adjacent-item pager + actions */}
-      <div className="flex items-center justify-between gap-3">
+      {/* Top bar: back + adjacent-item pager + actions.
+          `flex-wrap` is load-bearing, not tidiness: at 390px this row wants
+          367px in a 358px box, and without it the ⋯ menu is clipped off the
+          right edge with no horizontal scroll to reach it — invisible at every
+          wider width, which is how it survived this long. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex items-center gap-2">
           <Link
             to="/library"
