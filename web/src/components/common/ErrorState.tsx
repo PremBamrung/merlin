@@ -24,11 +24,11 @@ export function ErrorState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-3 rounded-[12px] border border-accent-border bg-accent-subtle/40 px-6 py-12 text-center",
+        "flex flex-col items-center justify-center gap-3 rounded-[12px] border border-fail/40 bg-fail/10 px-6 py-12 text-center",
         className,
       )}
     >
-      <AlertTriangle className="size-6 text-accent" strokeWidth={1.5} />
+      <AlertTriangle className="size-6 text-fail" strokeWidth={1.5} />
       <div className="space-y-1">
         <p className="text-[15px] font-medium text-fg">{title}</p>
         {error !== undefined && (

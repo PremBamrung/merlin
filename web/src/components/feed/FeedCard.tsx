@@ -82,7 +82,7 @@ export function FeedCard({
               <span>{item.source_type}</span>
             </div>
 
-            <h1 className="mt-3 text-balance text-[24px] font-semibold leading-tight tracking-tight sm:text-[28px] lg:text-[24px]">
+            <h1 className="mt-3 text-balance font-display text-[24px] font-semibold leading-tight tracking-tight sm:text-[28px] lg:text-[24px]">
               {item.title ?? "Untitled"}
             </h1>
 
@@ -134,9 +134,9 @@ export function FeedCard({
           onClick={onSave}
           aria-pressed={saved}
           aria-label={saved ? "Unsave" : "Save"}
-          className={cn(saved && "text-accent")}
+          className={cn(saved && "text-signal")}
         >
-          <Star className={cn("size-4", saved && "fill-accent")} />
+          <Star className={cn("size-4", saved && "fill-signal")} />
           <span className="hidden sm:inline">{saved ? "Saved" : "Save"}</span>
         </Button>
 

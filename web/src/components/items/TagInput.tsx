@@ -32,12 +32,12 @@ export function TagInput({
       {tags.map((t) => (
         <span
           key={t}
-          className="inline-flex items-center gap-1 rounded-[6px] border border-accent-border bg-accent-subtle px-2 py-0.5 font-mono text-[11px] text-accent"
+          className="inline-flex items-center gap-1 rounded-[6px] border border-accent-border bg-accent-subtle px-2 py-0.5 font-mono text-[11px] text-accent-lit"
         >
           #{t}
           <button
             onClick={() => remove(t)}
-            className="text-accent/70 hover:text-accent"
+            className="text-accent-lit/70 hover:text-accent-lit"
             aria-label={`Remove ${t}`}
           >
             <X className="size-3" />

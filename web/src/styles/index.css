@@ -2,50 +2,98 @@
 @import "tw-animate-css";
 
 /* ------------------------------------------------------------------ *
- * Design tokens (FRONTEND_V3_DESIGN_SYSTEM.md §2–4)
+ * Design tokens — the identity locked in docs/UI_UX_DIRECTION_HANDOFF.md
+ * and ported per docs/UI_THEME_AND_TOPNAV_PLAN.md Phase 1.
+ *
  * Tailwind v4 reads `--color-*` here and generates `bg-*`/`text-*`/…
- * utilities. Dark-first: there is one surface family, no `dark:` variants.
+ * utilities. Dark-first: one surface family, no `dark:` variants (light was
+ * dropped, but the tokens stay structured so it remains possible).
+ *
+ * **The names are web/'s originals; only the values changed.** The handoff
+ * calls these `paper`/`rule`/`rule-lit`/`raised`; renaming would have been a
+ * 390-site diff for zero visual difference, so the mapping table in the plan's
+ * Phase 1 is the translation layer. Do not tune these by eye — the ratios in
+ * the comments are measured, and three of them only clear WCAG *because* the
+ * ground was lifted to #1a1b1f.
  * ------------------------------------------------------------------ */
 @theme {
-  /* Surfaces — near-black, layered by elevation */
-  --color-bg: #0a0a0b;
-  --color-surface: #111113;
-  --color-surface-2: #18181b;
-  --color-border: #232327;
-  --color-border-strong: #2e2e33;
+  /* Ground and surfaces — neutral grey, LIFTED. No blue tint in the greys:
+     the blue-black ground was explicitly rejected. */
+  --color-bg: #1a1b1f;
+  --color-surface: #232529;
+  --color-surface-2: #2c2e33;
+  --color-surface-raised: #35373d; /* modals, popovers */
+  --color-border: #393b41; /* `rule`     */
+  --color-border-strong: #4a4c54; /* `rule-lit` */
 
   /* Text */
-  --color-fg: #ededef;
-  --color-fg-muted: #a1a1aa;
-  --color-fg-subtle: #6b6b73;
+  --color-fg: #e8e8eb; /* body      — 14.1:1 */
+  --color-fg-muted: #a6a6ad; /* secondary —  7.1:1 */
+  --color-fg-subtle: #8e8e98; /* metadata  —  5.3:1 on bg, 4.7:1 on surface.
+                                 Lifted from #84848e *because* the ground rose. */
 
-  /* Accent — Streamlit's red, the only chroma in the chrome */
-  --color-accent: #ff4b4b;
-  --color-accent-hover: #ff6363;
-  --color-accent-active: #e23b3b;
-  --color-accent-fg: #ffffff;
-  --color-accent-subtle: #2a1416;
-  --color-accent-border: #4d2122;
+  /* Chroma. Two families and nothing else:
+       indigo = WHERE YOU ARE  (active nav, primary button, links, topics)
+       gold   = WHAT WANTS YOU (unread, saved, running, focus)
+     plus rust for WHAT BROKE. */
+  --color-accent: #4a60d6; /* interactive fill. 3.22:1 vs ground — the darkest
+                              blue that may legally fill a component here.
+                              There is NO headroom below it; anything deeper is
+                              brand-only. */
+  --color-accent-hover: #5b70e0; /* 3.96:1 — measured. Hover LIFTS, because
+                                    darker cannot clear 3:1 on this ground. */
+  --color-accent-active: #465cd2; /* 3.05:1 — measured. The darkest press state
+                                     that still clears 3:1; the plan's obvious
+                                     #3f55cc measures 2.77 ✕. */
+  --color-accent-fg: #ffffff; /* 5.34:1 white on the indigo fill */
+  --color-accent-subtle: #28305a; /* tint background for active chips/rows.
+                                     Lifted from the plan's #1f2540, which has
+                                     the same luminance as `surface` and so
+                                     read as a recess rather than a state.
+                                     fg on it 10.3:1, accent-lit on it 5.4:1. */
+  --color-accent-border: #3a4685; /* indigo hairline — 1.28:1 against the plain
+                                     rule, so it reads as indigo, not as a
+                                     slightly warm grey. */
+  --color-accent-lit: #96a5f5; /* links, topic eyebrows, icon strokes — 7.4:1.
+                                  Also absorbs the retired `--color-info`. */
 
-  /* Semantic signals (coexist with the red brand) */
-  --color-success: #30a46c;
-  --color-warning: #f5a524;
-  --color-info: #5b9df9;
+  /* Gold. Unread, saved, running, focus. **Nothing else** — never structural,
+     a few square millimetres at a time. 10:1 on the ground. */
+  --color-signal: #ffb94a;
 
-  /* Type families */
-  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  /* Brand. The mark ONLY, never an interface element. */
+  --color-brand: #2b3c9e; /* the cone */
+  --color-brim: #4b5cb8; /* the brim */
+
+  /* Status. Rust is the first error colour here that isn't the brand.
+     NB: rust vs ok-green is ΔE 4.7 under deuteranopia, so every status must
+     also carry a TEXT LABEL — colour alone does not distinguish them. */
+  --color-success: #4fa97a; /* 5.97:1 */
+  --color-fail: #d4705a; /* 5.13:1 — lifted from #c4614a (4.22 ✕) */
+
+  /* Type. Three families, strictly divided.
+       Archivo        — titles, headings, numbers-as-display
+       Inter          — ALL prose, ALL controls
+       JetBrains Mono — durations, counts, dates, channels, topic eyebrows,
+                        key/value rows. NEVER prose or help text. */
+  --font-display: "Archivo Variable", system-ui, -apple-system, sans-serif;
+  --font-sans: "Inter Variable", "Inter", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  /* Radius family */
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
+  /* Radius family — tighter than the old 6/10/14; reads as more precise.
+     `--radius-md` is declared explicitly so `rounded-md` (the most-used
+     utility in the app) is on the scale instead of Tailwind's default 6px. */
+  --radius-sm: 4px;
+  --radius-md: 7px;
+  --radius: 7px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
 
-  /* Focus ring glow */
-  --color-accent-ring: rgba(255, 75, 75, 0.45);
+  /* Focus is GOLD, not accent — so the token is named for what it is. The old
+     `--color-accent-ring` (red at .45) composited to ~2.0:1, an a11y bug. */
+  --color-focus-ring: rgb(255 185 74 / 0.55);
 }
 
-/* Custom variant so `accent-ring` works in ring utilities if needed */
 @layer base {
   * {
     border-color: var(--color-border);
@@ -58,18 +106,23 @@
     background-color: var(--color-bg);
     color: var(--color-fg);
     font-family: var(--font-sans);
-    font-size: 14px;
-    line-height: 22px;
+    /* 15px/24px chrome base — the one part of the reverted polish pass that
+       was right. */
+    font-size: 15px;
+    line-height: 24px;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
-  /* Visible focus ring on all interactive elements (a11y §10) */
+  /* Visible focus ring on all interactive elements (a11y §10) — gold, and it
+     clears 3:1 against every surface in the app. */
   :focus-visible {
-    outline: 2px solid var(--color-border-strong);
-    outline-offset: 1px;
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
   ::selection {
-    background: var(--color-accent-subtle);
+    background: rgb(74 96 214 / 0.45);
+    color: var(--color-fg);
   }
   /* Slim dark scrollbars */
   ::-webkit-scrollbar {
@@ -110,7 +163,7 @@
   }
 }
 
-/* Reduced motion: kill transforms/shimmer (§7) */
+/* Reduced motion: kill transforms/animation (§7) */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -118,6 +171,7 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -127,10 +181,11 @@
   }
 }
 
-/* Highlight pulse for a Source card when its inline citation chip is clicked */
+/* Highlight pulse for a Source card when its inline citation chip is clicked.
+   Indigo — a citation is a link, not an alarm. */
 @keyframes cite-flash {
   0% {
-    box-shadow: 0 0 0 0 var(--color-accent-ring);
+    box-shadow: 0 0 0 0 var(--color-accent);
     border-color: var(--color-accent);
   }
   100% {

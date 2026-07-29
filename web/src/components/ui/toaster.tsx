@@ -13,7 +13,7 @@ export function Toaster() {
           description: "!text-fg-muted",
           actionButton: "!bg-accent !text-accent-fg",
           cancelButton: "!bg-surface !text-fg-muted",
-          error: "!border-accent-border",
+          error: "!border-fail",
           success: "!text-fg",
         },
       }}

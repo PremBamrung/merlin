@@ -37,7 +37,7 @@ export function TaskRow({ taskId }: { taskId: string }) {
         {done ? (
           <CheckCircle2 className="size-4 shrink-0 text-success" strokeWidth={1.5} />
         ) : failed ? (
-          <AlertTriangle className="size-4 shrink-0 text-accent" strokeWidth={1.5} />
+          <AlertTriangle className="size-4 shrink-0 text-fail" strokeWidth={1.5} />
         ) : cancelled ? (
           <Ban className="size-4 shrink-0 text-fg-subtle" strokeWidth={1.5} />
         ) : (
@@ -47,7 +47,7 @@ export function TaskRow({ taskId }: { taskId: string }) {
         {done && itemId ? (
           <Link
             to={`/library/${itemId}`}
-            className="shrink-0 text-[12px] font-medium text-accent hover:text-accent-hover"
+            className="shrink-0 text-[12px] font-medium text-accent-lit hover:text-fg"
           >
             Open →
           </Link>
@@ -77,7 +77,7 @@ export function TaskRow({ taskId }: { taskId: string }) {
       <p
         className={cn(
           "mt-1 truncate pl-[26px] text-[12px]",
-          failed ? "text-accent" : "text-fg-muted",
+          failed ? "text-fail" : "text-fg-muted",
         )}
       >
         {message}
@@ -86,7 +86,7 @@ export function TaskRow({ taskId }: { taskId: string }) {
       {active && !cancelling && (
         <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-2">
           <div
-            className="h-full rounded-full bg-accent transition-[width] duration-300 ease-linear"
+            className="h-full rounded-full bg-signal transition-[width] duration-300 ease-linear"
             style={{ width: `${percent}%` }}
           />
         </div>

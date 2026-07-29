@@ -27,19 +27,30 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { thousands } from "@/lib/format";
 
+// Chart chrome, on the new tokens: grid = rule, axis = fg-subtle, cursor/stroke
+// = surface-2. `series` is categorical slot 1 (see SURFACE_COLORS) rather than
+// the interface accent — #4a60d6 is tuned to be the darkest legal *fill*, which
+// is not what a data mark on a grid wants.
 const COLORS = {
-  accent: "#ff4b4b",
-  grid: "#232327",
-  axis: "#6b6b73",
-  surface: "#18181b",
-  border: "#2e2e33",
+  series: "#5c82da",
+  grid: "#393b41",
+  axis: "#8e8e98",
+  surface: "#2c2e33",
+  border: "#4a4c54",
 };
+/**
+ * Status is a **reserved** scale: green = done, gold = running, indigo = waiting
+ * on us, grey = waiting in line, rust = broken. Never reused as "series N".
+ * Rust and green are ΔE 4.7 apart under deuteranopia, which is why both charts
+ * below render a named legend — colour alone never distinguishes failed from
+ * completed.
+ */
 const STATUS_COLORS: Record<string, string> = {
-  completed: "#30a46c",
-  processing: "#5b9df9",
-  pending: "#f5a524",
-  queued: "#6b6b73",
-  failed: "#ff4b4b",
+  completed: "#4fa97a",
+  processing: "#ffb94a",
+  pending: "#96a5f5",
+  queued: "#8e8e98",
+  failed: "#d4705a",
 };
 
 type TooltipEntry = { value?: number; name?: string };
@@ -82,12 +93,20 @@ function ChartCard({
   );
 }
 
+/**
+ * Categorical slots for the stacked spend bar, in **stacking order** — the order
+ * is the colourblind-safety mechanism, so don't re-shuffle it. Stepped into the
+ * dark-mode lightness band (OKLCH L 0.48–0.67) on Merlin's ground and validated:
+ * all five clear the chroma floor and 3:1 vs #1a1b1f, worst adjacent pair is
+ * ΔE 9.2 under deuteranopia / 21.4 normal. Re-run the check before touching a
+ * value (skills/dataviz `validate_palette.js --mode dark --surface "#1a1b1f"`).
+ */
 const SURFACE_COLORS: Record<string, string> = {
-  chat: "#ff4b4b",
-  summarize: "#5b9df9",
-  transcribe: "#f5a524",
-  classify: "#22c55e",
-  discover: "#a855f7",
+  chat: "#5c82da",
+  summarize: "#b98a00",
+  transcribe: "#13a5b2",
+  classify: "#b93c8c",
+  discover: "#429c5a",
 };
 const SURFACE_ORDER = ["chat", "summarize", "transcribe", "classify", "discover"];
 
@@ -136,7 +155,7 @@ function SpendSection({ usage, loading }: { usage?: Usage; loading: boolean }) {
   return (
     <div className="space-y-4">
       <div className="flex items-end justify-between">
-        <h2 className="text-[18px] font-semibold">Spend</h2>
+        <h2 className="font-display text-[18px] font-semibold">Spend</h2>
         <span className="eyebrow pb-0.5">Token &amp; transcription cost — tracking only</span>
       </div>
 
@@ -230,7 +249,7 @@ export default function InsightsRoute() {
   if (error) {
     return (
       <div className="space-y-5">
-        <h1 className="text-[24px] font-semibold">Insights</h1>
+        <h1 className="font-display text-[24px] font-semibold">Insights</h1>
         <ErrorState
           error={error}
           onRetry={() => {
@@ -254,7 +273,7 @@ export default function InsightsRoute() {
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between">
-        <h1 className="text-[24px] font-semibold">Insights</h1>
+        <h1 className="font-display text-[24px] font-semibold">Insights</h1>
         <span className="eyebrow pb-1">How your library has grown</span>
       </div>
 
@@ -280,7 +299,11 @@ export default function InsightsRoute() {
                 <StatTile label="Total" value={thousands(total)} />
                 <StatTile label="Channels" value={thousands(channelCount.data?.count ?? 0)} />
                 <StatTile label="Most in a day" value={thousands(mostInDay)} />
-                <StatTile label="Failed" value={thousands(failed)} accent={failed > 0} />
+                <StatTile
+                  label="Failed"
+                  value={thousands(failed)}
+                  tone={failed > 0 ? "fail" : "default"}
+                />
               </>
             )}
           </div>
@@ -319,7 +342,7 @@ export default function InsightsRoute() {
                     tickFormatter={(v: string) => (v.length > 16 ? v.slice(0, 15) + "…" : v)}
                   />
                   <Tooltip content={<ChartTooltip />} cursor={{ fill: COLORS.surface }} />
-                  <Bar dataKey="count" name="items" fill={COLORS.accent} radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="count" name="items" fill={COLORS.series} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>

@@ -175,7 +175,7 @@ export const Message = memo(function Message({
   return (
     <div className="group/msg space-y-3">
       <div className="flex items-center gap-2">
-        <span className="text-accent">✦</span>
+        <span className="text-accent-lit">✦</span>
         <span className="eyebrow">Merlin</span>
         <div className="ml-auto flex items-center gap-1">
           {timeLabel && <span className="text-[11px] text-fg-subtle">{timeLabel}</span>}
@@ -518,14 +518,14 @@ function ToolTrace({ part }: { part: AnyPart }) {
         className="flex w-full items-center gap-2 px-3 py-2 text-left"
         disabled={!done}
       >
-        <Icon className={cn("size-3.5", failed ? "text-accent" : "text-fg-subtle")} />
+        <Icon className={cn("size-3.5", failed ? "text-fail" : "text-fg-subtle")} />
         <span className="font-mono text-fg-muted">{name}</span>
         {argSummary && (
           <span className="min-w-0 flex-1 truncate font-mono text-fg-subtle">({argSummary})</span>
         )}
         {!done ? (
           <span className="ml-auto flex items-center gap-1 text-fg-subtle">
-            <span className="size-1.5 animate-pulse rounded-full bg-accent" /> running
+            <span className="size-1.5 animate-pulse rounded-full bg-signal" /> running
           </span>
         ) : (
           <ChevronRight

@@ -19,7 +19,7 @@ export function NeedsAttention() {
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="eyebrow text-accent">Needs attention · {failed.length}</p>
+        <p className="eyebrow text-fail">Needs attention · {failed.length}</p>
         <div className="flex gap-2">
           <Button
             variant="secondary"

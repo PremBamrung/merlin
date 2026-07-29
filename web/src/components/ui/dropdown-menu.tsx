@@ -60,7 +60,7 @@ export const DropdownMenuCheckboxItem = React.forwardRef<
   >
     <span className="absolute left-2 flex size-4 items-center justify-center">
       <DropdownMenuPrimitive.ItemIndicator>
-        <Check className="size-4 text-accent" />
+        <Check className="size-4 text-accent-lit" />
       </DropdownMenuPrimitive.ItemIndicator>
     </span>
     {children}

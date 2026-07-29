@@ -1,12 +1,20 @@
 import { cn } from "@/lib/utils";
 
-// status → treatment (DESIGN_SYSTEM §2). `failed` reuses the brand red.
+/**
+ * status → treatment. Gold is "what wants you", so it marks the one status that
+ * is actually happening now; waiting states stay grey and failure is rust.
+ * `--color-warning` and `--color-info` were retired with the red palette — the
+ * amber sat ~6° from the gold and read as a second signal.
+ *
+ * A dot is never the only channel: every caller pairs it with `STATUS_LABEL` or
+ * its own text, because rust and green are ΔE 4.7 apart under deuteranopia.
+ */
 const STATUS_COLOR: Record<string, string> = {
   completed: "bg-success",
-  processing: "bg-info",
+  processing: "bg-signal",
   queued: "bg-fg-subtle",
-  pending: "bg-warning",
-  failed: "bg-accent",
+  pending: "bg-fg-muted",
+  failed: "bg-fail",
   unknown: "bg-fg-subtle",
 };
 

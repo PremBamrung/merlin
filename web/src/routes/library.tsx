@@ -182,7 +182,7 @@ export default function LibraryRoute() {
   return (
     <div className="space-y-5">
       <div className="flex items-end justify-between gap-4">
-        <h1 className="text-[24px] font-semibold">Library</h1>
+        <h1 className="font-display text-[24px] font-semibold">Library</h1>
         <span className="eyebrow pb-1">{thousands(total)} sources</span>
       </div>
 
@@ -209,7 +209,7 @@ export default function LibraryRoute() {
               <DropdownMenuItem
                 key={s.value}
                 onSelect={() => update({ sort: s.value, page: undefined })}
-                className={cn(sort === s.value && "text-accent")}
+                className={cn(sort === s.value && "text-accent-lit")}
               >
                 {s.label}
               </DropdownMenuItem>
@@ -252,7 +252,7 @@ export default function LibraryRoute() {
                 <DropdownMenuItem
                   key={d}
                   onSelect={() => setDensity(d)}
-                  className={cn("capitalize", density === d && "text-accent")}
+                  className={cn("capitalize", density === d && "text-accent-lit")}
                 >
                   {d}
                 </DropdownMenuItem>
@@ -310,11 +310,11 @@ export default function LibraryRoute() {
           className={cn(
             "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
             savedOnly
-              ? "border-accent-border bg-accent-subtle text-accent"
+              ? "border-signal/50 bg-signal/12 text-signal"
               : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
           )}
         >
-          <Star className={cn("size-3.5", savedOnly && "fill-accent")} /> Saved
+          <Star className={cn("size-3.5", savedOnly && "fill-signal")} /> Saved
         </button>
         {search && (
           <button
@@ -329,7 +329,7 @@ export default function LibraryRoute() {
             className={cn(
               "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
               searchTranscripts
-                ? "border-accent-border bg-accent-subtle text-accent"
+                ? "border-accent-border bg-accent-subtle text-accent-lit"
                 : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
             )}
           >
@@ -342,7 +342,7 @@ export default function LibraryRoute() {
             onClick={() =>
               update({ tags: tags.filter((x) => x !== t), page: undefined })
             }
-            className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-subtle px-2.5 py-1 font-mono text-[11px] text-accent"
+            className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-subtle px-2.5 py-1 font-mono text-[11px] text-accent-lit"
           >
             #{t} <X className="size-3" />
           </button>

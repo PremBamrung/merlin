@@ -61,7 +61,7 @@ export default function TodayRoute() {
         </p>
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex-1 space-y-5">
-            <h1 className="text-[30px] font-semibold leading-tight">{greeting()}</h1>
+            <h1 className="font-display text-[30px] font-semibold leading-tight">{greeting()}</h1>
             <Omnibox className="max-w-2xl" />
           </div>
 
@@ -77,7 +77,7 @@ export default function TodayRoute() {
                   <StatTile
                     label="This week"
                     value={thousands(thisWeek(timeline.data))}
-                    accent
+                    tone="accent"
                     big
                   />
                 </>

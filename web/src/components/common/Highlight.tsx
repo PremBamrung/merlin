@@ -25,7 +25,7 @@ export function Highlight({
   const parts = text.split(re);
   return parts.map((part, i) =>
     i % 2 === 1 ? (
-      <mark key={i} className="rounded-sm bg-accent/25 text-fg">
+      <mark key={i} className="rounded-sm bg-accent/35 text-fg">
         {part}
       </mark>
     ) : (

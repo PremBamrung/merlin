@@ -367,7 +367,7 @@ function ChatConversation({
           >
             <PanelLeft className="size-4" />
           </Button>
-          <h1 className="text-[17px] font-semibold">Chat</h1>
+          <h1 className="font-display text-[17px] font-semibold">Chat</h1>
         </div>
         <div className="flex items-center gap-2 md:ml-auto">
           <FilterBar filters={filters} setFilters={setFilters} active={filtersActive} />
@@ -779,7 +779,7 @@ function ThreadRow({
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={onDelete}
-            className="text-accent focus:text-accent"
+            className="text-fail focus:text-fail"
           >
             <Trash2 className="size-3.5" /> Delete
           </DropdownMenuItem>
@@ -837,9 +837,9 @@ function ChatError({ error, onRetry }: { error: Error; onRetry: () => void }) {
   const msg = error?.message ?? "";
   const isLimit = /request[_ ]?limit|usage limit|exceeded|step/i.test(msg);
   return (
-    <div className="rounded-[12px] border border-accent-border bg-accent-subtle/40 px-4 py-3">
+    <div className="rounded-[12px] border border-fail/40 bg-fail/10 px-4 py-3">
       <div className="flex items-start gap-2.5">
-        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-accent" />
+        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-fail" />
         <div className="min-w-0 flex-1 space-y-1.5">
           <p className="text-[13.5px] font-medium text-fg">
             {isLimit
@@ -916,7 +916,7 @@ function Chip({
     <button
       onClick={onRemove}
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-subtle px-2.5 py-1 text-[11px] text-accent",
+        "inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-subtle px-2.5 py-1 text-[11px] text-accent-lit",
         mono && "font-mono",
         className,
       )}
@@ -929,11 +929,11 @@ function Chip({
 function IdleState({ onPick }: { onPick: (q: string) => void }) {
   return (
     <div className="flex flex-col items-center gap-6 py-16 text-center">
-      <div className="flex size-12 items-center justify-center rounded-full bg-accent-subtle text-accent">
+      <div className="flex size-12 items-center justify-center rounded-full bg-accent-subtle text-accent-lit">
         <MessageSquare className="size-6" strokeWidth={1.5} />
       </div>
       <div className="space-y-1">
-        <p className="text-[18px] font-semibold">Ask your library</p>
+        <p className="font-display text-[18px] font-semibold">Ask your library</p>
         <p className="text-[14px] text-fg-muted">
           Merlin answers from everything you've saved, with citations.
         </p>
@@ -945,7 +945,7 @@ function IdleState({ onPick }: { onPick: (q: string) => void }) {
             onClick={() => onPick(s)}
             className="group flex items-center gap-2.5 rounded-[10px] border border-border bg-surface px-4 py-3 text-left text-[13.5px] text-fg-muted transition-colors hover:border-border-strong hover:text-fg"
           >
-            <Sparkles className="size-4 shrink-0 text-fg-subtle group-hover:text-accent" />
+            <Sparkles className="size-4 shrink-0 text-fg-subtle group-hover:text-accent-lit" />
             {s}
           </button>
         ))}
@@ -1007,7 +1007,7 @@ function FilterBar({
                   className={cn(
                     "rounded-full border px-2.5 py-1 text-[12px] capitalize transition-colors",
                     on
-                      ? "border-accent-border bg-accent-subtle text-accent"
+                      ? "border-accent-border bg-accent-subtle text-accent-lit"
                       : "border-border text-fg-muted hover:border-border-strong",
                   )}
                 >
@@ -1031,7 +1031,7 @@ function FilterBar({
                     className={cn(
                       "rounded-full border px-2.5 py-1 font-mono text-[11px] transition-colors",
                       on
-                        ? "border-accent-border bg-accent-subtle text-accent"
+                        ? "border-accent-border bg-accent-subtle text-accent-lit"
                         : "border-border text-fg-subtle hover:border-border-strong",
                     )}
                   >

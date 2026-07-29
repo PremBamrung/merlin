@@ -72,13 +72,13 @@ export function ItemCard({
       to={`/library/${item.id}`}
       className={cn(
         "group flex flex-col overflow-hidden rounded-[10px] border border-border bg-surface transition-colors hover:border-border-strong",
-        focused && "border-accent-border ring-2 ring-accent/50",
+        focused && "border-signal/60 ring-2 ring-signal/40",
       )}
     >
       <Thumb item={item} />
       <div className="flex flex-1 flex-col gap-2 p-3">
-        {isFailed && <span className="eyebrow text-accent">⛔ Failed</span>}
-        <h3 className="line-clamp-2 text-[14px] font-medium leading-snug text-fg">
+        {isFailed && <span className="eyebrow text-fail">⛔ Failed</span>}
+        <h3 className="line-clamp-2 font-display text-[14px] font-medium leading-snug text-fg">
           <Highlight text={item.title ?? "Untitled"} term={highlight} />
         </h3>
 
@@ -147,7 +147,7 @@ export function ItemRow({
       to={`/library/${item.id}`}
       className={cn(
         "group flex items-center gap-3 rounded-[10px] border border-border bg-surface px-3 py-2.5 transition-colors hover:border-border-strong",
-        focused && "border-accent-border ring-2 ring-accent/50",
+        focused && "border-signal/60 ring-2 ring-signal/40",
       )}
     >
       <div className="relative aspect-video w-28 shrink-0 overflow-hidden rounded-md bg-surface-2">
@@ -162,7 +162,7 @@ export function ItemRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <StatusDot status={item.status} />
-          <h3 className="truncate text-[14px] font-medium text-fg">
+          <h3 className="truncate font-display text-[14px] font-medium text-fg">
             <Highlight text={item.title ?? "Untitled"} term={highlight} />
           </h3>
         </div>

@@ -28,7 +28,7 @@ export function Omnibox({ className }: { className?: string }) {
   return (
     <div className={cn("space-y-2", className)}>
       <div className="flex items-center gap-2 rounded-[12px] border border-border bg-surface px-4 py-3 transition-colors focus-within:border-border-strong">
-        <Sparkles className="size-5 shrink-0 text-accent" strokeWidth={1.5} />
+        <Sparkles className="size-5 shrink-0 text-accent-lit" strokeWidth={1.5} />
         <input
           value={value}
           onChange={(e) => setValue(e.target.value)}

@@ -113,7 +113,6 @@ function Reader({
   const [tab, setTab] = useState<"summary" | "transcript">("summary");
 
   const { prev, next } = useAdjacentItems(item.id);
-
   // ←/→ walk to the adjacent library item (suppressed while typing).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -234,7 +233,7 @@ function Reader({
                     className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[13px] capitalize text-fg-muted transition-colors hover:bg-surface hover:text-fg"
                   >
                     {l}
-                    {item.summary_length === l && <Check className="size-3.5 text-accent" />}
+                    {item.summary_length === l && <Check className="size-3.5 text-accent-lit" />}
                   </button>
                 ))}
               </PopoverContent>
@@ -254,7 +253,7 @@ function Reader({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onSelect={() => setConfirmDel(true)}
-                className="text-accent focus:text-accent"
+                className="text-fail focus:text-fail"
               >
                 <Trash2 className="size-4" /> Delete
               </DropdownMenuItem>
@@ -289,7 +288,7 @@ function Reader({
               }}
               className="group flex items-start gap-2 text-left"
             >
-              <h1 className="text-[28px] font-semibold leading-tight tracking-tight">
+              <h1 className="font-display text-[28px] font-semibold leading-tight tracking-tight">
                 {item.title ?? "Untitled"}
               </h1>
               <Pencil className="mt-2.5 size-4 shrink-0 text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100" />
@@ -597,7 +596,7 @@ function Highlight({ text, term }: { text: string; term: string }) {
   return (
     <>
       {text.slice(0, idx)}
-      <mark className="bg-accent/30 text-fg">{text.slice(idx, idx + term.length)}</mark>
+      <mark className="bg-accent/40 text-fg">{text.slice(idx, idx + term.length)}</mark>
       {text.slice(idx + term.length)}
     </>
   );
@@ -654,7 +653,7 @@ function TopicAssign({
           className={cn(
             "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px]",
             a.is_primary
-              ? "border-accent-border bg-accent-subtle text-accent"
+              ? "border-accent-border bg-accent-subtle text-accent-lit"
               : "border-border text-fg-muted",
           )}
         >
@@ -663,7 +662,7 @@ function TopicAssign({
             title={a.is_primary ? "Primary topic" : "Make primary"}
             className="inline-flex items-center gap-1"
           >
-            {a.is_primary && <Star className="size-3 fill-accent" />}
+            {a.is_primary && <Star className="size-3 fill-accent-lit stroke-accent-lit" />}
             {a.label}
           </button>
           <button onClick={() => remove(a.slug)} aria-label={`Remove ${a.label}`}>

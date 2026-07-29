@@ -164,7 +164,7 @@ export default function TopicsRoute() {
     <div className="mx-auto max-w-[900px] space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-[24px] font-semibold">Topics</h1>
+          <h1 className="font-display text-[24px] font-semibold">Topics</h1>
           <p className="mt-1 text-[13px] text-fg-muted">
             Your navigation taxonomy — the buckets the Feed filters by.
           </p>
@@ -220,7 +220,7 @@ export default function TopicsRoute() {
       {/* Review queue */}
       {pending.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-[15px] font-semibold">
+          <h2 className="font-display text-[15px] font-semibold">
             Proposed topics{" "}
             <span className="text-fg-subtle">({pending.length})</span>
           </h2>
@@ -234,7 +234,7 @@ export default function TopicsRoute() {
 
       {/* Manage taxonomy */}
       <section className="space-y-3">
-        <h2 className="text-[15px] font-semibold">Manage</h2>
+        <h2 className="font-display text-[15px] font-semibold">Manage</h2>
         <CreateTopicRow />
         {topics.isLoading ? null : (topics.data?.length ?? 0) === 0 ? (
           <EmptyState

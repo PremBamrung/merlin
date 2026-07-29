@@ -2,14 +2,23 @@ import { useMemo } from "react";
 
 type Point = { date: string; count: number };
 
-// Fixed thresholds (not max-relative) so a single bulk-import day doesn't wash
-// out ordinary daily activity — the old area chart's failure mode.
+/**
+ * Fixed thresholds (not max-relative) so a single bulk-import day doesn't wash
+ * out ordinary daily activity — the old area chart's failure mode.
+ *
+ * Magnitude, so the fills are a **sequential ramp**: one hue (indigo, 265°),
+ * monotone lightness, brightening with the count. Opacity tints were the old
+ * approach and they aren't a ramp — they collapse against whatever sits behind
+ * them. Validated as an ordinal ramp on the card surface (#232529): monotone L,
+ * every adjacent gap ≥ 0.06, dim end 2.52:1 — the level-1 square has to be
+ * visible against the empty one, which the old 28% tint barely was.
+ */
 const LEVEL_FILL = [
   "var(--color-surface-2)",
-  "rgba(255,75,75,0.28)",
-  "rgba(255,75,75,0.48)",
-  "rgba(255,75,75,0.72)",
-  "#ff4b4b",
+  "#3e5fad",
+  "#577aca",
+  "#7195e8",
+  "#8bb2ff",
 ];
 function level(count: number): number {
   if (count <= 0) return 0;

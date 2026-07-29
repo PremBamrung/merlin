@@ -68,7 +68,7 @@ export function CopyButton({
       variant="ghost"
       size={label ? "sm" : size}
       onClick={copy}
-      className={cn(copied && "text-accent", className)}
+      className={cn(copied && "text-success", className)}
       aria-label={label ?? "Copy"}
     >
       <Icon className="size-3.5" />

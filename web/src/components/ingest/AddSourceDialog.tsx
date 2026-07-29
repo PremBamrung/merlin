@@ -126,7 +126,7 @@ export function AddSourceDialog() {
                     className={cn(
                       "rounded-md border px-2.5 py-1 font-mono text-[11px] uppercase transition-colors",
                       langs.includes(l)
-                        ? "border-accent-border bg-accent-subtle text-accent"
+                        ? "border-accent-border bg-accent-subtle text-accent-lit"
                         : "border-border text-fg-subtle hover:border-border-strong",
                     )}
                   >
@@ -138,7 +138,7 @@ export function AddSourceDialog() {
           </div>
 
           {ingest.isError && (
-            <p className="text-[13px] text-accent">{(ingest.error as Error).message}</p>
+            <p className="text-[13px] text-fail">{(ingest.error as Error).message}</p>
           )}
         </div>
 

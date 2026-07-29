@@ -90,7 +90,7 @@ export function ItemChat({
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-4">
         {isIdle ? (
           <div className="flex h-full flex-col items-center justify-center gap-5 text-center">
-            <div className="flex size-11 items-center justify-center rounded-full bg-accent-subtle text-accent">
+            <div className="flex size-11 items-center justify-center rounded-full bg-accent-subtle text-accent-lit">
               <Sparkles className="size-5" strokeWidth={1.5} />
             </div>
             <div className="space-y-1">
@@ -106,7 +106,7 @@ export function ItemChat({
                   onClick={() => runSend(s)}
                   className="group flex items-center gap-2.5 rounded-[10px] border border-border bg-surface-2 px-3.5 py-2.5 text-left text-[13px] text-fg-muted transition-colors hover:border-border-strong hover:text-fg"
                 >
-                  <Sparkles className="size-3.5 shrink-0 text-fg-subtle group-hover:text-accent" />
+                  <Sparkles className="size-3.5 shrink-0 text-fg-subtle group-hover:text-accent-lit" />
                   {s}
                 </button>
               ))}
