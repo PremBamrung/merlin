@@ -25,7 +25,6 @@ export function useItems(query: ItemQuery) {
     queryKey: keys.items(query),
     queryFn: () => getItems(query),
     placeholderData: keepPreviousData,
-    staleTime: 30_000,
   });
 }
 
@@ -36,6 +35,20 @@ export function useItem(id: string | undefined) {
     queryFn: () => getItem(id!),
     enabled: !!id,
   });
+}
+
+/**
+ * Warm an item's detail into the cache before it's asked for — called on card
+ * hover/focus, so the Reader's shared-element morph lands on real content
+ * instead of a skeleton. A no-op once the item is cached and fresh.
+ */
+export function usePrefetchItem() {
+  const qc = useQueryClient();
+  return (id: string) =>
+    qc.prefetchQuery({
+      queryKey: keys.item(id),
+      queryFn: () => getItem(id),
+    });
 }
 
 /**

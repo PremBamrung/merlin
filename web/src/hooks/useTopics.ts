@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   acceptProposal,
   backfillTopics,
@@ -25,7 +30,7 @@ export function useTopics(status = "active", unread = false) {
   return useQuery({
     queryKey: [...keys.topics(), status, unread ? "unread" : "all"],
     queryFn: () => getTopics(status, unread),
-    staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -35,6 +40,7 @@ export function useUncategorisedCount(unread = false) {
   return useQuery({
     queryKey: [...keys.uncategorisedCount(), unread ? "unread" : "all"],
     queryFn: async () => (await getUncategorisedCount(unread)).count,
+    placeholderData: keepPreviousData,
     staleTime: 15_000,
   });
 }

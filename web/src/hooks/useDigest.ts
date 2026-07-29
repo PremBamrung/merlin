@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { getInbox, retryFailed, clearFailed } from "@/lib/api/endpoints";
 import { keys } from "@/lib/queryKeys";
 import { useActiveTasks } from "@/store/tasks";
@@ -13,6 +18,7 @@ export function useInbox(limit = 50) {
   return useQuery({
     queryKey: keys.inbox(),
     queryFn: () => getInbox(limit),
+    placeholderData: keepPreviousData,
     staleTime: 15_000,
   });
 }

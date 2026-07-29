@@ -12,6 +12,7 @@ import {
   stripMarkdown,
   thumbnailUrl,
 } from "@/lib/format";
+import { usePrefetchItem } from "@/hooks/useItems";
 import { cn } from "@/lib/utils";
 
 /** A thumbnail with a 16:9 crop and a graceful no-image fallback. */
@@ -61,6 +62,7 @@ export function ItemCard({
     .join(" · ");
   const isFailed = item.status === "failed";
   const ref = useRef<HTMLAnchorElement>(null);
+  const prefetch = usePrefetchItem();
 
   useEffect(() => {
     if (focused) ref.current?.scrollIntoView({ block: "nearest" });
@@ -70,6 +72,8 @@ export function ItemCard({
     <Link
       ref={ref}
       to={`/library/${item.id}`}
+      onMouseEnter={() => prefetch(item.id)}
+      onFocus={() => prefetch(item.id)}
       className={cn(
         "group flex flex-col overflow-hidden rounded-[10px] border border-border bg-surface transition-colors hover:border-border-strong",
         focused && "border-signal/60 ring-2 ring-signal/40",
@@ -136,6 +140,7 @@ export function ItemRow({
     .join(" · ");
   const src = thumbnailUrl(item);
   const ref = useRef<HTMLAnchorElement>(null);
+  const prefetch = usePrefetchItem();
 
   useEffect(() => {
     if (focused) ref.current?.scrollIntoView({ block: "nearest" });
@@ -145,6 +150,8 @@ export function ItemRow({
     <Link
       ref={ref}
       to={`/library/${item.id}`}
+      onMouseEnter={() => prefetch(item.id)}
+      onFocus={() => prefetch(item.id)}
       className={cn(
         "group flex items-center gap-3 rounded-[10px] border border-border bg-surface px-3 py-2.5 transition-colors hover:border-border-strong",
         focused && "border-signal/60 ring-2 ring-signal/40",

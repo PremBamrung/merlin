@@ -24,6 +24,7 @@ import {
   useDeleteItem,
   useClearSummary,
   useAdjacentItems,
+  usePrefetchItem,
 } from "@/hooks/useItems";
 import { useTopics, useSetItemTopics } from "@/hooks/useTopics";
 import { useResummarize, useRetry } from "@/hooks/useIngest";
@@ -113,6 +114,16 @@ function Reader({
   const [tab, setTab] = useState<"summary" | "transcript">("summary");
 
   const { prev, next } = useAdjacentItems(item.id);
+  const prefetch = usePrefetchItem();
+
+  // Warm both neighbours, so ←/→ (and the header arrows) land on content
+  // instead of the skeleton. Two requests, once, for the item you're reading.
+  useEffect(() => {
+    if (prev) prefetch(prev.id);
+    if (next) prefetch(next.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prev?.id, next?.id]);
+
   // ←/→ walk to the adjacent library item (suppressed while typing).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

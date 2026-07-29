@@ -17,7 +17,13 @@ import "./styles/index.css";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30_000,
+      // Five minutes, not thirty seconds. This is a personal knowledge base:
+      // nothing changes behind your back except your own ingests, and those
+      // invalidate the keys they touch explicitly. The old 30s meant that coming
+      // back to the Library after half a minute refetched — and flashed a
+      // skeleton over data that was already in the cache.
+      // (Chat's own queries set their own staleTime and are unaffected.)
+      staleTime: 5 * 60_000,
       retry: 1,
       refetchOnWindowFocus: false,
     },

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   getSourceTypes,
   getTags,
@@ -11,7 +11,7 @@ export function useSourceTypes() {
   return useQuery({
     queryKey: keys.sourceTypes(),
     queryFn: getSourceTypes,
-    staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -20,7 +20,7 @@ export function useTags(unread = false) {
   return useQuery({
     queryKey: [...keys.tags(), unread ? "unread" : "all"],
     queryFn: () => getTags(unread),
-    staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -28,11 +28,11 @@ export function useHealth() {
   return useQuery({ queryKey: keys.health(), queryFn: getHealth, staleTime: 60_000 });
 }
 
-/** Total library count — drives the sidebar/topbar badge. */
+/** Total library count — drives the Library header tally. */
 export function useLibraryCount() {
   return useQuery({
     queryKey: keys.insights("library-count"),
     queryFn: async () => (await getItems({ per_page: 1 })).total,
-    staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 }
