@@ -1,4 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="#0a0a0b"/>
-  <path d="M16 6l1.8 6.2L24 14l-6.2 1.8L16 22l-1.8-6.2L8 14l6.2-1.8z" fill="#ff4b4b"/>
+<!-- The mark, `star` form (see src/components/brand/Mark.tsx). NOT the monogram:
+     at favicon sizes the drawn M is under 4px tall and turns to mush, which is
+     the documented blocker on using M1 here. Geometry is D2 — steeper cone, wide
+     brim, and the brim separated from the cone by 0.9 units of ground. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <rect width="24" height="24" rx="5" fill="#1A1B1F"/>
+  <path d="M12 2.4L17.8 17.6H6.2Z" fill="#2B3C9E"/>
+  <circle cx="12" cy="13.2" r="2.5" fill="#FFB94A"/>
+  <rect x="4" y="18.5" width="16" height="2.6" rx="1.3" fill="#4B5CB8"/>
 </svg>

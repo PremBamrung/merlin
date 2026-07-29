@@ -140,7 +140,7 @@
 }
 
 /* ------------------------------------------------------------------ *
- * Reusable type primitives
+ * Reusable type primitives + the brand lockup
  * ------------------------------------------------------------------ */
 @layer components {
   /* The signature eyebrow: mono, uppercase, tracked, subtle */
@@ -160,6 +160,57 @@
   }
   .no-scrollbar::-webkit-scrollbar {
     display: none;
+  }
+
+  /* ── wordmark (L1) ──────────────────────────────────────────────
+     Ported verbatim from prototype/src/styles/index.css:107-156. The hat
+     replaces the dot of the i and carries no star — the gold period two
+     letters later already IS the gold point. Set with a dotless ı (U+0131)
+     plus an absolutely-positioned SVG; see components/brand/Wordmark.tsx.
+     0.64em / bottom .62em is the working size: the first pass at .52em read as
+     a bare triangle because the brim vanished. Needs ~2.3rem of headroom in
+     any container, since the hat overflows the line box. */
+  .wm {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.045em;
+    line-height: 1;
+    white-space: nowrap;
+    display: inline-block;
+    color: var(--color-fg);
+  }
+  /* A DRAWN round dot, not the "." character: Archivo's period is a hard
+     square (verified by rendering it at 400px), and the round dot is locked
+     for the wordmark and every mark's gold point alike. */
+  .wm .dot {
+    display: inline-block;
+    width: 0.145em;
+    height: 0.145em;
+    border-radius: 50%;
+    background: var(--color-signal);
+    margin-left: 0.055em;
+    vertical-align: baseline;
+  }
+  .ih {
+    position: relative;
+    display: inline-block;
+  }
+  .ih > svg.hat {
+    position: absolute;
+    left: 50%;
+    bottom: 0.62em;
+    width: 0.64em;
+    height: 0.64em;
+    transform: translateX(-50%);
+    overflow: visible;
+  }
+  /* The squat hat: wider, shorter, sitting closer to the i's stem, so the brim
+     is ~2.4px rather than ~1.3px at the 1.16rem the top bar uses. Sized off a
+     24×19 viewBox, hence the non-square box. */
+  .ih-squat > svg.hat {
+    bottom: 0.55em;
+    width: 0.7em;
+    height: 0.56em;
   }
 }
 
