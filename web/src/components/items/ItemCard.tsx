@@ -13,6 +13,7 @@ import {
   thumbnailUrl,
 } from "@/lib/format";
 import { usePrefetchItem } from "@/hooks/useItems";
+import { vtThumb, vtTitle } from "@/lib/viewTransition";
 import { cn } from "@/lib/utils";
 
 /** A thumbnail with a 16:9 crop and a graceful no-image fallback. */
@@ -26,6 +27,9 @@ function Thumb({ item }: { item: ListItem }) {
           src={src}
           alt=""
           loading="lazy"
+          // Flies into the Reader's thumbnail. Only ever one visible element per
+          // name — see lib/viewTransition.ts.
+          style={{ viewTransitionName: vtThumb(item.id) }}
           className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
         />
       ) : (
@@ -72,6 +76,7 @@ export function ItemCard({
     <Link
       ref={ref}
       to={`/library/${item.id}`}
+      viewTransition
       onMouseEnter={() => prefetch(item.id)}
       onFocus={() => prefetch(item.id)}
       className={cn(
@@ -82,7 +87,10 @@ export function ItemCard({
       <Thumb item={item} />
       <div className="flex flex-1 flex-col gap-2 p-3">
         {isFailed && <span className="eyebrow text-fail">⛔ Failed</span>}
-        <h3 className="line-clamp-2 font-display text-[14px] font-medium leading-snug text-fg">
+        <h3
+          style={{ viewTransitionName: vtTitle(item.id) }}
+          className="line-clamp-2 font-display text-[14px] font-medium leading-snug text-fg"
+        >
           <Highlight text={item.title ?? "Untitled"} term={highlight} />
         </h3>
 
@@ -150,6 +158,7 @@ export function ItemRow({
     <Link
       ref={ref}
       to={`/library/${item.id}`}
+      viewTransition
       onMouseEnter={() => prefetch(item.id)}
       onFocus={() => prefetch(item.id)}
       className={cn(
@@ -169,7 +178,10 @@ export function ItemRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <StatusDot status={item.status} />
-          <h3 className="truncate font-display text-[14px] font-medium text-fg">
+          <h3
+            style={{ viewTransitionName: vtTitle(item.id) }}
+            className="truncate font-display text-[14px] font-medium text-fg"
+          >
             <Highlight text={item.title ?? "Untitled"} term={highlight} />
           </h3>
         </div>

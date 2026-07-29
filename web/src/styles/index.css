@@ -214,6 +214,17 @@
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * The one signature transition: a card's thumbnail and title fly into the
+ * Reader instead of the page swapping. Driven by React Router's `viewTransition`
+ * on the card link plus matching `view-transition-name`s (lib/viewTransition.ts)
+ * — no library, no layout animation code.
+ * ------------------------------------------------------------------ */
+::view-transition-group(*) {
+  animation-duration: 260ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
 /* Reduced motion: kill transforms/animation (§7) */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -223,6 +234,13 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  /* The pseudo-elements above are outside the `*` tree, so they need saying
+     twice — otherwise the morph still runs for someone who asked it not to. */
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }
 

@@ -70,6 +70,7 @@ import {
   thumbnailUrl,
 } from "@/lib/format";
 import { detailRows } from "@/lib/itemDetails";
+import { vtThumb, vtTitle } from "@/lib/viewTransition";
 import { cn } from "@/lib/utils";
 
 const LENGTHS = ["short", "long"] as const;
@@ -303,7 +304,10 @@ function Reader({
               }}
               className="group flex items-start gap-2 text-left"
             >
-              <h1 className="font-display text-[28px] font-semibold leading-tight tracking-tight">
+              <h1
+                style={{ viewTransitionName: vtTitle(item.id) }}
+                className="font-display text-[28px] font-semibold leading-tight tracking-tight"
+              >
                 {item.title ?? "Untitled"}
               </h1>
               <Pencil className="mt-2.5 size-4 shrink-0 text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100" />
@@ -431,6 +435,8 @@ function Reader({
               <img
                 src={thumb}
                 alt={item.title ?? ""}
+                // The other half of the card → Reader morph (see the grid card).
+                style={{ viewTransitionName: vtThumb(item.id) }}
                 className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
               />
               {watchUrl && (
