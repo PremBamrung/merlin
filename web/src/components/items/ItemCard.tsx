@@ -9,6 +9,7 @@ import {
   relDate,
   formatDuration,
   shortText,
+  stripMarkdown,
   thumbnailUrl,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -93,7 +94,10 @@ export function ItemCard({
             {isFailed ? (
               (item.error_message ?? "Ingest failed.")
             ) : (
-              <Highlight text={shortText(item.summary, 140)} term={highlight} />
+              <Highlight
+                text={shortText(stripMarkdown(item.summary), 140)}
+                term={highlight}
+              />
             )}
           </p>
         )}

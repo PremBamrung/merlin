@@ -50,6 +50,30 @@ export function shortText(text: string | null | undefined, limit: number): strin
   return t.length > limit ? t.slice(0, limit) + "…" : t;
 }
 
+/**
+ * Flatten markdown to plain text for card/list excerpts, where the raw summary
+ * source (`### Overview`, `**AI**`, `[text](url)`, `- bullet`) would otherwise
+ * render verbatim and look broken. Strips headings, emphasis, inline/fenced
+ * code, links/images, list bullets, blockquotes and rules, then collapses all
+ * whitespace to single spaces. Pragmatic (not a full parser) — tuned to the
+ * markdown our summaries actually emit. Pair with `shortText` to cap length.
+ */
+export function stripMarkdown(text: string | null | undefined): string {
+  return (text ?? "")
+    .replace(/```[\s\S]*?```/g, " ") // fenced code blocks
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1") // images → alt
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1") // links → text
+    .replace(/`([^`]+)`/g, "$1") // inline code → content
+    .replace(/^[ \t]*#{1,6}[ \t]+/gm, "") // ATX headings
+    .replace(/^[ \t]*>[ \t]?/gm, "") // blockquotes
+    .replace(/^[ \t]*[-*+][ \t]+/gm, "") // unordered bullets
+    .replace(/^[ \t]*\d+\.[ \t]+/gm, "") // ordered bullets
+    .replace(/^[ \t]*([-*_])\1{2,}[ \t]*$/gm, " ") // horizontal rules
+    .replace(/(\*\*|__|\*|_|~~)/g, "") // emphasis markers
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Compact relative date: "today", "3d ago", "Jun 11". */
 export function relDate(iso: string | null | undefined): string {
   if (!iso) return "";
