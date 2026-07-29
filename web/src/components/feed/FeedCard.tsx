@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ChevronLeft,
@@ -16,6 +17,33 @@ import type { ListItem } from "@/lib/api/endpoints";
 import { formatDuration, relDate, thumbnailUrl } from "@/lib/format";
 import { detailRows } from "@/lib/itemDetails";
 import { cn } from "@/lib/utils";
+
+/**
+ * The gold-leaf save — one of exactly two state-tied motion moments in the app
+ * (the other is the ingest ring on the mark). It fires on the *transition* into
+ * saved, never on mount: a card that is already saved must not pop when you
+ * swipe onto it. Unsaving is silent — taking something back doesn't deserve a
+ * flourish. `prefers-reduced-motion` neutralises it globally.
+ */
+function SaveStar({ saved }: { saved: boolean }) {
+  const wasSaved = useRef(saved);
+  const [leafing, setLeafing] = useState(false);
+
+  useEffect(() => {
+    const justSaved = saved && !wasSaved.current;
+    wasSaved.current = saved;
+    if (!justSaved) return;
+    setLeafing(true);
+    const t = window.setTimeout(() => setLeafing(false), 400);
+    return () => window.clearTimeout(t);
+  }, [saved]);
+
+  return (
+    <Star
+      className={cn("size-4", saved && "fill-signal", leafing && "gold-leaf")}
+    />
+  );
+}
 
 const SOURCE_ICON: Record<string, LucideIcon> = {
   youtube: MonitorPlay,
@@ -136,7 +164,7 @@ export function FeedCard({
           aria-label={saved ? "Unsave" : "Save"}
           className={cn(saved && "text-signal")}
         >
-          <Star className={cn("size-4", saved && "fill-signal")} />
+          <SaveStar saved={saved} />
           <span className="hidden sm:inline">{saved ? "Saved" : "Save"}</span>
         </Button>
 
