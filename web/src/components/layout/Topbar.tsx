@@ -3,7 +3,9 @@ import { NavLink, Link, useLocation } from "react-router-dom";
 import { Plus, Search } from "lucide-react";
 import { Mark } from "@/components/brand/Mark";
 import { Wordmark } from "@/components/brand/Wordmark";
+import { IngestRing } from "./IngestRing";
 import { Button } from "@/components/ui/button";
+import { useIngestActivity } from "@/hooks/useTaskProgress";
 import { useUnreadCount } from "@/hooks/useFeed";
 import { useUi } from "@/store/ui";
 import { cn } from "@/lib/utils";
@@ -36,6 +38,7 @@ export function Topbar({ className }: { className?: string }) {
   const setPaletteOpen = useUi((s) => s.setPaletteOpen);
   const openAdd = useUi((s) => s.openAdd);
   const unread = useUnreadCount();
+  const { running } = useIngestActivity();
   const isMac = navigator.platform.toLowerCase().includes("mac");
   const markSize = 26;
   const navRef = useRef<HTMLElement>(null);
@@ -50,6 +53,8 @@ export function Topbar({ className }: { className?: string }) {
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [pathname]);
 
+  const ingestLabel = running > 0 ? `${running} ingest${running === 1 ? "" : "s"} running` : undefined;
+
   return (
     <header
       className={cn(
@@ -62,9 +67,13 @@ export function Topbar({ className }: { className?: string }) {
       <Link
         to="/"
         className="flex shrink-0 items-center gap-2 pt-1"
-        aria-label="Merlin — home"
+        aria-label={ingestLabel ? `Merlin — home (${ingestLabel})` : "Merlin — home"}
+        title={ingestLabel}
       >
-        <Mark size={markSize} decorative />
+        <span className="relative flex items-center justify-center">
+          <Mark size={markSize} decorative />
+          <IngestRing size={markSize} />
+        </span>
         <Wordmark fontSize="1.16rem" />
       </Link>
 

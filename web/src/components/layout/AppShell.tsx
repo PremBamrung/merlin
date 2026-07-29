@@ -5,6 +5,7 @@ import { Topbar } from "./Topbar";
 import { CommandPalette } from "./CommandPalette";
 import { AddSourceDialog } from "@/components/ingest/AddSourceDialog";
 import { ResummarizeConfirmDialog } from "@/components/ingest/ResummarizeConfirmDialog";
+import { TaskStreams } from "./TaskStreams";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { cn } from "@/lib/utils";
 
@@ -74,6 +75,9 @@ export function AppShell() {
       <CommandPalette />
       <AddSourceDialog />
       <ResummarizeConfirmDialog />
+      {/* Headless: the only SSE connection per in-flight ingest. Lives here so
+          progress (and the top-bar ring) survives navigation away from Today. */}
+      <TaskStreams />
     </TooltipProvider>
   );
 }
