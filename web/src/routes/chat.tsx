@@ -11,7 +11,6 @@ import {
   MessageSquare,
   Plus,
   X,
-  Menu,
   PanelLeft,
   MoreHorizontal,
   Pencil,
@@ -220,7 +219,6 @@ function ChatConversation({
 }) {
   const qc = useQueryClient();
   const openAdd = useUi((s) => s.openAdd);
-  const setNavOpen = useUi((s) => s.setNavOpen);
   const setChatDraft = useUi((s) => s.setChatDraft);
   const clearChatDraft = useUi((s) => s.clearChatDraft);
   const [params, setParams] = useSearchParams();
@@ -343,21 +341,11 @@ function ChatConversation({
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      {/* Header. On desktop the global topbar already shows the "Chat" title, so
-          this row carries only Filters. On mobile the topbar is hidden, so this
-          row also owns the title + the panel/new-chat/add-source controls. */}
+      {/* Header. App navigation lives in the global topbar on every width, so
+          this row only owns the chat's own controls: the thread panel, the title
+          and Filters. */}
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5 md:border-0 md:px-6 md:py-4">
         <div className="flex items-center gap-1 md:hidden">
-          {/* App nav (Today/Feed/…) — the global topbar that normally hosts this
-              hamburger is hidden on the Chat route on mobile. */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setNavOpen(true)}
-            aria-label="Open navigation"
-          >
-            <Menu className="size-5" />
-          </Button>
           {/* Conversations (this chat's thread list). */}
           <Button
             variant="ghost"

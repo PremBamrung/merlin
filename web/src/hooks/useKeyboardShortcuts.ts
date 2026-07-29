@@ -20,6 +20,7 @@ const GO: Record<string, string> = {
   t: "/",
   f: "/feed",
   l: "/library",
+  o: "/topics",
   c: "/chat",
   i: "/insights",
 };

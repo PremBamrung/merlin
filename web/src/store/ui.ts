@@ -26,9 +26,6 @@ type UiState = {
   resummarizePrompt: ResummarizePrompt | null;
   openResummarizePrompt: (p: ResummarizePrompt) => void;
   closeResummarizePrompt: () => void;
-  // Mobile navigation drawer (only rendered below the `md` breakpoint)
-  navOpen: boolean;
-  setNavOpen: (open: boolean) => void;
   // Library view prefs (persisted)
   density: Density;
   view: LibraryView;
@@ -63,9 +60,6 @@ export const useUi = create<UiState>()(
       resummarizePrompt: null,
       openResummarizePrompt: (p) => set({ resummarizePrompt: p }),
       closeResummarizePrompt: () => set({ resummarizePrompt: null }),
-
-      navOpen: false,
-      setNavOpen: (open) => set({ navOpen: open }),
 
       density: "cozy",
       view: "grid",
