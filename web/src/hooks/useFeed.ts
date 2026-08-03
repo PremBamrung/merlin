@@ -74,7 +74,7 @@ function bumpUnread(
 
 function settleRead(qc: ReturnType<typeof useQueryClient>, item?: ListItem) {
   qc.invalidateQueries({ queryKey: keys.unreadCount() });
-  qc.invalidateQueries({ queryKey: keys.items() }); // Library/Today reflect read state
+  qc.invalidateQueries({ queryKey: keys.items() }); // the Library reflects read state
   if (item)
     qc.setQueryData<ListItem>(keys.item(item.id), (old) =>
       old ? { ...old, read_at: item.read_at } : old,

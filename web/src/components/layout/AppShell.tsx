@@ -67,6 +67,12 @@ export function AppShell() {
                columns, reading views cap their own measure. The sidebar's 240px
                went to the content, not to a narrower measure. */
             <div className="mx-auto w-full max-w-[3000px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10 2xl:px-14">
+              {/* Ingest state deliberately does *not* live here. Anything the
+                  shell renders above the outlet shoves every route's content
+                  down the moment an ingest starts and back up when it ends.
+                  The strips sit in the Library's own slot, below its controls;
+                  the top-bar ring and the task toasts are what reach you on
+                  the other routes, and neither one reflows anything. */}
               <Outlet />
             </div>
           )}
@@ -76,7 +82,7 @@ export function AppShell() {
       <AddSourceDialog />
       <ResummarizeConfirmDialog />
       {/* Headless: the only SSE connection per in-flight ingest. Lives here so
-          progress (and the top-bar ring) survives navigation away from Today. */}
+          progress (and the top-bar ring) survives navigation between routes. */}
       <TaskStreams />
     </TooltipProvider>
   );

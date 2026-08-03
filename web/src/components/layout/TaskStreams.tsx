@@ -9,7 +9,7 @@ function TaskStream({ taskId }: { taskId: string }) {
 /**
  * Headless: streams every ingest submitted this session, one connection each.
  * Mounted once in the app shell so progress keeps flowing — and the top-bar ring
- * keeps turning — on every route, not only on Today where the task rows live.
+ * keeps turning — on every route, wherever you navigate mid-ingest.
  */
 export function TaskStreams() {
   const activeIds = useActiveTasks((s) => s.activeIds);

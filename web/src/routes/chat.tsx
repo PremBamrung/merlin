@@ -88,7 +88,7 @@ export default function ChatRoute() {
   const activeId = params.get("thread") ?? fallbackId;
 
   // Canonicalise the URL so a refresh keeps the same thread and the sidebar can
-  // highlight it — without clobbering a `?q=` prefill from the Today omnibox.
+  // highlight it — without clobbering a `?q=` prefill from the command palette.
   useEffect(() => {
     if (!params.get("thread")) {
       const next = new URLSearchParams(params);
@@ -315,7 +315,7 @@ function ChatConversation({
   const filtersActive =
     (filters.source_types?.length ?? 0) + (filters.tags?.length ?? 0);
 
-  // Prefill from ?q= (Today omnibox / command palette) — auto-send once on a
+  // Prefill from ?q= (the command palette's "Ask:" action) — auto-send once on a
   // fresh thread, then strip q while keeping the thread id.
   useEffect(() => {
     const q = params.get("q");

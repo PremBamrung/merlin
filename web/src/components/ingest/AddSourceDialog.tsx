@@ -76,8 +76,9 @@ export function AddSourceDialog() {
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               onKeyDown={(e) => {
-                // Enter in the single-line URL field submits, mirroring the
-                // Today omnibox (the ⌘/Ctrl+Enter shortcut still works too).
+                // Enter in the single-line URL field submits — this dialog is
+                // now the only paste-a-link surface, so it has to be as quick
+                // as the omnibox it replaced. ⌘/Ctrl+Enter still works too.
                 if (e.key === "Enter") {
                   e.preventDefault();
                   submit();

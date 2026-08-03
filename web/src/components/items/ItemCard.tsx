@@ -47,7 +47,7 @@ function Thumb({ item }: { item: ListItem }) {
 }
 
 /**
- * Library/Today card: thumbnail, duration, title, mono meta line, status dot,
+ * Library card: thumbnail, duration, title, mono meta line, status dot,
  * summary snippet, tag pills. Links to the Reader. `dense` drops the snippet.
  */
 export function ItemCard({

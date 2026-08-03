@@ -12,7 +12,8 @@ import { toast } from "@/components/ui/toaster";
 /**
  * Failed-ingest data (+ header counts). Backed by the digest endpoint, which
  * still returns the pending-review queue too, but the Feed has replaced that
- * surface — only `failed` is consumed now (by Today's NeedsAttention strip).
+ * surface — only `failed` is consumed now (by the Library's NeedsAttention
+ * strip).
  */
 export function useInbox(limit = 50) {
   return useQuery({
