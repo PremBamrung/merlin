@@ -9,11 +9,16 @@ import {
   Rows3,
   Star,
   FileText,
+  Sparkles,
+  Loader2,
+  CornerDownLeft,
   Library as LibraryIcon,
 } from "lucide-react";
 import { useItems } from "@/hooks/useItems";
 import { useTopics, useUncategorisedCount } from "@/hooks/useTopics";
+import { useIngestYouTube } from "@/hooks/useIngest";
 import { useDebounced } from "@/hooks/useDebounced";
+import { looksLikeUrl } from "@/lib/classify";
 import { useUi, type Density } from "@/store/ui";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -24,6 +29,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ItemGrid } from "@/components/items/ItemGrid";
+import { IngestingStrip } from "@/components/layout/IngestingStrip";
+import { NeedsAttention } from "@/components/layout/NeedsAttention";
 import { CardGridSkeleton } from "@/components/common/Skeletons";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
@@ -72,7 +79,15 @@ export default function LibraryRoute() {
   // Local, debounced search box that writes back to the URL.
   const [searchDraft, setSearchDraft] = useState(search);
   const debouncedSearch = useDebounced(searchDraft, 250);
+  // The box does double duty: a pasted link is an ingest, not a query. This is
+  // the only paste-and-Enter surface in the app (the top bar's field was a
+  // button impersonating an input, and got demoted to its icon).
+  const ingest = useIngestYouTube();
+  const isUrl = looksLikeUrl(searchDraft);
   useEffect(() => {
+    // A link in the box must never reach the search param — it would filter the
+    // grid down to nothing behind the hint that says we're about to ingest it.
+    if (looksLikeUrl(debouncedSearch)) return;
     if (debouncedSearch === search) return;
     const next: Record<string, string | undefined> = {
       search: debouncedSearch || undefined,
@@ -104,6 +119,16 @@ export default function LibraryRoute() {
     }
     setParams(sp, { replace: true });
   }
+
+  /** Enter on a pasted link: same defaults the Add source dialog opens with. */
+  const submitIngest = () => {
+    const url = searchDraft.trim();
+    if (!url || ingest.isPending) return;
+    ingest.mutate(
+      { url, languages: ["en", "fr"], summary_length: "short" },
+      { onSuccess: () => setSearchDraft("") },
+    );
+  };
 
   const query: ItemQuery = useMemo(
     () => ({
@@ -189,13 +214,38 @@ export default function LibraryRoute() {
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[240px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle" />
+          {/* The leading glyph is the mode indicator: magnifier while you're
+              searching, spark once the box is holding a link. */}
+          {ingest.isPending ? (
+            <Loader2 className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-accent-lit" />
+          ) : isUrl ? (
+            <Sparkles
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-accent-lit"
+              strokeWidth={1.5}
+            />
+          ) : (
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle" />
+          )}
           <Input
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
-            placeholder="Search your library…"
-            className="pl-9"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && isUrl) {
+                e.preventDefault();
+                submitIngest();
+              }
+            }}
+            placeholder="Search, or paste a link…"
+            aria-label={isUrl ? "Press Enter to ingest this link" : "Search your library"}
+            className={cn("pl-9", isUrl && "border-accent-border pr-24")}
           />
+          {/* Inside the field rather than under it: pasting a link shouldn't
+              shove the whole grid down a row. */}
+          {isUrl && !ingest.isPending && (
+            <span className="pointer-events-none absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 text-[11px] font-medium text-accent-lit">
+              <CornerDownLeft className="size-3" /> ingest
+            </span>
+          )}
         </div>
 
         <DropdownMenu>
@@ -356,6 +406,13 @@ export default function LibraryRoute() {
           </button>
         )}
       </div>
+
+      {/* Ingest state sits here — under the controls, above the results.
+          Both strips come and go on their own schedule, so anything above them
+          would be shoved down the page each time one appeared. Failures first:
+          they're the ones asking you to do something. */}
+      <NeedsAttention />
+      <IngestingStrip />
 
       {/* Body */}
       {q.isLoading ? (

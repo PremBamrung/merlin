@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation, useNavigate } from "react-router-dom";
 import { cancelTask, ingestYouTube, resummarize, retryItem } from "@/lib/api/endpoints";
 import type { components } from "@/lib/api/schema";
 import { keys } from "@/lib/queryKeys";
@@ -15,6 +16,11 @@ export function useIngestYouTube() {
   const qc = useQueryClient();
   const addTask = useActiveTasks((s) => s.add);
   const openResummarizePrompt = useUi((s) => s.openResummarizePrompt);
+  // "Add source" is global but the progress rows live on the Library, so an
+  // ingest started from Insights would have nowhere to be watched. The toast
+  // carries the way back — no extra chrome on the routes that don't need it.
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
   return useMutation({
     mutationFn: (body: components["schemas"]["IngestYouTubeRequest"]) =>
       ingestYouTube(body),
@@ -33,6 +39,10 @@ export function useIngestYouTube() {
       qc.invalidateQueries({ queryKey: keys.tasks() });
       toast.success("Queued ingest", {
         description: `Tracking task ${res.task_id.slice(0, 8)}…`,
+        action:
+          pathname === "/library"
+            ? undefined
+            : { label: "View", onClick: () => navigate("/library") },
       });
     },
     onError: (err: Error) => toast.error("Couldn't ingest", { description: err.message }),

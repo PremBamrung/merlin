@@ -15,9 +15,9 @@ function inEditable(el: EventTarget | null): boolean {
   );
 }
 
-// `g` then one of these navigates (PATTERNS §9).
+// `g` then one of these navigates (PATTERNS §9). There's no `g t` for home:
+// home *is* the Library now, which `g l` already reaches.
 const GO: Record<string, string> = {
-  t: "/",
   f: "/feed",
   l: "/library",
   o: "/topics",

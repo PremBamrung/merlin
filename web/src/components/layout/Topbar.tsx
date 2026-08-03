@@ -12,23 +12,28 @@ import { cn } from "@/lib/utils";
 
 /**
  * The app's only navigation: a horizontal top bar. It replaced a 240px left
- * sidebar (and its mobile drawer) — same six destinations, in the same order,
- * with ~240px more width for content on every route.
+ * sidebar (and its mobile drawer), with ~240px more width for content on every
+ * route.
  *
  * There is deliberately no route-title `<h1>`: the nav already says where you
  * are, and the old TITLES map had gone stale (it still listed the retired Inbox
  * and had never learned about Topics).
  *
- * Below `lg` the nav wraps to its own row *under* the brand. Six items need
- * ~330px, the brand ~150 and the right cluster ~340: they only coexist on one
+ * Today used to lead this list. It was a hero, two stat tiles and a grid that
+ * was Library page 1 by another name, so `/` now redirects to the Library and
+ * the destination is gone — which is also what got the nav back under the
+ * widths below.
+ *
+ * Below `lg` the nav wraps to its own row *under* the brand. Five items need
+ * ~275px, the brand ~150 and the right cluster ~340: they only coexist on one
  * line from about 1024px. At 390 the nav would otherwise run straight through
- * the wordmark, and at 768 the last three destinations sat *behind* the search
- * field, reachable only by scrolling a nav nobody expects to scroll.
+ * the wordmark, and at 768 the last destinations sat *behind* the search field,
+ * reachable only by scrolling a nav nobody expects to scroll.
  */
 const DESTINATIONS = [
-  { to: "/", label: "Today", end: true },
-  { to: "/feed", label: "Feed" },
+  // Library leads: it's the home page, so the first destination and `/` agree.
   { to: "/library", label: "Library" },
+  { to: "/feed", label: "Feed" },
   { to: "/topics", label: "Topics" },
   { to: "/chat", label: "Chat" },
   { to: "/insights", label: "Insights" },
@@ -44,9 +49,9 @@ export function Topbar({ className }: { className?: string }) {
   const navRef = useRef<HTMLElement>(null);
   const { pathname } = useLocation();
 
-  // At 390 six destinations don't fit on one line, so the nav row scrolls. Keep
-  // the destination you're actually on in view — otherwise landing on Insights
-  // shows a nav where nothing looks active.
+  // At 390 the destinations still don't fit on one line, so the nav row
+  // scrolls. Keep the one you're actually on in view — otherwise landing on
+  // Insights shows a nav where nothing looks active.
   useEffect(() => {
     navRef.current
       ?.querySelector("[aria-current='page']")
@@ -89,7 +94,6 @@ export function Topbar({ className }: { className?: string }) {
           <NavLink
             key={d.to}
             to={d.to}
-            end={d.end}
             className={({ isActive }) =>
               cn(
                 "shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-[13px] font-medium transition-colors",
@@ -119,21 +123,15 @@ export function Topbar({ className }: { className?: string }) {
           </NavLink>
         )}
 
-        {/* Full search field from `md` up, icon-only below it */}
-        <button
-          onClick={() => setPaletteOpen(true)}
-          className="hidden h-8 w-48 items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-[13px] text-fg-subtle transition-colors hover:border-border-strong md:flex lg:w-56"
-        >
-          <Search className="size-4" />
-          <span className="flex-1 text-left">Search…</span>
-          <kbd className="rounded-sm border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-fg-muted">
-            {isMac ? "⌘" : "Ctrl"}K
-          </kbd>
-        </button>
+        {/* Icon, not a field. This used to be a 224px button dressed as a text
+            input, which put two things that look like search boxes on the
+            Library — where only one of them was real. The palette it opens is
+            unchanged; the ⌘K hint moved into the tooltip. */}
         <button
           onClick={() => setPaletteOpen(true)}
           aria-label="Search"
-          className="flex size-8 items-center justify-center rounded-md border border-border bg-surface text-fg-subtle transition-colors hover:border-border-strong md:hidden"
+          title={`Search (${isMac ? "⌘" : "Ctrl"}K)`}
+          className="flex size-8 items-center justify-center rounded-md border border-border bg-surface text-fg-subtle transition-colors hover:border-border-strong hover:text-fg"
         >
           <Search className="size-4" />
         </button>

@@ -1,14 +1,17 @@
-// Omnibox routing — mirrors streamlit/ui/components/omnibox.py::omnibox_route.
-// A link routes to ingest; anything else is a question for chat.
+/**
+ * Does this text look like a link the user means to ingest?
+ *
+ * Used by the Library search field, which is one box doing two jobs: filter the
+ * grid, or swallow a pasted link. That makes false positives expensive — every
+ * one of them is a search that silently stopped searching — so this is
+ * deliberately stricter than the old Today omnibox's `omniboxRoute`, whose
+ * `\b\w[\w-]*\.\w{2,}` rule would have claimed "web.dev", "node.js" and any
+ * other perfectly good query with a dot in it.
+ *
+ * The bar: an explicit scheme, or an unmistakable YouTube host.
+ */
+const URL_RE = /^(https?:\/\/\S+|(?:www\.)?(?:youtube\.com|youtu\.be)\/\S+)$/i;
 
-const URL_RE =
-  /(https?:\/\/|www\.|youtu\.?be|youtube\.com|\b\w[\w-]*\.\w{2,}(\/|$))/i;
-
-export type OmniboxRoute = "ingest" | "ask" | null;
-
-export function omniboxRoute(text: string): { kind: OmniboxRoute; text: string } {
-  const trimmed = (text ?? "").trim();
-  if (!trimmed) return { kind: null, text: "" };
-  if (URL_RE.test(trimmed)) return { kind: "ingest", text: trimmed };
-  return { kind: "ask", text: trimmed };
+export function looksLikeUrl(text: string): boolean {
+  return URL_RE.test(text.trim());
 }

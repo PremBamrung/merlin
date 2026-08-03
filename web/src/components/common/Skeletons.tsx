@@ -40,17 +40,3 @@ export function ReaderSkeleton() {
     </div>
   );
 }
-
-/** Stat-tile skeletons row. */
-export function StatTilesSkeleton({ count = 4 }: { count?: number }) {
-  return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-      {Array.from({ length: count }).map((_, i) => (
-        <Card key={i} className="p-5">
-          <Skeleton className="mb-3 h-3 w-16" />
-          <Skeleton className="h-8 w-12" />
-        </Card>
-      ))}
-    </div>
-  );
-}

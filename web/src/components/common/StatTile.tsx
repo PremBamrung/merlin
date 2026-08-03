@@ -9,7 +9,6 @@ export function StatTile({
   hint,
   className,
   tone = "default",
-  big,
 }: {
   label: string;
   value: ReactNode;
@@ -21,16 +20,13 @@ export function StatTile({
    * a number, not a state that wants acting on.
    */
   tone?: "default" | "accent" | "fail";
-  /** Larger number on wide screens (Today hero metrics). */
-  big?: boolean;
 }) {
   return (
-    <Card className={cn("p-5", big && "xl:p-6", className)}>
+    <Card className={cn("p-5", className)}>
       <p className="eyebrow">{label}</p>
       <p
         className={cn(
-          "mt-2 font-display font-semibold leading-none tabular-nums",
-          big ? "text-[28px] 2xl:text-[36px]" : "text-[28px]",
+          "mt-2 font-display text-[28px] font-semibold leading-none tabular-nums",
           tone === "accent"
             ? "text-accent-lit"
             : tone === "fail"

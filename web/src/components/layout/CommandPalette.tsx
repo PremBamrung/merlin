@@ -3,9 +3,9 @@ import { Command } from "cmdk";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Home,
   Library,
   Layers,
+  Shapes,
   MessageSquare,
   BarChart3,
   Plus,
@@ -17,10 +17,11 @@ import { useUi } from "@/store/ui";
 import { useDebounced } from "@/hooks/useDebounced";
 import { StatusDot } from "@/components/common/StatusDot";
 
+/** Mirrors Topbar's DESTINATIONS — keep the two in step. */
 const ROUTES = [
-  { to: "/", label: "Today", icon: Home },
-  { to: "/feed", label: "Feed", icon: Layers },
   { to: "/library", label: "Library", icon: Library },
+  { to: "/feed", label: "Feed", icon: Layers },
+  { to: "/topics", label: "Topics", icon: Shapes },
   { to: "/chat", label: "Chat", icon: MessageSquare },
   { to: "/insights", label: "Insights", icon: BarChart3 },
 ];
