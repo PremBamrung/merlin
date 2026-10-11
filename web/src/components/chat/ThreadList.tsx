@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Kbd, PanelSection } from "@/components/layout/PanelParts";
+import { Mark } from "@/components/brand/Mark";
 import { toast } from "@/components/ui/toaster";
 import { keys } from "@/lib/queryKeys";
 import { relDate } from "@/lib/format";
@@ -167,9 +168,13 @@ export function ThreadList({
           <Skeleton className="h-8 w-full" />
         </div>
       ) : !threads || threads.length === 0 ? (
-        <p className="px-2 py-6 text-center text-[13px] text-fg-subtle">
-          No saved conversations yet.
-        </p>
+        <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
+          <Mark size={28} decorative />
+          <p className="text-[14px] font-medium text-fg">No conversations yet</p>
+          <p className="text-[13px] leading-5 text-fg-muted">
+            Your chats collect here. Ask about anything you've saved.
+          </p>
+        </div>
       ) : filtered.length === 0 ? (
         <p className="px-2 py-6 text-center text-[13px] text-fg-subtle">
           No conversations match “{query.trim()}”.

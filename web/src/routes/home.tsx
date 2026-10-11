@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ChevronRight, Library, MessageSquare } from "lucide-react";
+import { ChevronRight, Library, MessageSquare, Plus, Sparkles } from "lucide-react";
 import { Mark } from "@/components/brand/Mark";
 import { Composer } from "@/components/chat/Composer";
+import { Button } from "@/components/ui/button";
 import { ThreadList } from "@/components/chat/ThreadList";
 import { PanelSlot } from "@/components/layout/panel";
 import { useChatThreads } from "@/hooks/useChatThreads";
 import { useHome } from "@/hooks/useHome";
+import { useLibraryCount } from "@/hooks/useMeta";
+import { useUi } from "@/store/ui";
 import { useItemHref } from "@/hooks/useItemHref";
 import type { ChatFilters } from "@/hooks/useAgentChat";
 import type { HomeDigest, ListItem } from "@/lib/api/endpoints";
@@ -34,7 +37,11 @@ export default function HomeRoute() {
   }, []);
 
   const home = useHome(since.toISOString()).data;
-  const n = useChatThreads().data?.length;
+  // First run: nothing in the library and nothing asked yet.
+  const libraryTotal = useLibraryCount().data;
+  const threadCount = useChatThreads().data?.length;
+  const firstRun = libraryTotal === 0 && (threadCount ?? 0) === 0;
+  const n = threadCount;
   const [input, setInput] = useState("");
   const [filters, setFilters] = useState<ChatFilters>({});
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -62,10 +69,17 @@ export default function HomeRoute() {
         <div className="flex items-center justify-center gap-3.5">
           <Mark size={40} decorative />
           <h1 className="font-display text-[28px] font-semibold leading-tight tracking-[-0.03em] md:text-[38px] min-[1900px]:text-[44px] min-[2200px]:text-[52px]">
-            {greeting()}
+            {firstRun ? "Welcome to Merlin" : greeting()}
           </h1>
         </div>
-        <SinceLine since={since} home={home} />
+        {firstRun ? (
+          <p className="mx-auto mt-2.5 max-w-[56ch] text-center text-[15px] leading-[23px] text-fg-muted md:text-[16px]">
+            Add a few videos and Merlin will read them for you — a summary, a topic, and answers to
+            your questions with citations.
+          </p>
+        ) : (
+          <SinceLine since={since} home={home} />
+        )}
 
         <div className="mt-5 md:mt-6">
           <Composer
@@ -80,9 +94,10 @@ export default function HomeRoute() {
           />
         </div>
 
-        <Suggestions home={home} onPick={ask} />
+        {!firstRun && <Suggestions home={home} onPick={ask} />}
+        {firstRun && <GettingStarted />}
 
-        {home && (home.continue_thread || home.strip.length > 0) && (
+        {!firstRun && home && (home.continue_thread || home.strip.length > 0) && (
           <div className="mt-7 grid grid-cols-1 gap-3.5 md:mt-10 md:grid-cols-[minmax(0,1fr)_minmax(0,1.75fr)]">
             {home.continue_thread && <ContinueCard thread={home.continue_thread} />}
             {home.strip.length > 0 && (
@@ -97,6 +112,59 @@ export default function HomeRoute() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** First run (mockup `#first-run`): the three things that make Merlin useful. */
+function GettingStarted() {
+  const openAdd = useUi((s) => s.openAdd);
+  const steps = [
+    {
+      title: "Add your first video",
+      body: "Paste a YouTube link. Merlin transcribes it, writes a summary and files it under a topic.",
+      action: (
+        <Button size="sm" onClick={() => openAdd()}>
+          <Plus className="size-3.5" /> Add a video
+        </Button>
+      ),
+    },
+    {
+      title: "Ask about it",
+      body: "Questions here answer from your library, citing the videos they came from.",
+      action: null,
+    },
+    {
+      title: "Let topics form",
+      body: "With a few videos in, Merlin proposes topics to browse your library by.",
+      action: (
+        <Button size="sm" variant="secondary" asChild>
+          <Link to="/topics">
+            <Sparkles className="size-3.5" /> Topics
+          </Link>
+        </Button>
+      ),
+    },
+  ];
+  return (
+    <div className="mt-8 rounded-[14px] border border-border bg-[color-mix(in_srgb,var(--color-surface)_50%,transparent)] px-4 pb-2 pt-3.5">
+      <p className="mb-2 flex items-center gap-2 font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-fg-subtle">
+        <Sparkles className="size-3.5" /> Getting started
+      </p>
+      <ol>
+        {steps.map((s, i) => (
+          <li key={s.title} className="flex items-center gap-3.5 border-t border-border py-3.5 first:border-t-0">
+            <span className="grid size-7 shrink-0 place-items-center rounded-full border border-border-strong font-mono text-[12px] text-fg-muted">
+              {i + 1}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[15px] font-medium text-fg">{s.title}</span>
+              <span className="block text-[14px] leading-5 text-fg-muted">{s.body}</span>
+            </span>
+            {s.action}
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }

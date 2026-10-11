@@ -3,6 +3,7 @@ import { ArrowUp, Library, Link2, Loader2, Paperclip, X } from "lucide-react";
 import type { ChatFilters } from "@/hooks/useAgentChat";
 import { useTags, useSourceTypes } from "@/hooks/useMeta";
 import { useIngestYouTube } from "@/hooks/useIngest";
+import { useOnline } from "@/hooks/useOnline";
 import { AutoGrowTextarea } from "@/components/common/AutoGrowTextarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { looksLikeUrl } from "@/lib/classify";
@@ -38,8 +39,10 @@ export const Composer = forwardRef<
   ref,
 ) {
   const ingest = useIngestYouTube();
+  // Offline: the draft stays, sending waits until Merlin is reachable.
+  const { online } = useOnline();
   const isUrl = looksLikeUrl(value);
-  const canSend = !!value.trim() && !streaming && !ingest.isPending;
+  const canSend = online && !!value.trim() && !streaming && !ingest.isPending;
 
   const submit = () => {
     if (!canSend) return;
@@ -82,7 +85,7 @@ export const Composer = forwardRef<
           }
         }}
         rows={big ? 3 : 1}
-        placeholder={placeholder}
+        placeholder={online ? placeholder : "Offline: reconnect to send"}
         aria-label="Message"
         className={cn(
           "block max-h-60 w-full resize-none bg-transparent px-[18px] pb-1.5 pt-4 text-[16px] leading-6 text-fg outline-none placeholder:text-fg-subtle",

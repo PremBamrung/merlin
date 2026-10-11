@@ -120,6 +120,7 @@ export const Message = memo(function Message({
   onEdit,
   compact = false,
   fresh = false,
+  interrupted = false,
 }: {
   message: UIMessage;
   isLast: boolean;
@@ -131,6 +132,8 @@ export const Message = memo(function Message({
   compact?: boolean;
   /** Sent in this session (not loaded from history) — rises into the thread. */
   fresh?: boolean;
+  /** The stream failed on this turn: show where the answer stopped. */
+  interrupted?: boolean;
 }) {
   const parts = (message.parts ?? []) as AnyPart[];
   // Stripped of inline `[#id]` markers — used for the copy action.
@@ -217,6 +220,12 @@ export const Message = memo(function Message({
             </Markdown>
           );
         })}
+
+        {interrupted && textContent && (
+          <span className="mt-1 inline-block rounded border border-dashed border-border-strong px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-fg-subtle">
+            Stopped here
+          </span>
+        )}
 
         {/* Joy — thinking: before anything streams in, the hat bobs. */}
         {isThisStreaming && !hasVisible && (

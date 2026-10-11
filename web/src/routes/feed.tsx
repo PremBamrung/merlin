@@ -267,15 +267,50 @@ function FeedReader({
   } else if (index >= queue.length && !hasNextPage) {
     body = (
       <EmptyState
-        icon={CheckCircle2}
-        title="You're all caught up"
-        description={`Read ${readCount} ${readCount === 1 ? "summary" : "summaries"} this session. New ingests will show up here.`}
-        action={
-          <Button asChild size="sm" variant="secondary">
-            <Link to="/library">Browse library</Link>
-          </Button>
+        icon="hat"
+        badge={
+          total > readCount ? undefined : (
+            <span className="grid size-7 place-items-center rounded-full border-[3px] border-bg bg-success text-bg">
+              <CheckCircle2 className="size-4" strokeWidth={2.5} />
+            </span>
+          )
         }
-      />
+        title={total > readCount ? "End of the queue" : "All caught up"}
+        description={
+          total > readCount ? (
+            <>
+              {readCount > 0 && <>Read {readCount} this session. </>}
+              The <b className="font-medium text-fg">{total - readCount}</b> you skipped stay unread for next time.
+            </>
+          ) : readCount > 0 ? (
+            <>
+              You read <b className="font-medium text-fg">{readCount}</b>{" "}
+              {readCount === 1 ? "summary" : "summaries"} this session. New ones land here as they're added.
+            </>
+          ) : (
+            "Nothing waiting. New ones land here as they're added."
+          )
+        }
+        className="max-w-[820px]"
+        action={
+          total > readCount ? (
+            <Button size="sm" variant="secondary" onClick={() => setIndex(0)}>
+              Start over
+            </Button>
+          ) : undefined
+        }
+      >
+        <div className="mt-6 grid w-full gap-3 text-left sm:grid-cols-3">
+          <NextCard to="/library?saved=true" eyebrow="Saved" title="Revisit what you saved" go="Browse saved" />
+          <NextCard
+            to={`/chat?q=${encodeURIComponent("What were the big ideas in what I read recently?")}`}
+            eyebrow="Ask"
+            title="“What were the big ideas in what I read recently?”"
+            go="Ask Merlin"
+          />
+          <NextCard to="/library" eyebrow="Library" title="Browse everything" go="Open the Library" />
+        </div>
+      </EmptyState>
     );
   } else {
     const item = current;
@@ -489,6 +524,19 @@ function FilterBar({
         ))}
       </div>
     </div>
+  );
+}
+
+function NextCard({ to, eyebrow, title, go }: { to: string; eyebrow: string; title: string; go: string }) {
+  return (
+    <Link
+      to={to}
+      className="flex min-h-[150px] flex-col rounded-[14px] border border-border bg-surface/50 px-4 pb-3.5 pt-3.5 transition-colors hover:border-border-strong hover:bg-surface"
+    >
+      <span className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-fg-subtle">{eyebrow}</span>
+      <span className="mt-2.5 font-display text-[15px] font-semibold leading-[21px] text-fg">{title}</span>
+      <span className="mt-auto pt-3 font-mono text-[11px] text-ui-link">{go} →</span>
+    </Link>
   );
 }
 

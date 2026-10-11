@@ -13,6 +13,7 @@ import { AddSourceDialog } from "@/components/ingest/AddSourceDialog";
 import { ResummarizeConfirmDialog } from "@/components/ingest/ResummarizeConfirmDialog";
 import { TaskStreams } from "./TaskStreams";
 import { ItemDrawer } from "@/components/reader/ItemDrawer";
+import { OfflineNotice } from "./OfflineNotice";
 import { ITEM_PARAM } from "@/hooks/useItemHref";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { DESKTOP, PANEL_AUTO_OPEN, useMediaQuery } from "@/hooks/useMediaQuery";
@@ -169,6 +170,7 @@ export function AppShell() {
       <AddSourceDialog />
       <ResummarizeConfirmDialog />
       <ItemDrawer />
+      <OfflineNotice />
       {/* Headless: the only SSE connection per in-flight ingest. Lives here so
           progress (and the ring around the mark) survives navigation. */}
       <TaskStreams />

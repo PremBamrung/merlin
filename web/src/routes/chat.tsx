@@ -321,6 +321,11 @@ function ChatConversation({
   };
 
   const isIdle = messages.length === 0;
+  // Did any of the last answer stream in before an error cut it off?
+  const lastMsg = messages[messages.length - 1];
+  const partialAnswer =
+    lastMsg?.role === "assistant" &&
+    (lastMsg.parts ?? []).some((p) => p.type === "text" && !!(p as { text?: string }).text);
   // Any answer with sources widens the column for the sources column (≥1600px).
   const hasSide = messages.some((m) =>
     (m.parts ?? []).some((p) => (p as { type: string }).type === CITATIONS_PART),
@@ -385,11 +390,17 @@ function ChatConversation({
                 onFollowup={runSend}
                 onEdit={handleEdit}
                 fresh={!loadedIds.has(m.id)}
+                // The turn that broke keeps its partial text, marked where it stopped.
+                interrupted={!!error && !isStreaming && i === messages.length - 1}
               />
             ))
           )}
           {error && !isStreaming && (
-            <ChatError error={error} onRetry={() => regenerate(normalizeFilters(filters))} />
+            <ChatError
+              error={error}
+              onRetry={() => regenerate(normalizeFilters(filters))}
+              partial={partialAnswer}
+            />
           )}
           <div ref={bottomRef} />
         </div>
@@ -475,34 +486,77 @@ function exportConversation(messages: UIMessage[]): void {
 /** Surfaces a failed/interrupted turn (e.g. the agent hit its per-turn step cap
  * — `chat_max_requests` — searching without settling). Without this the turn
  * just stops on its tool traces with no answer, which reads as "stuck". */
-function ChatError({ error, onRetry }: { error: Error; onRetry: () => void }) {
-  const msg = error?.message ?? "";
+/** A failed/interrupted turn (mockup `#chat-error`): what happened, the
+ * partial answer kept above it, Retry and the details to copy. A step-limit
+ * stop (the agent searching without settling — `chat_max_requests`) gets its
+ * own advice, since that one is usually the library not covering the
+ * question. "Switch model" arrives with the model menu (Phase 1). */
+function ChatError({
+  error,
+  onRetry,
+  partial,
+}: {
+  error: Error;
+  onRetry: () => void;
+  /** Some of the answer streamed before it broke (it stays above). */
+  partial: boolean;
+}) {
+  const msg = errorText(error?.message ?? "");
   const isLimit = /request[_ ]?limit|usage limit|exceeded|step/i.test(msg);
+  const at = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return (
-    <div className="rounded-[12px] border border-fail/40 bg-fail/10 px-4 py-3">
-      <div className="flex items-start gap-2.5">
-        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-fail" />
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <p className="text-[13.5px] font-medium text-fg">
-            {isLimit
-              ? "Merlin reached its step limit for this answer."
-              : "This answer was interrupted."}
-          </p>
-          <p className="text-[12.5px] leading-relaxed text-fg-muted">
-            {isLimit
-              ? "It searched several times without settling on an answer — often a sign the library doesn't cover this. Try rephrasing or narrowing with filters (or raise CHAT_MAX_REQUESTS)."
-              : msg || "Something went wrong while generating the response."}
-          </p>
-          <button
-            onClick={onRetry}
-            className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[12px] text-fg-muted transition-colors hover:border-border-strong hover:text-fg"
+    <div className="rounded-[14px] border border-fail/40 bg-fail/[0.06] px-4 py-3.5 shadow-[inset_3px_0_0_var(--color-fail)] md:ml-11">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <span className="inline-flex items-center gap-1 rounded-[5px] border border-fail/60 px-1.5 py-0.5 font-mono text-[10.5px] font-medium tracking-[0.08em] text-fail">
+          <AlertTriangle className="size-3" /> ERROR
+        </span>
+        <p className="text-[15px] font-medium text-fg">
+          {isLimit ? "Merlin reached its step limit for this answer" : "The answer was interrupted"}
+        </p>
+      </div>
+      <p className="mt-2 text-[14px] leading-[21px] text-fg-muted">
+        {isLimit
+          ? "It searched several times without settling — often a sign your library doesn't cover this. Try rephrasing, or narrow the Library scope (or raise CHAT_MAX_REQUESTS)."
+          : partial
+            ? "The partial answer above is kept. Retry asks again from your question."
+            : "Nothing came back this time. Retry asks again from your question."}
+      </p>
+      {msg && !isLimit && (
+        <p className="mt-1.5 break-words font-mono text-[11px] leading-4 text-fg-subtle">
+          {msg} · {at}
+        </p>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button size="sm" onClick={onRetry}>
+          <RotateCw className="size-3.5" /> Retry
+        </Button>
+        {msg && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              void navigator.clipboard?.writeText(`${msg} (${at})`);
+              toast("Error details copied");
+            }}
           >
-            <RotateCw className="size-3.5" /> Retry
-          </button>
-        </div>
+            Copy details
+          </Button>
+        )}
       </div>
     </div>
   );
+}
+
+/** The SDK hands over the response body as the message; ours is the API's
+ *  `{error:{code,message}}` envelope — show its message, not the JSON. */
+function errorText(raw: string): string {
+  try {
+    const body = JSON.parse(raw) as { error?: { message?: string; code?: string } };
+    if (body?.error?.message) return body.error.code ? `${body.error.message} (${body.error.code})` : body.error.message;
+  } catch {
+    /* not JSON — plain text */
+  }
+  return raw;
 }
 
 function IdleState({ onPick }: { onPick: (q: string) => void }) {

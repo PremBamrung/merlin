@@ -55,6 +55,11 @@ export function FeedPanel({
       </div>
 
       <PanelSection title={`Up next · ${Math.max(0, total - index)}`}>
+        {upNext.length === 0 && (
+          <p className="px-2.5 py-1 text-[13px] leading-5 text-fg-muted">
+            Nothing left. New videos land here as they're added.
+          </p>
+        )}
         {upNext.map((it, i) => {
           const on = i === 0;
           const thumb = thumbnailUrl(it);
