@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { CheckCircle2, Inbox as InboxIcon, Sparkles } from "lucide-react";
-import { CheckCheck } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  CheckCheck,
+  CheckCircle2,
+  ChevronLeft,
+  Inbox as InboxIcon,
+  MoreHorizontal,
+  Sparkles,
+} from "lucide-react";
 import {
   useFeedQueue,
   useMarkAllRead,
@@ -10,12 +16,18 @@ import {
   useToggleSaved,
 } from "@/hooks/useFeed";
 import { useTopics, useUncategorisedCount } from "@/hooks/useTopics";
-import { FeedCard } from "@/components/feed/FeedCard";
+import { FeedActions, FeedCard } from "@/components/feed/FeedCard";
 import { FeedPanel } from "@/components/feed/FeedPanel";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { ReaderSkeleton } from "@/components/common/Skeletons";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -79,6 +91,7 @@ function FeedReader({
   const markUnread = useMarkUnread();
   const markAllRead = useMarkAllRead();
   const toggleSaved = useToggleSaved();
+  const navigate = useNavigate();
   const [confirmAll, setConfirmAll] = useState(false);
 
   const queue = useMemo(
@@ -141,21 +154,40 @@ function FeedReader({
     setIndex((i) => Math.max(0, Math.min(i, queue.length) - 1));
   }, [queue.length]);
 
-  // ←/→ page through cards (no text inputs live on this route).
+  // Skip = move on but leave it unread (it stays in the queue for next time).
+  const goSkip = useCallback(() => {
+    if (index < queue.length - 1) setIndex(index + 1);
+    else if (hasNextPage) fetchNextPage();
+    else setIndex(queue.length);
+  }, [index, queue.length, hasNextPage, fetchNextPage]);
+
+  const current = queue[Math.min(index, queue.length - 1)];
+  const toggleCurrentSaved = useCallback(() => {
+    if (current) toggleSaved.mutate({ id: current.id, saved: !current.saved_at });
+  }, [current, toggleSaved]);
+  const askCurrent = useCallback(() => {
+    if (current) navigate(`/library/${current.id}`);
+  }, [current, navigate]);
+
+  // ← skip · → read · S save · A ask (the spec's Feed keys). Not while
+  // typing, and not while the item drawer or a dialog owns the keyboard.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "ArrowRight") {
-        e.preventDefault();
-        goNext();
-      } else if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        goPrev();
-      }
+      const t = e.target as HTMLElement | null;
+      if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+      if (document.querySelector("[role='dialog']")) return;
+      const k = e.key.toLowerCase();
+      if (e.key === "ArrowRight") goNext();
+      else if (e.key === "ArrowLeft") goSkip();
+      else if (k === "s") toggleCurrentSaved();
+      else if (k === "a") askCurrent();
+      else return;
+      e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [goNext, goPrev]);
+  }, [goNext, goSkip, toggleCurrentSaved, askCurrent]);
 
   // --- pointer-based horizontal swipe (touch + mouse) --------------------- //
   const drag = useRef<{ x: number; y: number; axis: "" | "x" | "y" } | null>(null);
@@ -175,16 +207,18 @@ function FeedReader({
     }
     if (d.axis === "x") setDragX(dx);
   };
+  // Swipe right = read (→), swipe left = skip (←).
   const endDrag = () => {
     const d = drag.current;
     drag.current = null;
     if (d?.axis === "x") {
-      if (dragX <= -SWIPE_THRESHOLD) goNext();
-      else if (dragX >= SWIPE_THRESHOLD) goPrev();
+      if (dragX >= SWIPE_THRESHOLD) goNext();
+      else if (dragX <= -SWIPE_THRESHOLD) goSkip();
     }
     setDragX(0);
   };
 
+  const position = Math.min(index + 1, total);
   const filterBar = (
     <FilterBar
       topic={topic}
@@ -192,6 +226,9 @@ function FeedReader({
       topics={topics.data ?? []}
       uncategorisedCount={uncategorised.data ?? 0}
       total={total}
+      position={position}
+      hasPrev={index > 0}
+      onPrev={goPrev}
       onMarkAll={() => setConfirmAll(true)}
       markAllPending={markAllRead.isPending}
     />
@@ -241,34 +278,51 @@ function FeedReader({
       />
     );
   } else {
-    const item = queue[Math.min(index, queue.length - 1)];
+    const item = current;
+    const remaining = total - index - 1;
     body = !item ? (
       <ReaderSkeleton />
     ) : (
-      <div
-        className={cn(
-          "h-full touch-pan-y will-change-transform",
-          dragX === 0
-            ? "transition-transform duration-200 ease-out motion-reduce:transition-none"
-            : "select-none transition-none",
-        )}
-        style={{ transform: `translateX(${dragX}px)` }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-      >
-        <FeedCard
-          key={item.id}
-          item={item}
-          position={Math.min(index + 1, total)}
-          total={total}
-          saved={!!item.saved_at}
-          onSave={() => toggleSaved.mutate({ id: item.id, saved: !item.saved_at })}
-          onPrev={goPrev}
-          onNext={goNext}
-          hasPrev={index > 0}
-        />
+      <div className="flex h-full flex-col">
+        <div className="relative min-h-0 flex-1 lg:max-h-[820px]">
+          {/* The stack: the next cards peek out under this one. */}
+          {remaining > 0 && (
+            <div
+              aria-hidden
+              className="absolute inset-0 z-[2] translate-y-3 scale-[0.985] rounded-[18px] border border-border bg-surface opacity-75"
+            />
+          )}
+          {remaining > 1 && (
+            <div
+              aria-hidden
+              className="absolute inset-0 z-[1] translate-y-6 scale-[0.97] rounded-[18px] border border-border bg-surface opacity-45"
+            />
+          )}
+          <div
+            className={cn(
+              "relative z-[3] h-full touch-pan-y will-change-transform",
+              dragX === 0
+                ? "transition-transform duration-200 ease-out motion-reduce:transition-none"
+                : "select-none transition-none",
+            )}
+            style={{ transform: `translateX(${dragX}px)` }}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+          >
+            <FeedCard key={item.id} item={item} />
+          </div>
+        </div>
+        <div className="shrink-0 pt-5 sm:pt-[30px]">
+          <FeedActions
+            saved={!!item.saved_at}
+            onSkip={goSkip}
+            onSave={toggleCurrentSaved}
+            onRead={goNext}
+            onAsk={askCurrent}
+          />
+        </div>
       </div>
     );
   }
@@ -326,12 +380,17 @@ function FeedReader({
 
 type TopicChip = { slug: string; label: string; count: number };
 
+/** "Catch up" + a gold progress bar + the counter (mockup `.feed-top`), with
+ *  back and the bulk actions beside it; on phones, the topic slice below. */
 function FilterBar({
   topic,
   onTopic,
   topics,
   uncategorisedCount,
   total,
+  position,
+  hasPrev,
+  onPrev,
   onMarkAll,
   markAllPending,
 }: {
@@ -340,28 +399,69 @@ function FilterBar({
   topics: TopicChip[];
   uncategorisedCount: number;
   total: number;
+  position: number;
+  hasPrev: boolean;
+  onPrev: () => void;
   onMarkAll: () => void;
   markAllPending: boolean;
 }) {
   const select = (slug: string) => onTopic(topic === slug ? null : slug);
+  const pct = total ? Math.max(4, (position / total) * 100) : 0;
   return (
-    <div className="mb-3 space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <p className="eyebrow">{total} unread</p>
-        <div className="flex items-center gap-1">
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/topics">
-              <Sparkles className="size-3.5" /> Organise
-              {uncategorisedCount > 0 && (
-                <span className="ml-1 font-mono text-[11px] tabular-nums text-fg-subtle">
-                  {uncategorisedCount}
-                </span>
-              )}
-            </Link>
+    <div className="mb-3 space-y-3 sm:mb-[18px]">
+      <div className="flex items-center gap-3.5">
+        <h1 className="font-display text-[22px] font-semibold leading-8 tracking-[-0.02em] sm:text-[26px]">
+          Catch up
+        </h1>
+        <div
+          className="h-1 flex-1 overflow-hidden rounded-full bg-surface-2"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-valuenow={position}
+          aria-label="Position in the queue"
+        >
+          <i
+            className="block h-full rounded-full bg-signal transition-[width] duration-[400ms] ease-[cubic-bezier(0.2,0,0,1)]"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <span className="whitespace-nowrap font-mono text-[12px] tabular-nums text-fg-subtle">
+          {position} / {total}
+        </span>
+        <div className="flex items-center">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onPrev}
+            disabled={!hasPrev}
+            aria-label="Back to the previous card"
+            title="Back"
+          >
+            <ChevronLeft className="size-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={onMarkAll} disabled={markAllPending}>
-            <CheckCheck className="size-3.5" /> Mark all read
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="Feed actions">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link to="/topics">
+                  <Sparkles className="size-3.5" /> Organise topics
+                  {uncategorisedCount > 0 && (
+                    <span className="ml-auto font-mono text-[11px] text-fg-subtle">
+                      {uncategorisedCount}
+                    </span>
+                  )}
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onMarkAll} disabled={markAllPending}>
+                <CheckCheck className="size-3.5" /> Mark all read
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -373,10 +473,7 @@ function FilterBar({
           All
         </FilterChip>
         {uncategorisedCount > 0 && (
-          <FilterChip
-            active={topic === UNCATEGORISED}
-            onClick={() => select(UNCATEGORISED)}
-          >
+          <FilterChip active={topic === UNCATEGORISED} onClick={() => select(UNCATEGORISED)}>
             Uncategorised
             <Count n={uncategorisedCount} />
           </FilterChip>
@@ -431,7 +528,7 @@ function Count({ n }: { n: number }) {
  *  there is no chrome above the content, only py-8. */
 function FeedFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto h-[calc(100dvh-166px)] max-w-[760px] sm:h-[calc(100dvh-182px)] md:h-[calc(100dvh-64px)] lg:max-w-[1120px]">
+    <div className="mx-auto h-[calc(100dvh-166px)] max-w-[720px] sm:h-[calc(100dvh-182px)] md:h-[calc(100dvh-64px)] lg:max-w-[1400px]">
       {children}
     </div>
   );
