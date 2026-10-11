@@ -8,9 +8,11 @@ global handler.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Query, Response
 
-from merlin.services import topics as topics_service
+from merlin.services import topic_overview, topics as topics_service
 
 from ..errors import invalid_input, not_found
 from ..schemas import (
@@ -20,7 +22,9 @@ from ..schemas import (
     CreateTopicRequest,
     PatchTopicRequest,
     TaskIdResponse,
+    TopicDetailResponse,
     TopicItem,
+    TopicOverviewResponse,
     TopicProposalResponse,
 )
 
@@ -39,11 +43,27 @@ def list_topics(
     return topics_service.list_topics(status=status, unread_only=unread)
 
 
+def _since(since: datetime | None) -> datetime:
+    """The client's last visit; a week ago when it doesn't say."""
+    return since or datetime.now(UTC) - timedelta(days=7)
+
+
+@router.get("/overview", response_model=TopicOverviewResponse)
+def topics_overview(since: datetime | None = None):
+    return topic_overview.overview(_since(since))
+
+
+@router.get("/by-slug/{slug}", response_model=TopicDetailResponse)
+def topic_detail(slug: str, since: datetime | None = None):
+    detail = topic_overview.detail(slug, _since(since))
+    if detail is None:
+        raise not_found("Topic not found.")
+    return detail
+
+
 @router.get("/uncategorised-count", response_model=CountResponse)
 def uncategorised_count(
-    unread: bool = Query(
-        default=False, description="Scope the tally to unread items."
-    ),
+    unread: bool = Query(default=False, description="Scope the tally to unread items."),
 ):
     return {"count": topics_service.count_uncategorised(unread_only=unread)}
 

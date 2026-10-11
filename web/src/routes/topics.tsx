@@ -1,477 +1,675 @@
-import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
-  Sparkles,
+  ArrowLeft,
   Check,
-  X,
-  Pencil,
-  Archive,
+  ChevronRight,
   GitMerge,
+  MessageSquare,
+  MoreHorizontal,
   Plus,
-  Layers,
-  RefreshCw,
+  Settings2,
+  Sparkles,
   Tags as TagsIcon,
+  X,
 } from "lucide-react";
 import {
   useAcceptProposal,
-  useBackfill,
-  useCreateTopic,
-  useDeleteTopic,
-  usePatchTopic,
   useProposals,
-  useProposeTopics,
-  useReclassifyAll,
-  useReclassifyTopic,
   useRejectProposal,
+  useTopicDetail,
+  useTopicOverview,
   useTopics,
   useUncategorisedCount,
   type TopicItem,
 } from "@/hooks/useTopics";
-import { useCancelTask } from "@/hooks/useIngest";
-import { getTask, type TopicProposal } from "@/lib/api/endpoints";
-import { keys } from "@/lib/queryKeys";
+import { useTopicTasks, type TopicTasks } from "@/hooks/useTopicTasks";
+import { useItems } from "@/hooks/useItems";
+import { useItemHref } from "@/hooks/useItemHref";
+import type { TopicCard as TopicCardData, TopicProposal } from "@/lib/api/endpoints";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/common/EmptyState";
-import { toast } from "@/components/ui/toaster";
-import { cn } from "@/lib/utils";
+import { ErrorState } from "@/components/common/ErrorState";
+import { Skeleton } from "@/components/ui/skeleton";
+import { CardGridSkeleton } from "@/components/common/Skeletons";
+import { ItemGrid } from "@/components/items/ItemGrid";
 import { PanelSlot } from "@/components/layout/panel";
-import { PanelButton, PanelLink, PanelSection } from "@/components/layout/PanelParts";
+import { PanelLink, PanelSearch, PanelSection } from "@/components/layout/PanelParts";
+import { BackfillButton, ReclassifyAllButton, RescanButton } from "@/components/topics/ConfirmButtons";
+import { CreateTopicRow, TopicRow } from "@/components/topics/ManageList";
 import { UNCATEGORISED, libraryHref } from "@/lib/libraryView";
+import { formatDuration, thousands, thumbnailUrl } from "@/lib/format";
+import { cn, randomId } from "@/lib/utils";
 
-const TERMINAL = new Set(["completed", "failed", "cancelled"]);
+/**
+ * The Topics place (docs/EVERYDAY_AI_PLAN.md § Topics / Insights; mockup
+ * `#topics`, `#topic`, `#topic-proposals`):
+ *   /topics            overview — topic cards with share bars, previews, Ask
+ *   /topics/:slug      one topic — stats, sub-tags, channels, its items
+ *   /topics/proposals  the review queue — accept / merge into / dismiss
+ *   /topics/manage     rename, re-scan, merge, archive, delete, create
+ * Every page shares the panel (what's waiting + the taxonomy) and the
+ * background-task strip.
+ */
+
+/** "Catch me up on Dofus" — asked as a new chat thread. */
+function useAsk() {
+  const navigate = useNavigate();
+  return (q: string) => navigate(`/chat?thread=${randomId()}&q=${encodeURIComponent(q)}`);
+}
+
+const pct = (share: number) =>
+  share >= 0.1 ? `${Math.round(share * 100)}%` : `${(share * 100).toFixed(1)}%`;
+
+// --------------------------------------------------------------------------- //
+// Shared: panel, task strip, share bar, back link
+// --------------------------------------------------------------------------- //
+
+function TopicsPanel({ current }: { current?: string }) {
+  const overview = useTopicOverview().data;
+  const proposals = useProposals().data?.length ?? 0;
+  const uncat = useUncategorisedCount().data ?? 0;
+  const topics = overview?.topics ?? [];
+  const max = Math.max(1, ...topics.map((t) => t.count));
+  return (
+    <PanelSlot title="Topics" sub={overview ? `${topics.length} active` : undefined}>
+      <PanelSearch placeholder="Search topics" />
+      {(proposals > 0 || uncat > 0) && (
+        <PanelSection title="Waiting on you">
+          {proposals > 0 && (
+            <PanelLink
+              to="/topics/proposals"
+              on={current === "proposals"}
+              icon={Sparkles}
+              label="Proposals"
+              trail={
+                <span className="ml-auto flex items-center gap-1.5 font-mono text-[11px] font-medium text-signal">
+                  <span className="size-1.5 rounded-full bg-signal" />
+                  {proposals}
+                </span>
+              }
+            />
+          )}
+          {uncat > 0 && (
+            <PanelLink
+              to={libraryHref({ kind: "topic", slug: UNCATEGORISED })}
+              icon={TagsIcon}
+              label="Uncategorised"
+              count={uncat}
+            />
+          )}
+        </PanelSection>
+      )}
+      <PanelSection
+        title={`Active · ${topics.length}`}
+        right={
+          <Link to="/topics/manage" className="hover:underline hover:underline-offset-[3px]">
+            manage
+          </Link>
+        }
+      >
+        {topics.map((t) => (
+          <PanelLink
+            key={t.slug}
+            to={`/topics/${t.slug}`}
+            on={current === t.slug}
+            lead={
+              <span className="h-1 w-[22px] shrink-0 overflow-hidden rounded-full bg-ui-chart-track">
+                <span
+                  className="block h-full rounded-full bg-ui-chart-1"
+                  style={{ width: `${Math.max(8, (t.count / max) * 100)}%` }}
+                />
+              </span>
+            }
+            label={t.label}
+            trail={
+              <span className="ml-auto flex shrink-0 items-center gap-1.5 font-mono text-[11px] tabular-nums text-fg-subtle">
+                {t.new_count > 0 && (
+                  <span className="size-1.5 rounded-full bg-signal" title={`${t.new_count} new`} />
+                )}
+                {thousands(t.count)}
+              </span>
+            }
+          />
+        ))}
+      </PanelSection>
+      <div className="pt-1">
+        <PanelLink to="/topics/manage" icon={Plus} label="New topic" />
+      </div>
+    </PanelSlot>
+  );
+}
+
+function TaskStrip({ tasks }: { tasks: TopicTasks }) {
+  if (!tasks.running) return null;
+  return (
+    <div className="flex items-center gap-3 rounded-[14px] border border-border bg-surface/50 px-4 py-3 text-[13px] text-fg-muted">
+      <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-signal" />
+      <span className="flex-1">
+        {tasks.message}
+        {typeof tasks.progress === "number" && ` (${tasks.progress}%)`}
+      </span>
+      <Button size="sm" variant="ghost" disabled={tasks.stopping} onClick={tasks.cancel}>
+        <X className="size-3.5" />
+        {tasks.stopping ? "Stopping…" : "Cancel"}
+      </Button>
+    </div>
+  );
+}
+
+function ShareBar({ share }: { share: number }) {
+  return (
+    <div className="h-1.5 overflow-hidden rounded-full bg-ui-chart-track">
+      <div
+        className="h-full rounded-full bg-ui-chart-1"
+        style={{ width: `${Math.max(1.5, share * 100)}%` }}
+      />
+    </div>
+  );
+}
+
+function BackLink() {
+  return (
+    <Link
+      to="/topics"
+      className="inline-flex items-center gap-1.5 text-[14px] text-fg-muted transition-colors hover:text-fg"
+    >
+      <ArrowLeft className="size-4" /> Topics
+    </Link>
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// /topics — the overview
+// --------------------------------------------------------------------------- //
 
 export default function TopicsRoute() {
-  const topics = useTopics("active");
-  const proposals = useProposals();
-  const uncategorised = useUncategorisedCount();
-  const propose = useProposeTopics();
-  const backfill = useBackfill();
-  const reclassify = useReclassifyTopic();
-  const reclassifyAll = useReclassifyAll();
-  const cancel = useCancelTask();
-  const qc = useQueryClient();
-
-  // A single background task runs at a time (the two buttons are mutually
-  // exclusive). Poll it until it settles, then refresh the lists. `kind` drives
-  // the completion toast + progress copy; `running` is derived from live status,
-  // so the effect never needs to write state.
-  const [taskId, setTaskId] = useState<string | null>(null);
-  const [kind, setKind] = useState<
-    "discovery" | "backfill" | "rescan" | "rescan-all" | null
-  >(null);
-  // The topic being re-scanned, for the progress/toast copy.
-  const [rescanLabel, setRescanLabel] = useState<string | null>(null);
-  const task = useQuery({
-    queryKey: keys.task(taskId ?? ""),
-    queryFn: () => getTask(taskId!),
-    enabled: !!taskId,
-    refetchInterval: (q) =>
-      TERMINAL.has(q.state.data?.status ?? "") ? false : 1500,
-  });
-  useEffect(() => {
-    const status = task.data?.status;
-    if (!status || !TERMINAL.has(status)) return;
-    // React to the external task completing: refresh the lists (no setState).
-    qc.invalidateQueries({ queryKey: keys.proposals() });
-    qc.invalidateQueries({ queryKey: keys.uncategorisedCount() });
-    qc.invalidateQueries({ queryKey: keys.topics() });
-    qc.invalidateQueries({ queryKey: keys.items() });
-    qc.invalidateQueries({ queryKey: keys.feed() });
-    const noun =
-      kind === "backfill"
-        ? "Backfill"
-        : kind === "rescan"
-          ? "Re-scan"
-          : kind === "rescan-all"
-            ? "Full re-scan"
-            : "Topic discovery";
-    const wasCancelled = !!task.data?.result_data?.cancelled;
-    if (status === "failed") toast.error(`${noun} failed`);
-    else if (wasCancelled) toast.success(`${noun} stopped — kept the work done so far`);
-    else toast.success(`${noun} complete`);
-  }, [task.data?.status, task.data?.result_data, kind, qc]);
-
-  const running = !!taskId && !TERMINAL.has(task.data?.status ?? "");
-  const busy =
-    running ||
-    propose.isPending ||
-    backfill.isPending ||
-    reclassify.isPending ||
-    reclassifyAll.isPending;
-  // Cancel POST returns instantly ("cancelling"), but the task keeps running to
-  // its next checkpoint — keep the button in "Stopping…" until it terminates.
-  const stopping =
-    cancel.isPending ||
-    (cancel.isSuccess && cancel.variables === taskId && running);
-  const startDiscovery = () =>
-    propose.mutate(undefined, {
-      onSuccess: (r) => {
-        setKind("discovery");
-        setTaskId(r.task_id);
-      },
-    });
-  const startBackfill = () =>
-    backfill.mutate(undefined, {
-      onSuccess: (r) => {
-        setKind("backfill");
-        setTaskId(r.task_id);
-      },
-    });
-  const startRescan = (topic: TopicItem) =>
-    reclassify.mutate(topic.id, {
-      onSuccess: (r) => {
-        setKind("rescan");
-        setRescanLabel(topic.label);
-        setTaskId(r.task_id);
-      },
-    });
-  const startRescanAll = () =>
-    reclassifyAll.mutate(undefined, {
-      onSuccess: (r) => {
-        setKind("rescan-all");
-        setTaskId(r.task_id);
-      },
-    });
-
-  const pending = proposals.data ?? [];
-  const uncat = uncategorised.data ?? 0;
-  const hasTopics = (topics.data?.length ?? 0) > 0;
-  // Upper-bound estimate of a full re-scan's LLM calls, for the confirm dialog:
-  // every categorised item (topic counts over-count multi-topic items) + the
-  // uncategorised pile. The task reports the exact count once it starts.
-  const totalEstimate =
-    (topics.data?.reduce((sum, t) => sum + t.count, 0) ?? 0) + uncat;
+  const overview = useTopicOverview();
+  const proposals = useProposals().data ?? [];
+  const uncat = useUncategorisedCount().data ?? 0;
+  const tasks = useTopicTasks();
+  const navigate = useNavigate();
+  const topics = overview.data?.topics ?? [];
+  const moving = topics.filter((t) => t.new_count > 0).length;
+  // Upper bound for the full re-scan confirm (topic counts over-count
+  // multi-topic items); the task reports the exact count once it starts.
+  const estimate = topics.reduce((s, t) => s + t.count, 0) + uncat;
 
   return (
-    <div className="mx-auto max-w-[900px] space-y-8">
-      <TopicsPanel topics={topics.data ?? []} proposals={pending.length} uncategorised={uncat} />
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="font-display text-[24px] font-semibold">Topics</h1>
-          <p className="mt-1 text-[13px] text-fg-muted">
-            Your navigation taxonomy — the buckets the Feed filters by.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-5">
+      <TopicsPanel />
+      <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+        <h1 className="font-display text-[26px] font-semibold leading-9 tracking-[-0.03em] md:text-[30px]">
+          Topics
+        </h1>
+        <span className="pb-[7px] font-mono text-[12px] text-fg-subtle">
+          {topics.length} active · {thousands(overview.data?.total ?? 0)} items
+        </span>
+        <div className="ml-auto flex items-center gap-2">
           <ReclassifyAllButton
-            total={totalEstimate}
-            disabled={busy || !hasTopics}
-            onConfirm={startRescanAll}
+            total={estimate}
+            disabled={tasks.busy || !topics.length}
+            onConfirm={tasks.startRescanAll}
           />
-          <BackfillButton
-            uncat={uncat}
-            disabled={busy || !hasTopics}
-            onConfirm={startBackfill}
-          />
-          <Button size="sm" onClick={startDiscovery} disabled={busy}>
-            <Sparkles className="size-4" />
-            {running && kind === "discovery" ? "Finding topics…" : "Find topics"}
-            {uncat > 0 && !running && (
-              <span className="ml-1 font-mono text-[11px] tabular-nums opacity-80">
-                {uncat}
-              </span>
-            )}
+          <Button size="sm" onClick={() => navigate("/topics/manage")}>
+            <Plus className="size-4" /> New topic
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="More topic actions">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={tasks.startDiscovery} disabled={tasks.busy}>
+                <Sparkles className="size-3.5" /> Find new topics
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to="/topics/manage">
+                  <Settings2 className="size-3.5" /> Manage topics
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
-      {running && (
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-surface/40 p-4 text-[13px] text-fg-muted">
-          <span className="flex-1">
-            {task.data?.message ||
-              (kind === "backfill"
-                ? "Classifying uncategorised items…"
-                : kind === "rescan"
-                  ? `Re-scanning ${rescanLabel ?? "topic"}…`
-                  : kind === "rescan-all"
-                    ? "Re-scanning your whole library…"
-                    : "Clustering uncategorised items…")}
-            {typeof task.data?.progress === "number" && ` (${task.data.progress}%)`}
-          </span>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={stopping || !taskId}
-            onClick={() => taskId && cancel.mutate(taskId)}
-          >
-            <X className="size-3.5" />
-            {stopping ? "Stopping…" : "Cancel"}
-          </Button>
+      <TaskStrip tasks={tasks} />
+
+      {(proposals.length > 0 || uncat > 0) && (
+        <div className="grid gap-3.5 md:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]">
+          {proposals.length > 0 && (
+            <Link
+              to="/topics/proposals"
+              className="flex items-center gap-3.5 rounded-[14px] border border-signal/45 bg-signal/[0.06] px-4 py-3.5 transition-colors hover:bg-signal/10"
+            >
+              <span className="grid size-10 shrink-0 place-items-center rounded-[10px] bg-signal/15 text-signal">
+                <Sparkles className="size-[18px]" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-medium text-fg">
+                  {proposals.length} proposal{proposals.length === 1 ? "" : "s"} waiting
+                </span>
+                <span className="block truncate text-[14px] text-fg-muted">
+                  {proposals
+                    .slice(0, 3)
+                    .map((p) => `${p.proposed_label} · ${p.item_count}`)
+                    .join(" · ")}
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-1 text-[14px] text-fg">
+                Review <ChevronRight className="size-4" />
+              </span>
+            </Link>
+          )}
+          {uncat > 0 && (
+            <div
+              className={cn(
+                "flex items-center gap-3 rounded-[14px] border border-border bg-surface/50 px-4 py-3.5",
+                proposals.length === 0 && "md:col-span-2",
+              )}
+            >
+              <span className="font-display text-[17px] font-semibold tabular-nums text-fg">{uncat}</span>
+              <Link
+                to={libraryHref({ kind: "topic", slug: UNCATEGORISED })}
+                className="flex-1 text-[14px] text-fg-muted hover:text-fg"
+              >
+                items without a topic
+              </Link>
+              <BackfillButton
+                uncat={uncat}
+                label="Classify"
+                disabled={tasks.busy || !topics.length}
+                onConfirm={tasks.startBackfill}
+              />
+            </div>
+          )}
         </div>
       )}
 
-      {/* Review queue */}
-      {pending.length > 0 && (
-        <section id="proposals" className="scroll-mt-8 space-y-3">
-          <h2 className="font-display text-[15px] font-semibold">
-            Proposed topics{" "}
-            <span className="text-fg-subtle">({pending.length})</span>
-          </h2>
-          <div className="space-y-3">
-            {pending.map((p) => (
-              <ProposalCard key={p.id} proposal={p} topics={topics.data ?? []} />
-            ))}
-          </div>
-        </section>
-      )}
+      <div className="flex items-baseline gap-2.5 pt-2">
+        <h2 className="font-display text-[18px] font-semibold">Active</h2>
+        <span className="font-mono text-[12px] text-fg-subtle">
+          by size{moving > 0 && ` · ${moving} moving this week`}
+        </span>
+      </div>
 
-      {/* Manage taxonomy */}
-      <section className="space-y-3">
-        <h2 className="font-display text-[15px] font-semibold">Manage</h2>
-        <CreateTopicRow />
-        {topics.isLoading ? null : (topics.data?.length ?? 0) === 0 ? (
-          <EmptyState
-            icon={TagsIcon}
-            title="No topics yet"
-            description={
-              uncat > 0
-                ? `You have ${uncat} uncategorised items. Add a few topics, or click "Find topics" to let the assistant propose some.`
-                : "Add a topic to start organising your library."
-            }
-          />
-        ) : (
-          <ul className="divide-y divide-border rounded-lg border border-border">
-            {topics.data!.map((t) => (
-              <TopicRow
-                key={t.id}
-                topic={t}
-                all={topics.data!}
-                busy={busy}
-                onRescan={startRescan}
-              />
-            ))}
-          </ul>
+      {overview.isLoading ? (
+        <CardGridSkeleton count={6} />
+      ) : overview.isError ? (
+        <ErrorState error={overview.error} onRetry={() => overview.refetch()} />
+      ) : topics.length === 0 ? (
+        <EmptyState
+          icon={TagsIcon}
+          title="No topics yet"
+          description={
+            uncat > 0
+              ? `You have ${uncat} uncategorised items. Let Merlin propose topics, or add your own.`
+              : "Add a topic to start organising your library."
+          }
+          action={
+            <Button size="sm" onClick={tasks.startDiscovery} disabled={tasks.busy}>
+              <Sparkles className="size-4" /> Find topics
+            </Button>
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+          {topics.map((t) => (
+            <TopicCard key={t.slug} topic={t} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TopicCard({ topic }: { topic: TopicCardData }) {
+  const ask = useAsk();
+  const extra = topic.count - topic.preview.length;
+  return (
+    <div className="relative flex flex-col rounded-[14px] border border-border bg-[color-mix(in_srgb,var(--color-surface)_50%,transparent)] p-4 transition-colors hover:border-ui-hover-border hover:bg-surface">
+      <div className="flex items-baseline gap-2">
+        {/* The whole card opens the topic (the link's ::after covers it); Ask
+            sits above that layer. */}
+        <Link
+          to={`/topics/${topic.slug}`}
+          className="min-w-0 truncate font-display text-[17px] font-semibold tracking-[-0.01em] text-fg after:absolute after:inset-0 after:rounded-[14px]"
+        >
+          {topic.label}
+        </Link>
+        <span className="font-mono text-[12px] tabular-nums text-fg-subtle">{thousands(topic.count)}</span>
+        {topic.new_count > 0 && (
+          <span className="ml-auto flex shrink-0 items-center gap-1.5 font-mono text-[11.5px] font-medium text-signal">
+            <span className="size-1.5 rounded-full bg-signal" />↑ {topic.new_count} new
+          </span>
         )}
-      </section>
+      </div>
+      <div className="mt-3">
+        <ShareBar share={topic.share} />
+      </div>
+      <p className="mt-2 font-mono text-[11px] text-fg-subtle">{pct(topic.share)} of your library</p>
+      <div className="mt-3 grid grid-cols-3 gap-1.5">
+        {topic.preview.map((it) => {
+          const thumb = thumbnailUrl(it);
+          return (
+            <span key={it.id} className="aspect-video overflow-hidden rounded-md bg-surface-2">
+              {thumb && <img src={thumb} alt="" loading="lazy" className="size-full object-cover" />}
+            </span>
+          );
+        })}
+        {topic.preview.length > 0 && topic.preview.length < 3 && extra > 0 && (
+          <span className="grid aspect-video place-items-center rounded-md bg-surface-2 font-mono text-[12px] text-fg-subtle">
+            +{extra}
+          </span>
+        )}
+        {topic.preview.length === 0 && (
+          <span className="col-span-3 grid h-[54px] place-items-center rounded-md border border-dashed border-border font-mono text-[11px] text-fg-subtle">
+            nothing in it yet
+          </span>
+        )}
+      </div>
+      <div className="mt-3.5 flex items-center gap-2">
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-fg-subtle">
+          {topic.top_tags.map((t) => `#${t}`).join(" ")}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          className="relative z-[1] h-7 rounded-full px-3"
+          onClick={() => ask(`Catch me up on ${topic.label}`)}
+        >
+          <MessageSquare className="size-3.5" /> Ask
+        </Button>
+      </div>
     </div>
   );
 }
 
 // --------------------------------------------------------------------------- //
-// Backfill: fit uncategorised items to EXISTING topics (behind a cost confirm)
+// /topics/:slug — one topic
 // --------------------------------------------------------------------------- //
 
-function BackfillButton({
-  uncat,
-  disabled,
-  onConfirm,
-}: {
-  uncat: number;
-  disabled: boolean;
-  onConfirm: () => void;
-}) {
-  const [open, setOpen] = useState(false);
+const ITEMS = 24;
+
+export function TopicDetailRoute() {
+  const { slug = "" } = useParams();
+  const detail = useTopicDetail(slug);
+  const tasks = useTopicTasks();
+  const ask = useAsk();
+  const [tag, setTag] = useState<string | null>(null);
+  const [channel, setChannel] = useState<string | null>(null);
+  const items = useItems({
+    topics: [slug],
+    tags: tag ? [tag] : undefined,
+    channel: channel ?? undefined,
+    sort: "newest",
+    per_page: ITEMS,
+  });
+  const t = detail.data;
+
+  if (detail.isLoading)
+    return (
+      <div className="space-y-5">
+        <TopicsPanel current={slug} />
+        <Skeleton className="h-10 w-64" />
+        <CardGridSkeleton count={6} />
+      </div>
+    );
+  if (detail.isError || !t)
+    return (
+      <div className="space-y-5">
+        <TopicsPanel current={slug} />
+        <BackLink />
+        <ErrorState error={detail.error ?? "Topic not found."} onRetry={() => detail.refetch()} />
+      </div>
+    );
+
+  const hours = t.seconds / 3600;
+  const stats: [string, string][] = [
+    [thousands(t.count), t.count === 1 ? "item" : "items"],
+    [pct(t.share), "of library"],
+  ];
+  if (t.seconds > 0)
+    stats.push([hours >= 1 ? `${Math.round(hours)}h` : `${Math.round(t.seconds / 60)}m`, "of video"]);
+  stats.push([thousands(t.channel_count), t.channel_count === 1 ? "channel" : "channels"]);
+  const shown = items.data?.items.length ?? 0;
+  const matching = items.data?.total ?? 0;
+  const asTopicItem: TopicItem = t;
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="secondary" disabled={disabled || uncat === 0}>
-          <Layers className="size-4" />
-          Classify {uncat} uncategorised
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Classify uncategorised items?</DialogTitle>
-          <DialogDescription>
-            This fits your {uncat} uncategorised item{uncat === 1 ? "" : "s"} to
-            the topics you already have — one LLM call each (~{uncat} calls), which
-            costs money. It never touches items you've assigned by hand. New topics
-            aren't created here; use “Find topics” for that.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="mt-4 flex justify-end gap-2">
-          <DialogClose asChild>
-            <Button size="sm" variant="ghost">
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button
-            size="sm"
-            onClick={() => {
-              setOpen(false);
-              onConfirm();
-            }}
-          >
-            <Layers className="size-4" />
-            Classify {uncat}
+    <div className="space-y-5">
+      <TopicsPanel current={slug} />
+      <BackLink />
+      <div>
+        <p className="eyebrow">
+          Topic ·{" "}
+          {t.origin === "user" ? "added by you" : t.origin === "seed" ? "starter topic" : "proposed by Merlin"}
+        </p>
+        <h1 className="mt-2 font-display text-[30px] font-semibold leading-tight tracking-[-0.03em] md:text-[38px]">
+          {t.label}
+        </h1>
+        {t.description && <p className="mt-1 max-w-[70ch] text-[14px] text-fg-muted">{t.description}</p>}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        <p className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[14px] text-fg-muted">
+          {stats.map(([n, l]) => (
+            <span key={l}>
+              <b className="font-mono font-medium text-fg">{n}</b> {l}
+            </span>
+          ))}
+          {t.new_count > 0 && (
+            <span className="flex items-center gap-1.5 text-signal">
+              <span className="size-1.5 rounded-full bg-signal" />
+              <b className="font-mono font-medium">{t.new_count}</b> new this week
+            </span>
+          )}
+        </p>
+        <div className="ml-auto flex items-center gap-2">
+          <Button size="sm" onClick={() => ask(`Catch me up on ${t.label}`)}>
+            <Sparkles className="size-3.5" /> Catch me up
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => ask(`What does my library say about ${t.label}?`)}>
+            <MessageSquare className="size-3.5" /> Ask about {t.label}
+          </Button>
+          <RescanButton
+            topic={asTopicItem}
+            disabled={tasks.busy || t.count === 0}
+            onConfirm={() => tasks.startRescan(asTopicItem)}
+          />
+          <Button variant="ghost" size="icon-sm" asChild>
+            <Link to="/topics/manage" aria-label="Manage topics" title="Rename, merge, archive or delete">
+              <MoreHorizontal className="size-4" />
+            </Link>
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
+      </div>
 
-// --------------------------------------------------------------------------- //
-// Full re-scan: re-decide the WHOLE library against the current taxonomy
-// (behind a cost confirm — one LLM call per item across the whole corpus)
-// --------------------------------------------------------------------------- //
+      <TaskStrip tasks={tasks} />
 
-function ReclassifyAllButton({
-  total,
-  disabled,
-  onConfirm,
-}: {
-  total: number;
-  disabled: boolean;
-  onConfirm: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="secondary" disabled={disabled}>
-          <RefreshCw className="size-4" />
-          Re-scan all
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Re-scan your whole library?</DialogTitle>
-          <DialogDescription>
-            This re-checks every categorised and uncategorised item (up to ~{total}{" "}
-            LLM call{total === 1 ? "" : "s"}, which costs money) against your
-            current topics, and may move items between topics — use it after adding
-            new topics you want applied everywhere. Items you've assigned by hand
-            are left alone. To speed it up, raise <code>CLASSIFY_CONCURRENCY</code>.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="mt-4 flex justify-end gap-2">
-          <DialogClose asChild>
-            <Button size="sm" variant="ghost">
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button
-            size="sm"
-            onClick={() => {
-              setOpen(false);
-              onConfirm();
-            }}
-          >
-            <RefreshCw className="size-4" />
-            Re-scan everything
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// --------------------------------------------------------------------------- //
-// Per-topic re-scan: re-check a topic's members against the current taxonomy
-// (behind a cost confirm, since it costs one LLM call per member and moves items)
-// --------------------------------------------------------------------------- //
-
-function RescanButton({
-  topic,
-  disabled,
-  onConfirm,
-}: {
-  topic: TopicItem;
-  disabled: boolean;
-  onConfirm: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const n = topic.count;
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DialogTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              disabled={disabled}
-              aria-label="Re-scan members"
+      {t.tags.length > 0 && (
+        <ChipRow label="Sub-tags">
+          <FacetChip on={tag === null} onClick={() => setTag(null)} count={t.count}>
+            All
+          </FacetChip>
+          {t.tags.map((x) => (
+            <FacetChip
+              key={x.name}
+              on={tag === x.name}
+              onClick={() => setTag(tag === x.name ? null : x.name)}
+              count={x.count}
             >
-              <RefreshCw className="size-3.5" />
-            </Button>
-          </DialogTrigger>
-        </TooltipTrigger>
-        <TooltipContent>Re-scan items for a better-fitting topic</TooltipContent>
-      </Tooltip>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Re-scan “{topic.label}”?</DialogTitle>
-          <DialogDescription>
-            This re-checks its {n} item{n === 1 ? "" : "s"} against your current
-            topics — one LLM call each (~{n} call{n === 1 ? "" : "s"}), which costs
-            money — and may move items to a better-fitting topic. Items you've
-            assigned by hand are left alone.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="mt-4 flex justify-end gap-2">
-          <DialogClose asChild>
-            <Button size="sm" variant="ghost">
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button
-            size="sm"
-            onClick={() => {
-              setOpen(false);
-              onConfirm();
-            }}
+              #{x.name}
+            </FacetChip>
+          ))}
+        </ChipRow>
+      )}
+      {t.channels.length > 0 && (
+        <ChipRow label="Channels">
+          {t.channels.map((x) => (
+            <FacetChip
+              key={x.name}
+              on={channel === x.name}
+              onClick={() => setChannel(channel === x.name ? null : x.name)}
+            >
+              {x.name}
+            </FacetChip>
+          ))}
+          {t.channel_count > t.channels.length && (
+            <span className="inline-flex h-[30px] shrink-0 items-center rounded-full border border-border px-3 font-mono text-[12px] text-fg-subtle">
+              +{t.channel_count - t.channels.length}
+            </span>
+          )}
+        </ChipRow>
+      )}
+
+      <div className="flex items-baseline gap-2.5 pt-1">
+        <h2 className="font-display text-[18px] font-semibold">Items</h2>
+        <span className="hidden font-mono text-[12px] text-fg-subtle sm:inline">
+          newest first · {shown} of {thousands(matching)} shown
+        </span>
+        {matching > shown && (
+          <Link
+            to={`/library?topics=${encodeURIComponent(slug)}`}
+            className="ml-auto inline-flex items-center gap-1 text-[13px] text-ui-link hover:underline hover:underline-offset-[3px]"
           >
-            <RefreshCw className="size-4" />
-            Re-scan {n}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+            See all in the Library <ChevronRight className="size-3.5" />
+          </Link>
+        )}
+      </div>
+      {items.isLoading ? <CardGridSkeleton count={6} /> : <ItemGrid items={items.data?.items ?? []} />}
+    </div>
+  );
+}
+
+function ChipRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="hidden w-[76px] shrink-0 font-mono text-[11px] uppercase tracking-[0.08em] text-fg-subtle sm:block">
+        {label}
+      </span>
+      <div className="no-scrollbar flex min-w-0 gap-1.5 overflow-x-auto">{children}</div>
+    </div>
+  );
+}
+
+function FacetChip({
+  on,
+  onClick,
+  count,
+  children,
+}: {
+  on: boolean;
+  onClick: () => void;
+  count?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={on}
+      className={cn(
+        "inline-flex h-[30px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[13px] transition-colors",
+        on
+          ? "border-ui-toggle-on-border bg-ui-toggle-on-bg text-ui-toggle-on-fg"
+          : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
+      )}
+    >
+      {children}
+      {count != null && <span className="font-mono text-[11px] text-fg-subtle">{count}</span>}
+    </button>
   );
 }
 
 // --------------------------------------------------------------------------- //
-// Proposal review card
+// /topics/proposals — the review queue
 // --------------------------------------------------------------------------- //
 
-function ProposalCard({
-  proposal,
-  topics,
-}: {
-  proposal: TopicProposal;
-  topics: TopicItem[];
-}) {
+export function TopicProposalsRoute() {
+  const proposals = useProposals();
+  const topics = useTopics("active").data ?? [];
+  const tasks = useTopicTasks();
+  const pending = proposals.data ?? [];
+
+  return (
+    <div className="mx-auto max-w-[1400px] space-y-5">
+      <TopicsPanel current="proposals" />
+      <BackLink />
+      <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+        <h1 className="font-display text-[30px] font-semibold leading-9 tracking-[-0.03em]">Proposals</h1>
+        {pending.length > 0 && (
+          <span className="flex items-center gap-1.5 pb-1.5 font-mono text-[12px] text-fg-subtle">
+            <span className="size-1.5 rounded-full bg-signal" />
+            {pending.length} waiting
+          </span>
+        )}
+        <Button variant="ghost" size="sm" className="ml-auto" onClick={tasks.startDiscovery} disabled={tasks.busy}>
+          <Sparkles className="size-3.5" /> Look for more
+        </Button>
+      </div>
+      <p className="max-w-[72ch] text-[15px] leading-6 text-fg-muted">
+        Merlin noticed clusters your topics don't cover. Nothing changes until you accept —
+        accepting moves the items and keeps your tags.
+      </p>
+
+      <TaskStrip tasks={tasks} />
+
+      {proposals.isLoading ? (
+        <Skeleton className="h-56 w-full rounded-[14px]" />
+      ) : pending.length === 0 ? (
+        <EmptyState
+          icon={Check}
+          title="Nothing waiting"
+          description="When Merlin finds a cluster your topics don't cover, it shows up here for you to accept, merge or dismiss."
+          action={
+            <Button size="sm" variant="secondary" onClick={tasks.startDiscovery} disabled={tasks.busy}>
+              <Sparkles className="size-3.5" /> Look for topics
+            </Button>
+          }
+        />
+      ) : (
+        <div className="space-y-4">
+          {pending.map((p) => (
+            <ProposalCard key={p.id} proposal={p} topics={topics} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProposalCard({ proposal, topics }: { proposal: TopicProposal; topics: TopicItem[] }) {
   const accept = useAcceptProposal();
   const reject = useRejectProposal();
+  const itemHref = useItemHref();
   const [label, setLabel] = useState(proposal.proposed_label);
   const busy = accept.isPending || reject.isPending;
+  const examples = (proposal.items ?? []).slice(0, 4);
+  const more = (proposal.items?.length ?? 0) - examples.length;
 
   return (
-    <div className="rounded-lg border border-border bg-surface/40 p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
+    // Gold edge: a proposal is something waiting on you.
+    <div className="grid gap-6 rounded-[14px] border border-border bg-surface/50 p-[22px] shadow-[inset_3px_0_0_var(--color-signal)] lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+      <div className="min-w-0">
+        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-signal">
+          Proposed topic · {proposal.item_count} item{proposal.item_count === 1 ? "" : "s"}
+        </p>
+        <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          className="h-8 max-w-[220px]"
-          aria-label="Proposed topic label"
+          aria-label="Topic name"
+          className="-ml-1 mt-2 w-full rounded-md border border-transparent bg-transparent px-1 py-0.5 font-display text-[24px] font-semibold tracking-[-0.02em] text-fg outline-none transition-colors hover:border-border focus:border-ui-focus-border"
         />
-        <span className="font-mono text-[11px] tabular-nums text-fg-subtle">
-          {proposal.item_count} item{proposal.item_count === 1 ? "" : "s"}
-        </span>
-        <div className="ml-auto flex items-center gap-1.5">
+        {proposal.rationale && (
+          <p className="mt-2 max-w-[62ch] text-[15px] leading-[22px] text-fg-muted">{proposal.rationale}</p>
+        )}
+        <div className="mt-5 flex flex-wrap gap-2">
           <Button
             size="sm"
             disabled={busy || !label.trim()}
@@ -482,260 +680,116 @@ function ProposalCard({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="secondary" disabled={busy || topics.length === 0}>
-                <GitMerge className="size-3.5" /> Merge into
+                <GitMerge className="size-3.5" /> Merge into…
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
               {topics.map((t) => (
                 <DropdownMenuItem
                   key={t.id}
                   onSelect={() => accept.mutate({ id: proposal.id, body: { topic_id: t.id } })}
                 >
                   {t.label}
+                  <span className="ml-auto pl-4 font-mono text-[11px] text-fg-subtle">{t.count}</span>
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy}
-            onClick={() => reject.mutate(proposal.id)}
-          >
-            <X className="size-3.5" /> Reject
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => reject.mutate(proposal.id)}>
+            Dismiss
           </Button>
         </div>
       </div>
-      {proposal.rationale && (
-        <p className="mt-2 text-[13px] text-fg-muted">{proposal.rationale}</p>
+      {examples.length > 0 && (
+        <div className="min-w-0">
+          <p className="eyebrow mb-3">Examples</p>
+          <div className="space-y-2">
+            {examples.map((it) => {
+              const thumb =
+                it.thumbnail_url ??
+                (it.source_id ? thumbnailUrl({ source_type: "youtube", source_id: it.source_id }) : null);
+              const { to, state } = itemHref(it.id);
+              const duration = formatDuration(it.duration);
+              return (
+                <Link
+                  key={it.id}
+                  to={to}
+                  state={state}
+                  className="grid grid-cols-[112px_minmax(0,1fr)] items-center gap-3 rounded-[10px] p-1 transition-colors hover:bg-surface-2"
+                >
+                  <span className="relative aspect-video overflow-hidden rounded-md bg-surface-2">
+                    {thumb && <img src={thumb} alt="" loading="lazy" className="size-full object-cover" />}
+                    {duration && (
+                      <span className="absolute bottom-1 right-1 rounded bg-black/75 px-1 py-0.5 font-mono text-[10px] leading-none text-white">
+                        {duration}
+                      </span>
+                    )}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="line-clamp-2 text-[14px] leading-5 text-fg">{it.title ?? "Untitled"}</span>
+                    {it.channel && (
+                      <span className="block truncate font-mono text-[11px] text-fg-subtle">{it.channel}</span>
+                    )}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+          {more > 0 && <p className="mt-2 font-mono text-[11px] text-fg-subtle">+ {more} more</p>}
+        </div>
       )}
-      {proposal.items.length > 0 && (
-        <ul className="mt-2 space-y-0.5">
-          {proposal.items.slice(0, 6).map((it) => (
-            <li key={it.id} className="truncate text-[12px] text-fg-subtle">
-              · {it.title ?? "Untitled"}
-            </li>
+    </div>
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// /topics/manage — the full management list
+// --------------------------------------------------------------------------- //
+
+export function TopicManageRoute() {
+  const topics = useTopics("active");
+  const uncat = useUncategorisedCount().data ?? 0;
+  const tasks = useTopicTasks();
+  const list = useMemo(() => topics.data ?? [], [topics.data]);
+  const estimate = list.reduce((s, t) => s + t.count, 0) + uncat;
+
+  return (
+    <div className="mx-auto max-w-[900px] space-y-6">
+      <TopicsPanel />
+      <BackLink />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="font-display text-[26px] font-semibold tracking-[-0.03em]">Manage topics</h1>
+          <p className="mt-1 text-[13px] text-fg-muted">
+            Rename, re-scan, merge, archive or delete — and add your own.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <ReclassifyAllButton
+            total={estimate}
+            disabled={tasks.busy || !list.length}
+            onConfirm={tasks.startRescanAll}
+          />
+          <BackfillButton uncat={uncat} disabled={tasks.busy || !list.length} onConfirm={tasks.startBackfill} />
+          <Button size="sm" onClick={tasks.startDiscovery} disabled={tasks.busy}>
+            <Sparkles className="size-4" />
+            {tasks.running && tasks.kind === "discovery" ? "Finding topics…" : "Find topics"}
+          </Button>
+        </div>
+      </div>
+
+      <TaskStrip tasks={tasks} />
+
+      <CreateTopicRow />
+      {topics.isLoading ? null : list.length === 0 ? (
+        <EmptyState icon={TagsIcon} title="No topics yet" description="Add a topic above, or let Merlin find some." />
+      ) : (
+        <ul className="divide-y divide-border rounded-[14px] border border-border">
+          {list.map((t) => (
+            <TopicRow key={t.id} topic={t} all={list} busy={tasks.busy} onRescan={tasks.startRescan} />
           ))}
-          {proposal.items.length > 6 && (
-            <li className="text-[12px] text-fg-subtle">
-              …and {proposal.items.length - 6} more
-            </li>
-          )}
         </ul>
       )}
     </div>
-  );
-}
-
-// --------------------------------------------------------------------------- //
-// Manage: create + per-topic row
-// --------------------------------------------------------------------------- //
-
-function CreateTopicRow() {
-  const create = useCreateTopic();
-  const [label, setLabel] = useState("");
-  const submit = () => {
-    const l = label.trim();
-    if (!l) return;
-    create.mutate({ label: l }, { onSuccess: () => setLabel("") });
-  };
-  return (
-    <div className="flex items-center gap-2">
-      <Input
-        value={label}
-        onChange={(e) => setLabel(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && submit()}
-        placeholder="New topic label…"
-        className="max-w-[280px]"
-      />
-      <Button size="sm" variant="secondary" onClick={submit} disabled={!label.trim() || create.isPending}>
-        <Plus className="size-3.5" /> Add
-      </Button>
-    </div>
-  );
-}
-
-function TopicRow({
-  topic,
-  all,
-  busy,
-  onRescan,
-}: {
-  topic: TopicItem;
-  all: TopicItem[];
-  busy: boolean;
-  onRescan: (topic: TopicItem) => void;
-}) {
-  const patch = usePatchTopic();
-  const del = useDeleteTopic();
-  const [editing, setEditing] = useState(false);
-  const [label, setLabel] = useState(topic.label);
-  const others = all.filter((t) => t.id !== topic.id);
-
-  const saveRename = () => {
-    const l = label.trim();
-    if (!l || l === topic.label) return setEditing(false);
-    patch.mutate({ id: topic.id, body: { label: l } }, { onSuccess: () => setEditing(false) });
-  };
-
-  return (
-    <li className="flex items-center gap-2 px-3 py-2">
-      {editing ? (
-        <>
-          <Input
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") saveRename();
-              if (e.key === "Escape") { setLabel(topic.label); setEditing(false); }
-            }}
-            autoFocus
-            className="h-8 max-w-[220px]"
-          />
-          <Button size="icon-sm" variant="ghost" onClick={saveRename} aria-label="Save">
-            <Check className="size-4" />
-          </Button>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            onClick={() => { setLabel(topic.label); setEditing(false); }}
-            aria-label="Cancel"
-          >
-            <X className="size-4" />
-          </Button>
-        </>
-      ) : (
-        <>
-          <span className="font-medium">{topic.label}</span>
-          <span className="font-mono text-[11px] tabular-nums text-fg-subtle">
-            {topic.count}
-          </span>
-          {topic.origin === "seed" && (
-            <span className="rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-subtle">
-              seed
-            </span>
-          )}
-          <div className="ml-auto flex items-center gap-0.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button size="icon-sm" variant="ghost" onClick={() => setEditing(true)} aria-label="Rename">
-                  <Pencil className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Rename topic</TooltipContent>
-            </Tooltip>
-            <RescanButton
-              topic={topic}
-              disabled={busy || topic.count === 0}
-              onConfirm={() => onRescan(topic)}
-            />
-            {others.length > 0 && (
-              <DropdownMenu>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuTrigger asChild>
-                      <Button size="icon-sm" variant="ghost" aria-label="Merge into">
-                        <GitMerge className="size-3.5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent>Merge into another topic</TooltipContent>
-                </Tooltip>
-                <DropdownMenuContent align="end">
-                  {others.map((t) => (
-                    <DropdownMenuItem
-                      key={t.id}
-                      onSelect={() =>
-                        patch.mutate({ id: topic.id, body: { merge_into: t.id } })
-                      }
-                    >
-                      Merge into “{t.label}”
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  onDoubleClick={() => patch.mutate({ id: topic.id, body: { archive: true } })}
-                  aria-label="Archive topic (double-click to confirm)"
-                >
-                  <Archive className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Archive topic (double-click) — hides it, keeps its items</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  onDoubleClick={() => del.mutate(topic.id)}
-                  aria-label="Delete topic (double-click to confirm)"
-                  className={cn("text-fg-subtle hover:text-fail")}
-                >
-                  <X className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Delete topic (double-click) — unassigns its items</TooltipContent>
-            </Tooltip>
-          </div>
-        </>
-      )}
-    </li>
-  );
-}
-
-/** The Topics place's context panel: the taxonomy with counts (each opens its
- *  slice of the Library), then what's waiting for review. */
-function TopicsPanel({
-  topics,
-  proposals,
-  uncategorised,
-}: {
-  topics: TopicItem[];
-  proposals: number;
-  uncategorised: number;
-}) {
-  return (
-    <PanelSlot title="Topics" sub={`${topics.length} active`}>
-      {(proposals > 0 || uncategorised > 0) && (
-        <PanelSection title="Review">
-          {proposals > 0 && (
-            <PanelButton
-              icon={Sparkles}
-              label="Proposed topics"
-              count={proposals}
-              onClick={() =>
-                document
-                  .getElementById("proposals")
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
-              }
-            />
-          )}
-          {uncategorised > 0 && (
-            <PanelLink
-              to={libraryHref({ kind: "topic", slug: UNCATEGORISED })}
-              icon={TagsIcon}
-              label="Uncategorised"
-              count={uncategorised}
-            />
-          )}
-        </PanelSection>
-      )}
-      <PanelSection title="Topics">
-        {topics.map((t) => (
-          <PanelLink
-            key={t.slug}
-            to={libraryHref({ kind: "topic", slug: t.slug })}
-            label={t.label}
-            count={t.count}
-          />
-        ))}
-      </PanelSection>
-    </PanelSlot>
   );
 }

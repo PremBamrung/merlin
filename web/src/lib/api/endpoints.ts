@@ -91,6 +91,15 @@ export const getSourceTypes = () => client.get<NameCount[]>("/api/source-types")
 export const getTopics = (status = "active", unread = false) =>
   client.get<TopicItem[]>("/api/topics", { status, unread });
 
+export type TopicCard = components["schemas"]["TopicCard"];
+export type TopicOverview = components["schemas"]["TopicOverviewResponse"];
+export type TopicDetail = components["schemas"]["TopicDetailResponse"];
+
+/** Cards for the Topics overview; `since` defaults to a week ago server-side. */
+export const getTopicOverview = () => client.get<TopicOverview>("/api/topics/overview");
+export const getTopicDetail = (slug: string) =>
+  client.get<TopicDetail>(`/api/topics/by-slug/${encodeURIComponent(slug)}`);
+
 export const getUncategorisedCount = (unread = false) =>
   client.get<components["schemas"]["CountResponse"]>(
     "/api/topics/uncategorised-count",

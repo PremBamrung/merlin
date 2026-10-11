@@ -10,6 +10,8 @@ import {
   createTopic,
   deleteTopic,
   getProposals,
+  getTopicDetail,
+  getTopicOverview,
   getTopics,
   getUncategorisedCount,
   patchTopic,
@@ -31,6 +33,25 @@ export function useTopics(status = "active", unread = false) {
     queryKey: [...keys.topics(), status, unread ? "unread" : "all"],
     queryFn: () => getTopics(status, unread),
     placeholderData: keepPreviousData,
+  });
+}
+
+/** The Topics overview cards (size, share, new this week, preview, tags). */
+export function useTopicOverview() {
+  return useQuery({
+    queryKey: [...keys.topics(), "overview"],
+    queryFn: getTopicOverview,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
+}
+
+/** One topic's page header. */
+export function useTopicDetail(slug: string) {
+  return useQuery({
+    queryKey: [...keys.topics(), "detail", slug],
+    queryFn: () => getTopicDetail(slug),
+    enabled: !!slug,
   });
 }
 

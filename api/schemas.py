@@ -125,6 +125,32 @@ class TopicItem(BaseModel):
     count: int = 0
 
 
+class TopicCard(TopicItem):
+    """A topic on the Topics overview: its share, what's new, a preview."""
+
+    # Unread items ingested since the client's last visit.
+    new_count: int = 0
+    share: float = 0.0
+    top_tags: list[str] = Field(default_factory=list)
+    preview: list[ListItem] = Field(default_factory=list)
+
+
+class TopicOverviewResponse(BaseModel):
+    total: int
+    topics: list[TopicCard]
+
+
+class TopicDetailResponse(TopicItem):
+    """One topic's page header: size, share, hours, channels, sub-tags."""
+
+    share: float = 0.0
+    seconds: int = 0
+    channel_count: int = 0
+    new_count: int = 0
+    tags: list[NameCount] = Field(default_factory=list)
+    channels: list[NameCount] = Field(default_factory=list)
+
+
 class ItemTopicsResponse(BaseModel):
     item_id: str
     topics: list[ItemTopicRef] = Field(default_factory=list)
@@ -136,6 +162,11 @@ class ItemTopicsResponse(BaseModel):
 class ProposalMemberItem(BaseModel):
     id: str
     title: str | None = None
+    # Card fields, for the examples in the review queue.
+    thumbnail_url: str | None = None
+    channel: str | None = None
+    duration: int | str | None = None
+    source_id: str | None = None
 
 
 class TopicProposalResponse(BaseModel):

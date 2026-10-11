@@ -260,3 +260,15 @@ def test_propose_clusters_consolidates_labels(monkeypatch):
     assert len(out) == 1
     assert out[0]["proposed_label"] == "Smart Home"
     assert len(out[0]["item_ids"]) == 60  # both chunks unioned
+
+
+def test_proposal_members_carry_card_fields(client, make_item):
+    """The review queue shows examples with a thumbnail, channel and duration."""
+    a = make_item(title="a", channel="Hoffmann")
+    _insert_proposal("Coffee", [a])
+    (p,) = client.get("/api/topics/proposals").json()
+    (m,) = p["items"]
+    assert m["title"] == "a"
+    assert m["thumbnail_url"] == "https://img.example/thumb.jpg"
+    assert m["channel"] == "Hoffmann"
+    assert m["duration"] == "00:16:59"

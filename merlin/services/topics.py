@@ -455,8 +455,13 @@ def reclassify_all() -> str:
 def _serialize_proposal(session, proposal) -> dict:
     import json
 
+    from merlin.services.library import card_details
+
     ids = json.loads(proposal.item_ids) if proposal.item_ids else []
     items = TopicRepository.member_items(session, ids)
+    # Examples in the review queue show a thumbnail, channel and duration.
+    cards = card_details([i["id"] for i in items])
+    items = [{**i, **cards.get(i["id"], {})} for i in items]
     return {
         "id": proposal.id,
         "proposed_label": proposal.proposed_label,

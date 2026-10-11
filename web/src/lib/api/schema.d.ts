@@ -268,6 +268,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/topics/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Topics Overview */
+        get: operations["topics_overview_api_topics_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/topics/by-slug/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Topic Detail */
+        get: operations["topic_detail_api_topics_by_slug__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/topics/uncategorised-count": {
         parameters: {
             query?: never;
@@ -1212,6 +1246,14 @@ export interface components {
             id: string;
             /** Title */
             title?: string | null;
+            /** Thumbnail Url */
+            thumbnail_url?: string | null;
+            /** Channel */
+            channel?: string | null;
+            /** Duration */
+            duration?: number | string | null;
+            /** Source Id */
+            source_id?: string | null;
         };
         /** RenameThreadRequest */
         RenameThreadRequest: {
@@ -1394,6 +1436,102 @@ export interface components {
             count: number;
         };
         /**
+         * TopicCard
+         * @description A topic on the Topics overview: its share, what's new, a preview.
+         */
+        TopicCard: {
+            /** Id */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+            /**
+             * Origin
+             * @default user
+             */
+            origin: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * New Count
+             * @default 0
+             */
+            new_count: number;
+            /**
+             * Share
+             * @default 0
+             */
+            share: number;
+            /** Top Tags */
+            top_tags?: string[];
+            /** Preview */
+            preview?: components["schemas"]["ListItem"][];
+        };
+        /**
+         * TopicDetailResponse
+         * @description One topic's page header: size, share, hours, channels, sub-tags.
+         */
+        TopicDetailResponse: {
+            /** Id */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+            /**
+             * Origin
+             * @default user
+             */
+            origin: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Share
+             * @default 0
+             */
+            share: number;
+            /**
+             * Seconds
+             * @default 0
+             */
+            seconds: number;
+            /**
+             * Channel Count
+             * @default 0
+             */
+            channel_count: number;
+            /**
+             * New Count
+             * @default 0
+             */
+            new_count: number;
+            /** Tags */
+            tags?: components["schemas"]["NameCount"][];
+            /** Channels */
+            channels?: components["schemas"]["NameCount"][];
+        };
+        /**
          * TopicItem
          * @description A topic row with its assigned-item count (list/manage responses).
          */
@@ -1421,6 +1559,13 @@ export interface components {
              * @default 0
              */
             count: number;
+        };
+        /** TopicOverviewResponse */
+        TopicOverviewResponse: {
+            /** Total */
+            total: number;
+            /** Topics */
+            topics: components["schemas"]["TopicCard"][];
         };
         /** TopicProposalResponse */
         TopicProposalResponse: {
@@ -2053,6 +2198,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TopicItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    topics_overview_api_topics_overview_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicOverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    topic_detail_api_topics_by_slug__slug__get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicDetailResponse"];
                 };
             };
             /** @description Validation Error */
