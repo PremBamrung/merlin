@@ -120,6 +120,29 @@ def list_items(
         }
 
 
+# The fields a chat source card needs beyond what the agent's citation carries.
+_CARD_FIELDS = ("thumbnail_url", "channel", "published_at", "duration", "source_id")
+
+
+def card_details(item_ids: list[str]) -> dict[str, dict]:
+    """``{item_id: {thumbnail_url, channel, published_at, duration, source_id}}``
+    for the given ids, in one query — enriches chat citations into source
+    cards. Unknown ids are simply absent."""
+    if not item_ids:
+        return {}
+    from merlin.db.models import KnowledgeItem
+
+    with SessionFactory() as session:
+        items = (
+            session.query(KnowledgeItem).filter(KnowledgeItem.id.in_(item_ids)).all()
+        )
+        out = {}
+        for item in items:
+            d = serialize_item(item, topics=[])
+            out[item.id] = {k: d[k] for k in _CARD_FIELDS}
+        return out
+
+
 def get_item(item_id: str) -> dict | None:
     with SessionFactory() as session:
         item = KnowledgeItemRepository.get_by_id(session, item_id)
@@ -294,9 +317,7 @@ def list_tags(unread_only: bool = False) -> list[dict]:
     from merlin.db.models import KnowledgeItem
 
     with SessionFactory() as session:
-        q = session.query(KnowledgeItem.tags).filter(
-            KnowledgeItem.tags.isnot(None)
-        )
+        q = session.query(KnowledgeItem.tags).filter(KnowledgeItem.tags.isnot(None))
         if unread_only:
             q = q.filter(KnowledgeItem.read_at.is_(None))
         rows = q.all()

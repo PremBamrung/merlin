@@ -177,6 +177,23 @@ def test_library_chat_streams_tool_then_text(client, monkeypatch, make_item):
     assert any("moats" in t.lower() for t in titles)
 
 
+def test_citations_carry_source_card_fields(client, monkeypatch, make_item):
+    """Both citation tiers are enriched with what a source card shows."""
+    _three_moat_items(make_item)
+    _patch_model(
+        monkeypatch,
+        _search_then_answer_model("moat", f"Moats matter [#{_ID1}]."),
+    )
+    resp = client.post("/api/chat", json=_chat_body("tell me about moats"))
+    used = _data_part(resp.text, "data-citations")
+    viewed = _data_part(resp.text, "data-sources-viewed")
+    for c in used + viewed:
+        assert c["thumbnail_url"] == "https://img.example/thumb.jpg"
+        assert c["channel"] == "Test Channel"
+        assert c["duration"] == "00:16:59"
+        assert "published_at" in c and c["source_id"]
+
+
 def test_library_chat_passes_filters_into_search(client, monkeypatch, make_item):
     """FilterBar source_types flow through ChatDeps into the retriever."""
     make_item(title="YT moat", source_type="youtube", summary="moat")

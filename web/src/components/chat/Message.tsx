@@ -7,10 +7,11 @@ import {
   List,
   Tags,
   Layers,
+  ChevronDown,
   ChevronRight,
   Brain,
   Loader2,
-  Sparkles,
+  Check,
   Pencil,
 } from "lucide-react";
 import type { UIMessage } from "ai";
@@ -18,7 +19,8 @@ import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/common/Markdown";
 import { CopyButton } from "@/components/common/CopyButton";
 import { AutoGrowTextarea } from "@/components/common/AutoGrowTextarea";
-import { CitationCard } from "@/components/chat/CitationCard";
+import { SourceCard } from "@/components/chat/SourceCard";
+import { Mark } from "@/components/brand/Mark";
 import { UsageFooter } from "@/components/chat/UsageFooter";
 import {
   CITATIONS_PART,
@@ -94,10 +96,15 @@ function groupParts(parts: AnyPart[]): Segment[] {
 }
 
 /**
- * One chat turn rendered from the Vercel AI SDK message-parts protocol: a user
- * bubble, or an assistant answer interleaving reasoning, tool calls (with args +
- * results), and text — plus a consolidated Sources list. Shared by the global
- * Chat page and the Reader's per-item chat.
+ * One chat turn rendered from the Vercel AI SDK message-parts protocol, laid
+ * out Claude-like (docs/EVERYDAY_AI_PLAN.md § Messages): a user bubble on the
+ * right; an assistant answer as full-width prose beside the hat, with its agent
+ * work folded into one summary line, numbered citation chips, source cards and
+ * the turn's usage. Shared by the Chat page and the Reader's item chat
+ * (`compact`: no avatar gutter — that column is narrow).
+ *
+ * On the Chat page the sources sit in `.ai-side`, which index.css turns into a
+ * sticky column beside the answer from 1600px.
  *
  * Memoized: while a turn streams, the AI SDK mutates only the last message and
  * keeps completed message objects referentially stable, so a `memo` here skips
@@ -111,6 +118,7 @@ export const Message = memo(function Message({
   onRegenerate,
   onFollowup,
   onEdit,
+  compact = false,
 }: {
   message: UIMessage;
   isLast: boolean;
@@ -119,6 +127,7 @@ export const Message = memo(function Message({
   onFollowup: (q: string) => void;
   /** Edit a user turn and re-run from there. Omit to disable editing. */
   onEdit?: (id: string, text: string) => void;
+  compact?: boolean;
 }) {
   const parts = (message.parts ?? []) as AnyPart[];
   // Stripped of inline `[#id]` markers — used for the copy action.
@@ -160,29 +169,27 @@ export const Message = memo(function Message({
   const hasVisible = parts.some(
     (p) => (p.type === "text" && p.text) || p.type === "reasoning" || isToolPart(p),
   );
-  const showActions = isLast && !isThisStreaming && !!textContent;
+  const showFollowups = isLast && !isThisStreaming && !!textContent;
   const segments = groupParts(parts);
   // Persisted work-phase duration (set on finish; present after a reload). Shown
   // on the first work block when its live timer isn't available.
   const persistedSeconds =
     parts.find((p) => p.type === WORK_TIMING_PART)?.data?.seconds ?? null;
   const firstWorkIdx = segments.findIndex((s) => s.kind === "work");
-
-  // Copy is available on every assistant turn (hover-revealed in the header),
-  // unlike Regenerate/follow-ups which only make sense on the last turn.
   const showCopy = !isThisStreaming && !!textContent;
+  const hasSide = citations.length > 0 || alsoViewed.length > 0 || !!usage;
 
   return (
-    <div className="group/msg space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="text-ui-icon">✦</span>
-        <span className="eyebrow">Merlin</span>
-        <div className="ml-auto flex items-center gap-1">
-          {timeLabel && <span className="text-[11px] text-fg-subtle">{timeLabel}</span>}
+    <div
+      className={cn("msg-ai group/msg", compact && "compact", citations.length > 0 && "with-side")}
+    >
+      {!compact && (
+        <div className="ai-av" title={timeLabel || undefined}>
+          <Mark size={22} decorative />
         </div>
-      </div>
+      )}
 
-      <div className="space-y-2.5">
+      <div className="min-w-0">
         {segments.map((seg, idx) => {
           const isLastSeg = idx === segments.length - 1;
           if (seg.kind === "work") {
@@ -196,64 +203,96 @@ export const Message = memo(function Message({
             );
           }
           return (
-            <div key={seg.key} className="max-w-none">
-              <Markdown>{linkifyCitationMarkers(seg.text, citations, message.id)}</Markdown>
-            </div>
+            <Markdown key={seg.key} className="[&>:first-child]:mt-0 [&>:last-child]:mb-0">
+              {linkifyCitationMarkers(seg.text, citations, message.id)}
+            </Markdown>
           );
         })}
 
-        {/* Thinking placeholder before any content streams in. */}
+        {/* Before anything streams in. */}
         {isThisStreaming && !hasVisible && (
-          <span className="inline-block h-4 w-2 animate-pulse rounded-sm bg-fg-muted align-middle" />
+          <div className="flex h-[30px] items-center gap-2.5 text-[14px] text-fg-muted">
+            <Loader2 className="size-3.5 animate-spin text-fg-subtle" /> Thinking…
+          </div>
+        )}
+
+        {showCopy && (
+          <div className="mt-2 flex items-center gap-0.5 text-fg-subtle">
+            <CopyButton text={textContent} size="icon-sm" className="size-[30px] text-fg-subtle" />
+            {isLast && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="size-[30px] text-fg-subtle"
+                onClick={onRegenerate}
+                disabled={isStreaming}
+                aria-label="Regenerate"
+                title="Regenerate"
+              >
+                <RotateCw className="size-4" />
+              </Button>
+            )}
+            {timeLabel && (
+              <span className="ml-1 font-mono text-[11px] opacity-0 transition-opacity group-hover/msg:opacity-100">
+                {timeLabel}
+              </span>
+            )}
+          </div>
         )}
       </div>
 
-      {citations.length > 0 && (
-        <div className="space-y-2 pt-1">
-          <p className="eyebrow">Sources</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {citations.map((c, i) => (
-              <CitationCard
-                key={`${c.item_id}-${i}`}
-                citation={c}
-                index={i}
-                messageId={message.id}
-              />
-            ))}
-          </div>
+      {hasSide && (
+        <div className="ai-side min-w-0">
+          {citations.length > 0 && (
+            <>
+              <SourcesHead count={citations.length} />
+              <div className="src-row">
+                {citations.map((c, i) => (
+                  <SourceCard
+                    key={`${c.item_id}-${i}`}
+                    citation={c}
+                    index={i}
+                    messageId={message.id}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+          {alsoViewed.length > 0 && <AlsoSearched items={alsoViewed} />}
+          {usage && (
+            <div className="mt-2.5">
+              <UsageFooter usage={usage} />
+            </div>
+          )}
         </div>
       )}
 
-      {alsoViewed.length > 0 && <AlsoSearched items={alsoViewed} />}
-
-      {usage && <UsageFooter usage={usage} />}
-
-      {showActions && (
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          <Button variant="ghost" size="sm" onClick={onRegenerate} disabled={isStreaming}>
-            <RotateCw className="size-3.5" /> Regenerate
-          </Button>
+      {showFollowups && (
+        <div className="ai-followups mb-2 mt-[18px] flex flex-wrap gap-2">
           {FOLLOWUPS.map((f) => (
             <button
               key={f}
               onClick={() => onFollowup(f)}
               disabled={isStreaming}
-              className="rounded-full border border-border px-2.5 py-1 text-[12px] text-fg-muted transition-colors hover:border-border-strong hover:text-fg disabled:opacity-50"
+              className="inline-flex min-h-[34px] items-center gap-2 rounded-full border border-border px-3.5 py-1 text-left text-[14px] text-fg-muted transition-colors hover:border-border-strong hover:bg-surface hover:text-fg disabled:opacity-50"
             >
+              <ChevronRight className="size-3.5 shrink-0 text-fg-subtle" />
               {f}
             </button>
           ))}
         </div>
       )}
-
-      {showCopy && (
-        <div className="flex items-center px-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100">
-          <CopyButton text={textContent} size="icon-sm" className="size-6 text-fg-subtle" />
-        </div>
-      )}
     </div>
   );
 });
+
+function SourcesHead({ count }: { count: number }) {
+  return (
+    <div className="src-head mb-2.5 mt-[22px] flex items-center gap-2.5 font-mono text-[11px] font-medium uppercase leading-none tracking-[0.08em] text-fg-subtle after:h-px after:flex-1 after:bg-border">
+      Sources · {count}
+    </div>
+  );
+}
 
 /**
  * A user turn: the bubble, its timestamp, and hover actions (copy + edit). Edit
@@ -282,8 +321,8 @@ function UserMessage({
 
   if (editing) {
     return (
-      <div className="flex flex-col items-end">
-        <div className="w-full max-w-[85%] rounded-[14px] border border-border-strong bg-surface-2 p-2">
+      <div className="msg-user flex flex-col items-end">
+        <div className="w-full max-w-[min(78%,560px)] rounded-[20px] border border-border-strong bg-surface-2 p-2">
           <AutoGrowTextarea
             autoFocus
             value={draft}
@@ -297,7 +336,7 @@ function UserMessage({
                 setEditing(false);
               }
             }}
-            className="max-h-60 min-h-[40px] w-full bg-transparent px-2 py-1 text-[14px] text-fg outline-none"
+            className="max-h-60 min-h-[40px] w-full bg-transparent px-2 py-1 text-[16px] text-fg outline-none"
           />
           <div className="flex justify-end gap-1.5 px-1 pt-1">
             <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
@@ -313,12 +352,16 @@ function UserMessage({
   }
 
   return (
-    <div className="group flex flex-col items-end gap-1">
-      <div className="max-w-[85%] whitespace-pre-wrap rounded-[14px] rounded-tr-sm bg-surface-2 px-4 py-2.5 text-[14px] text-fg">
+    <div className="msg-user group flex flex-col items-end gap-1">
+      <div className="max-w-[min(78%,560px)] whitespace-pre-wrap rounded-[20px_20px_6px_20px] border border-border bg-surface-2 px-4 py-[11px] text-[16px] leading-[25px] text-fg">
         {text}
       </div>
       <div className="flex items-center gap-0.5 px-1">
-        {timeLabel && <span className="text-[11px] text-fg-subtle">{timeLabel}</span>}
+        {timeLabel && (
+          <span className="font-mono text-[11px] text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100">
+            {timeLabel}
+          </span>
+        )}
         {onEdit && (
           <div className="flex items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
             <CopyButton text={text} size="icon-sm" className="size-6 text-fg-subtle" />
@@ -343,12 +386,11 @@ function UserMessage({
 }
 
 /**
- * A run of reasoning + tool calls collapsed into one disclosure. The header is a
- * single live summary ("Searching your library… 3s" while working, then
- * "Searched & reasoned · 6 steps · 5s"); expanding reveals each reasoning text
- * and tool call (each tool keeps its own result expansion). Auto-expands while
- * the turn streams so steps appear live, then auto-collapses when it settles —
- * still user-toggleable afterwards.
+ * A run of reasoning + tool calls folded into ONE summary line (mockup
+ * `.work`): "Searching your library… 3s" while working, then "✓ Searched
+ * library · read 2 sources · 6s". Expanding reveals each reasoning text and
+ * tool call (each tool keeps its own result expansion). Opens while the turn
+ * streams so steps appear live, folds when it settles — still toggleable.
  */
 function WorkTrace({
   parts,
@@ -359,10 +401,8 @@ function WorkTrace({
   streaming: boolean;
   fallbackSeconds: number | null;
 }) {
-  // Auto-expand while streaming, auto-collapse when it settles — but stay
-  // user-toggleable. This is the documented "adjust state on prop change"
-  // pattern: flip `open` to match `streaming` only on the transition, so a
-  // manual toggle between transitions sticks.
+  // Flip `open` to match `streaming` only on the transition, so a manual
+  // toggle between transitions sticks ("adjust state on prop change").
   const [open, setOpen] = useState(streaming);
   const [prevStreaming, setPrevStreaming] = useState(streaming);
   if (streaming !== prevStreaming) {
@@ -386,26 +426,30 @@ function WorkTrace({
   const toolParts = parts.filter(isToolPart);
   // Live timer wins; fall back to the persisted duration on a reloaded thread.
   const seconds = elapsed != null ? elapsed : fallbackSeconds;
-  const summary = workSummary(streaming, toolParts, seconds);
+  const summary = workSummary(streaming, toolParts);
 
   return (
-    <div className="rounded-[10px] border border-border bg-surface-2/50 text-[12.5px]">
+    <div className="mb-3.5">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+        aria-expanded={open}
+        className="inline-flex h-[30px] max-w-full items-center gap-2 rounded-full border border-border pl-2.5 pr-3 text-[13px] text-fg-muted transition-colors hover:border-border-strong hover:text-fg"
       >
         {streaming ? (
           <Loader2 className="size-3.5 shrink-0 animate-spin text-fg-subtle" />
         ) : (
-          <Sparkles className="size-3.5 shrink-0 text-fg-subtle" />
+          <Check className="size-3.5 shrink-0 text-success" strokeWidth={2.5} />
         )}
-        <span className="font-medium text-fg-muted">{summary}</span>
-        <ChevronRight
-          className={cn("ml-auto size-3.5 shrink-0 transition-transform", open && "rotate-90")}
+        <span className="truncate">{summary}</span>
+        {seconds != null && (
+          <span className="shrink-0 font-mono text-[11px] text-fg-subtle">{seconds}s</span>
+        )}
+        <ChevronDown
+          className={cn("size-3.5 shrink-0 transition-transform duration-200", open && "rotate-180")}
         />
       </button>
       {open && (
-        <div className="space-y-2 border-t border-border px-3 py-2.5">
+        <div className="mt-2.5 space-y-2 border-l-2 border-border py-1 pl-3.5">
           {parts.map((p, i) => {
             if (p.type === "reasoning" && p.text) return <ReasoningInline key={i} text={p.text} />;
             if (isToolPart(p)) return <ToolTrace key={i} part={p} />;
@@ -417,27 +461,30 @@ function WorkTrace({
   );
 }
 
-/** Collapsed-header label for a `WorkTrace`. */
-function workSummary(
-  streaming: boolean,
-  toolParts: AnyPart[],
-  elapsed: number | null,
-): string {
-  const secs = elapsed != null ? `${elapsed}s` : null;
+/** The one-line label for a `WorkTrace`: what the agent did, in plain words. */
+function workSummary(streaming: boolean, toolParts: AnyPart[]): string {
   if (streaming) {
     const active =
       [...toolParts]
         .reverse()
         .find((p) => p.state !== "output-available" && p.state !== "output-error") ??
       toolParts[toolParts.length - 1];
-    const verb = active ? streamingVerb(toolName(active)) : "Thinking";
-    return secs ? `${verb}… ${secs}` : `${verb}…`;
+    return `${active ? streamingVerb(toolName(active)) : "Thinking"}…`;
   }
-  const steps = toolParts.length;
-  const bits = [steps > 0 ? "Searched & reasoned" : "Thought"];
-  if (steps > 0) bits.push(`${steps} step${steps === 1 ? "" : "s"}`);
-  if (secs) bits.push(secs);
-  return bits.join(" · ");
+  const count = (names: string[]) =>
+    toolParts.filter((p) => names.includes(toolName(p))).length;
+  const searches = count(["search_library"]);
+  const reads = count(["get_item"]);
+  const browses = count(["browse_library", "list_tags", "list_source_types"]);
+  const other = toolParts.length - searches - reads - browses;
+  const bits: string[] = [];
+  if (searches) bits.push(searches > 1 ? `Searched library ×${searches}` : "Searched library");
+  if (browses) bits.push("browsed library");
+  if (reads) bits.push(`read ${reads} source${reads === 1 ? "" : "s"}`);
+  if (other) bits.push(`${other} other step${other === 1 ? "" : "s"}`);
+  if (!bits.length) return "Thought it through";
+  const s = bits.join(" · ");
+  return s[0].toUpperCase() + s.slice(1);
 }
 
 function streamingVerb(name: string): string {
@@ -465,26 +512,24 @@ function ReasoningInline({ text }: { text: string }) {
   );
 }
 
-/** Items a tool surfaced but the answer didn't cite — a collapsed disclosure
- * below the primary Sources grid. */
+/** Items a tool surfaced but the answer didn't cite — a quiet disclosure under
+ * the sources (mockup `.also`). */
 function AlsoSearched({ items }: { items: Citation[] }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-[10px] border border-border bg-surface-2/50">
+    <div className="mt-2">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-[12px] text-fg-muted"
+        aria-expanded={open}
+        className="inline-flex items-center gap-1.5 text-[13px] text-fg-subtle transition-colors hover:text-fg-muted"
       >
-        <Search className="size-3.5 text-fg-subtle" />
-        <span className="eyebrow">Also searched ({items.length})</span>
-        <ChevronRight
-          className={cn("ml-auto size-3.5 transition-transform", open && "rotate-90")}
-        />
+        <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
+        Also searched {items.length} {items.length === 1 ? "source" : "sources"}
       </button>
       {open && (
-        <div className="grid grid-cols-1 gap-2 border-t border-border px-3 py-2.5 sm:grid-cols-2">
+        <div className="src-row mt-2">
           {items.map((c, i) => (
-            <CitationCard key={`${c.item_id}-${i}`} citation={c} index={i} />
+            <SourceCard key={`${c.item_id}-${i}`} citation={c} index={i} />
           ))}
         </div>
       )}

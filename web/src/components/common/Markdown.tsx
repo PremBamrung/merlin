@@ -3,12 +3,13 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CopyButton } from "@/components/common/CopyButton";
 import { cn } from "@/lib/utils";
+import { setCiteHot } from "@/lib/citeHot";
 
 // Inline citation chips: `linkifyCitationMarkers` rewrites answer markers into
 // `[n](#cite-<messageId>-<item_id>)`; here we render that sentinel href as a
-// small superscript pill that scrolls to (and briefly flashes) the matching
-// Source card rendered below the answer — keeping the reader in the conversation
-// instead of navigating away.
+// numbered chip (`.cite-chip`) that scrolls to (and briefly flashes) the
+// matching source card, and lights it while hovered — keeping the reader in the
+// conversation instead of navigating away.
 const CITE_PREFIX = "#cite-";
 
 /** Scroll a Source card into view and replay its highlight animation. */
@@ -67,7 +68,9 @@ const components: Components = {
             e.preventDefault();
             flashCitation(href.slice(1));
           }}
-          className="ml-0.5 inline-block cursor-pointer rounded border border-ui-cite-border bg-ui-cite-bg px-1 align-super text-[10px] font-medium leading-none text-ui-cite-fg !no-underline hover:border-transparent hover:bg-ui-cite-hover-bg hover:text-ui-cite-hover-fg"
+          onMouseEnter={() => setCiteHot(href.slice(1), true)}
+          onMouseLeave={() => setCiteHot(href.slice(1), false)}
+          className="cite-chip"
         >
           {children}
         </a>

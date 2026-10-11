@@ -258,6 +258,33 @@ def test_citation_data_parts_persist_verbatim(client):
     assert any(p["type"] == "data-citations" for p in asst["parts"])
 
 
+def test_old_citations_get_card_fields_on_load(client, make_item):
+    """Citations saved before source cards existed come back with thumbnail +
+    channel filled in from the library; ones that already have them are kept."""
+    from merlin.services import chat_history
+
+    item_id = make_item(title="Old cite")
+    old = {
+        "item_id": item_id,
+        "title": "Old cite",
+        "source_type": "youtube",
+        "snippet": "s",
+        "score": 1.0,
+    }
+    kept = {**old, "thumbnail_url": "https://keep.example/t.jpg"}
+    parts = [
+        {"type": "data-citations", "data": {"items": [old]}},
+        {"type": "data-sources-viewed", "data": {"items": [kept]}},
+    ]
+    chat_history.save_thread("t1", [_user("q"), _assistant("a", extra_parts=parts)])
+    asst = chat_history.get_thread("t1")["messages"][1]
+    used = next(p for p in asst["parts"] if p["type"] == "data-citations")
+    viewed = next(p for p in asst["parts"] if p["type"] == "data-sources-viewed")
+    assert used["data"]["items"][0]["thumbnail_url"] == "https://img.example/thumb.jpg"
+    assert used["data"]["items"][0]["channel"] == "Test Channel"
+    assert viewed["data"]["items"][0]["thumbnail_url"] == "https://keep.example/t.jpg"
+
+
 # --------------------------------------------------------------------------- #
 # Continuation — the spike invariant (tool-call/result pairs replay cleanly)
 # --------------------------------------------------------------------------- #

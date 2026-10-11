@@ -17,13 +17,19 @@ from __future__ import annotations
 import re
 
 from fastapi import APIRouter, BackgroundTasks, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_ai.ui.vercel_ai.response_types import DataChunk
 from pydantic_ai.usage import UsageLimits
 
 from merlin import llm_pricing
 from merlin.config import settings
-from merlin.services import chat as chat_service, chat_history, usage as usage_service
+from merlin.services import (
+    chat as chat_service,
+    chat_history,
+    library,
+    usage as usage_service,
+)
 
 from ..errors import not_found
 from ..schemas import (
@@ -250,8 +256,13 @@ def _make_on_complete(
         if not used_ids:
             used_ids = set(viewed)
 
-        used = [c for iid, c in viewed.items() if iid in used_ids]
-        also = [c for iid, c in viewed.items() if iid not in used_ids]
+        # Source cards want a thumbnail, channel and date the agent's citation
+        # doesn't carry — one batched lookup, off the event loop.
+        details = await run_in_threadpool(library.card_details, list(viewed))
+        cards = {iid: {**c, **details.get(iid, {})} for iid, c in viewed.items()}
+
+        used = [c for iid, c in cards.items() if iid in used_ids]
+        also = [c for iid, c in cards.items() if iid not in used_ids]
 
         if used:
             yield DataChunk(type="data-citations", data={"items": used})

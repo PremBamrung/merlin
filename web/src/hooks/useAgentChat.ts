@@ -13,13 +13,20 @@ export type ChatFilters = {
   item_id?: string | null;
 };
 
-/** A consolidated citation, emitted by the server as a citation data-part. */
+/** A consolidated citation, emitted by the server as a citation data-part.
+ * The card fields (thumbnail…source_id) are added by the chat router for the
+ * source cards; threads saved before that carry only the first five. */
 export type Citation = {
   item_id: string;
   title: string;
   source_type: string;
   snippet: string;
   score: number;
+  thumbnail_url?: string | null;
+  channel?: string | null;
+  published_at?: string | null;
+  duration?: number | string | null;
+  source_id?: string | null;
 };
 
 /**

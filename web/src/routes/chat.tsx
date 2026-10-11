@@ -4,21 +4,18 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
 import {
   Sparkles,
-  ArrowUp,
   ArrowDown,
-  Square,
-  SlidersHorizontal,
-  MessageSquare,
-  X,
   MoreHorizontal,
   AlertTriangle,
   RotateCw,
   Download,
+  Plus,
 } from "lucide-react";
 import {
   useAgentChat,
   latestUsage,
   stripCitationMarkers,
+  CITATIONS_PART,
   type ChatFilters,
 } from "@/hooks/useAgentChat";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
@@ -28,14 +25,8 @@ import {
   useChatThreads,
   type ChatThreadSummary,
 } from "@/hooks/useChatThreads";
-import { useTags, useSourceTypes } from "@/hooks/useMeta";
 import { useUi } from "@/store/ui";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,11 +34,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Mark } from "@/components/brand/Mark";
+import { Composer } from "@/components/chat/Composer";
 import { Message } from "@/components/chat/Message";
 import { ThreadList } from "@/components/chat/ThreadList";
 import { PanelSlot } from "@/components/layout/panel";
 import { ContextMeter } from "@/components/chat/UsageFooter";
-import { AutoGrowTextarea } from "@/components/common/AutoGrowTextarea";
 import { toast } from "@/components/ui/toaster";
 import { keys } from "@/lib/queryKeys";
 import { cn, randomId } from "@/lib/utils";
@@ -103,7 +95,12 @@ export default function ChatRoute() {
       <PanelSlot title="Chats" sub={threadList ? `${n} conversation${n === 1 ? "" : "s"}` : undefined}>
         <ThreadList activeId={activeId} onSelect={openThread} onNew={newChat} />
       </PanelSlot>
-      <ChatPane key={activeId} threadId={activeId} />
+      <ChatPane
+        key={activeId}
+        threadId={activeId}
+        title={threadList?.find((t) => t.id === activeId)?.title ?? null}
+        onNew={newChat}
+      />
     </div>
   );
 }
@@ -156,7 +153,15 @@ function useChatShortcuts({
 /** Fetch the thread's stored messages, then mount the conversation seeded with
  * them. Gating on load keeps `useChat` seeding clean (initial messages are only
  * applied at mount). */
-function ChatPane({ threadId }: { threadId: string }) {
+function ChatPane({
+  threadId,
+  title,
+  onNew,
+}: {
+  threadId: string;
+  title: string | null;
+  onNew: () => void;
+}) {
   const { data, isLoading } = useChatThread(threadId);
 
   if (isLoading || !data) {
@@ -173,6 +178,8 @@ function ChatPane({ threadId }: { threadId: string }) {
     <ChatConversation
       threadId={threadId}
       initialMessages={data.messages as unknown as UIMessage[]}
+      title={title}
+      onNew={onNew}
     />
   );
 }
@@ -180,9 +187,13 @@ function ChatPane({ threadId }: { threadId: string }) {
 function ChatConversation({
   threadId,
   initialMessages,
+  title,
+  onNew,
 }: {
   threadId: string;
   initialMessages: UIMessage[];
+  title: string | null;
+  onNew: () => void;
 }) {
   const qc = useQueryClient();
   const setChatDraft = useUi((s) => s.setChatDraft);
@@ -278,9 +289,6 @@ function ChatConversation({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
-  const filtersActive =
-    (filters.source_types?.length ?? 0) + (filters.tags?.length ?? 0);
-
   // Prefill from ?q= (the command palette's "Ask:" action) — auto-send once on a
   // fresh thread, then strip q while keeping the thread id.
   useEffect(() => {
@@ -304,37 +312,51 @@ function ChatConversation({
   };
 
   const isIdle = messages.length === 0;
+  // Any answer with sources widens the column for the sources column (≥1600px).
+  const hasSide = messages.some((m) =>
+    (m.parts ?? []).some((p) => (p as { type: string }).type === CITATIONS_PART),
+  );
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      {/* Header: only the chat's own controls. Navigation is the rail (or the
-          tabs on phones) and the thread list is the context panel. */}
-      <div className="flex items-center justify-end gap-2 px-4 py-2.5 md:px-6 md:py-4">
-        <div className="flex items-center gap-2">
-          <FilterBar filters={filters} setFilters={setFilters} active={filtersActive} />
-          {!isIdle && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="secondary" size="icon-sm" aria-label="Conversation actions">
-                  <MoreHorizontal className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => exportConversation(messages)}>
-                  <Download className="size-3.5" /> Export as Markdown
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
+      {/* Header: the thread's title and its actions. Navigation is the rail
+          (tabs on phones) and the thread list is the context panel. */}
+      <div className="flex h-14 shrink-0 items-center gap-2 pl-4 pr-2 md:pl-4 md:pr-3">
+        <h1 className="min-w-0 flex-1 truncate font-display text-[15px] font-semibold leading-5 tracking-[-0.01em]">
+          {isIdle ? "New chat" : title || "Conversation"}
+        </h1>
+        {!isIdle && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="Conversation actions">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => exportConversation(messages)}>
+                <Download className="size-3.5" /> Export as Markdown
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onNew}
+          aria-label="New chat"
+          title="New chat (⌘⇧O)"
+        >
+          <Plus className="size-[18px]" />
+        </Button>
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-2 md:px-6">
         <div
           className={cn(
-            "w-full px-4 pb-6 sm:px-6",
-            isIdle ? "flex min-h-full flex-col justify-center" : "space-y-8",
+            "chat-col",
+            hasSide && "has-side",
+            isIdle ? "flex min-h-full flex-col justify-center" : "space-y-[26px]",
           )}
         >
           {isIdle ? (
@@ -359,55 +381,36 @@ function ChatConversation({
         </div>
       </div>
 
-      {/* Composer */}
-      <div className="relative border-t border-border px-4 py-3 sm:px-6 sm:py-4">
-        {/* Jump-to-latest — only while reading above the fold mid-conversation. */}
-        {!pinned && !isIdle && (
-          <button
-            onClick={scrollToBottom}
-            aria-label="Jump to latest"
-            className="absolute -top-5 left-1/2 z-10 flex size-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-surface-2 text-fg-muted shadow-lg shadow-black/30 transition-colors hover:text-fg"
-          >
-            <ArrowDown className="size-4" />
-          </button>
-        )}
-        {filtersActive > 0 && (
-          <ActiveFilterChips filters={filters} setFilters={setFilters} />
-        )}
-        {!isIdle && (
-          <div className="mb-1.5 flex justify-end px-1">
-            <ContextMeter usage={latestUsage(messages)} />
+      {/* Composer dock */}
+      <div className="relative shrink-0 bg-linear-to-t from-bg from-70% to-transparent px-3 pb-3 md:px-6 md:pb-[18px]">
+        <div className={cn("chat-col", hasSide && "has-side")}>
+          <div className="chat-dock-inner relative">
+            {/* Jump-to-latest — only while reading above the fold mid-conversation. */}
+            {!pinned && !isIdle && (
+              <button
+                onClick={scrollToBottom}
+                aria-label="Jump to latest"
+                className="absolute -top-12 left-1/2 z-10 flex size-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-surface-2 text-fg-muted shadow-lg shadow-black/30 transition-colors hover:text-fg"
+              >
+                <ArrowDown className="size-4" />
+              </button>
+            )}
+            <Composer
+              ref={composerRef}
+              value={input}
+              onChange={onInputChange}
+              onSubmit={submit}
+              onStop={stop}
+              streaming={isStreaming}
+              placeholder={isIdle ? "Ask your library…" : "Reply to Merlin…"}
+              filters={filters}
+              setFilters={setFilters}
+              meter={!isIdle ? <ContextMeter usage={latestUsage(messages)} /> : undefined}
+            />
+            <p className="mt-2 hidden text-center font-mono text-[11px] leading-4 text-fg-subtle md:block">
+              Merlin can be wrong. Library answers cite their sources.
+            </p>
           </div>
-        )}
-        <div className="flex w-full items-end gap-2">
-          <AutoGrowTextarea
-            ref={composerRef}
-            value={input}
-            onChange={(e) => onInputChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            rows={1}
-            placeholder="Ask your library…"
-            className="max-h-40 min-h-[44px] flex-1 rounded-[12px] border border-border bg-surface px-4 py-3 text-[16px] text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-border-strong sm:text-[14px]"
-          />
-          {isStreaming ? (
-            <Button onClick={stop} variant="secondary" size="icon" className="size-11 rounded-[12px]">
-              <Square className="size-4" />
-            </Button>
-          ) : (
-            <Button
-              onClick={submit}
-              disabled={!input.trim()}
-              size="icon"
-              className="size-11 rounded-[12px]"
-            >
-              <ArrowUp className="size-4" />
-            </Button>
-          )}
         </div>
       </div>
     </div>
@@ -488,195 +491,30 @@ function ChatError({ error, onRetry }: { error: Error; onRetry: () => void }) {
   );
 }
 
-/** Active chat filters as removable chips, shown above the composer. */
-function ActiveFilterChips({
-  filters,
-  setFilters,
-}: {
-  filters: ChatFilters;
-  setFilters: (f: ChatFilters) => void;
-}) {
-  const sources = filters.source_types ?? [];
-  const tags = filters.tags ?? [];
-  const removeSource = (name: string) =>
-    setFilters({ ...filters, source_types: sources.filter((x) => x !== name) });
-  const removeTag = (name: string) =>
-    setFilters({ ...filters, tags: tags.filter((x) => x !== name) });
-
-  return (
-    <div className="mb-2 flex w-full flex-wrap items-center gap-1.5">
-      <span className="eyebrow text-fg-subtle">Filtered to</span>
-      {sources.map((s) => (
-        <Chip key={`s-${s}`} onRemove={() => removeSource(s)} className="capitalize">
-          {s}
-        </Chip>
-      ))}
-      {tags.map((t) => (
-        <Chip key={`t-${t}`} onRemove={() => removeTag(t)} mono>
-          #{t}
-        </Chip>
-      ))}
-      <button
-        onClick={() => setFilters({})}
-        className="text-[12px] text-fg-subtle underline-offset-2 hover:text-fg hover:underline"
-      >
-        Clear
-      </button>
-    </div>
-  );
-}
-
-function Chip({
-  children,
-  onRemove,
-  mono,
-  className,
-}: {
-  children: React.ReactNode;
-  onRemove: () => void;
-  mono?: boolean;
-  className?: string;
-}) {
-  return (
-    <button
-      onClick={onRemove}
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full border border-ui-toggle-on-border bg-ui-toggle-on-bg px-2.5 py-1 text-[11px] text-ui-toggle-on-fg",
-        mono && "font-mono",
-        className,
-      )}
-    >
-      {children} <X className="size-3" />
-    </button>
-  );
-}
-
 function IdleState({ onPick }: { onPick: (q: string) => void }) {
   return (
-    <div className="flex flex-col items-center gap-6 py-16 text-center">
-      <div className="flex size-12 items-center justify-center rounded-full bg-ui-tint-bg text-ui-icon">
-        <MessageSquare className="size-6" strokeWidth={1.5} />
-      </div>
-      <div className="space-y-1">
-        <p className="font-display text-[18px] font-semibold">Ask your library</p>
-        <p className="text-[14px] text-fg-muted">
-          Merlin answers from everything you've saved, with citations.
+    <div className="flex flex-col items-center gap-5 py-12 text-center">
+      <Mark size={40} decorative />
+      <div className="space-y-1.5">
+        <p className="font-display text-[26px] font-semibold leading-tight tracking-[-0.02em]">
+          What do you want to know?
+        </p>
+        <p className="text-[15px] text-fg-muted">
+          Merlin answers from everything you've saved, with sources.
         </p>
       </div>
-      <div className="flex w-full max-w-lg flex-col gap-2">
-        {STARTERS.map((s) => (
+      <div className="flex flex-wrap justify-center gap-2">
+        {STARTERS.map((q) => (
           <button
-            key={s}
-            onClick={() => onPick(s)}
-            className="group flex items-center gap-2.5 rounded-[10px] border border-border bg-surface px-4 py-3 text-left text-[13.5px] text-fg-muted transition-colors hover:border-border-strong hover:text-fg"
+            key={q}
+            onClick={() => onPick(q)}
+            className="inline-flex min-h-9 items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-left text-[14px] leading-5 text-fg-muted transition-colors hover:border-border-strong hover:bg-surface hover:text-fg"
           >
-            <Sparkles className="size-4 shrink-0 text-fg-subtle group-hover:text-ui-icon" />
-            {s}
+            <Sparkles className="size-3.5 shrink-0 text-ui-icon" />
+            {q}
           </button>
         ))}
       </div>
     </div>
-  );
-}
-
-function FilterBar({
-  filters,
-  setFilters,
-  active,
-}: {
-  filters: ChatFilters;
-  setFilters: (f: ChatFilters) => void;
-  active: number;
-}) {
-  const tags = useTags();
-  const sourceTypes = useSourceTypes();
-  const topTags = useMemo(() => (tags.data ?? []).slice(0, 20), [tags.data]);
-
-  const toggleSource = (name: string) => {
-    const cur = filters.source_types ?? [];
-    setFilters({
-      ...filters,
-      source_types: cur.includes(name) ? cur.filter((x) => x !== name) : [...cur, name],
-    });
-  };
-  const toggleTag = (name: string) => {
-    const cur = filters.tags ?? [];
-    setFilters({
-      ...filters,
-      tags: cur.includes(name) ? cur.filter((x) => x !== name) : [...cur, name],
-    });
-  };
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="secondary" size="sm">
-          <SlidersHorizontal className="size-3.5" /> Filters
-          {active > 0 && (
-            <span className="ml-1 flex size-4 items-center justify-center rounded-full bg-ui-primary font-mono text-[10px] text-ui-primary-fg">
-              {active}
-            </span>
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-72 space-y-4">
-        <div className="space-y-2">
-          <p className="eyebrow">Source types</p>
-          <div className="flex flex-wrap gap-1.5">
-            {(sourceTypes.data ?? []).map((s) => {
-              const on = (filters.source_types ?? []).includes(s.name);
-              return (
-                <button
-                  key={s.name}
-                  onClick={() => toggleSource(s.name)}
-                  className={cn(
-                    "rounded-full border px-2.5 py-1 text-[12px] capitalize transition-colors",
-                    on
-                      ? "border-ui-toggle-on-border bg-ui-toggle-on-bg text-ui-toggle-on-fg"
-                      : "border-border text-fg-muted hover:border-border-strong",
-                  )}
-                >
-                  {s.name}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {topTags.length > 0 && (
-          <div className="space-y-2">
-            <p className="eyebrow">Tags</p>
-            <div className="flex flex-wrap gap-1.5">
-              {topTags.map((t) => {
-                const on = (filters.tags ?? []).includes(t.name);
-                return (
-                  <button
-                    key={t.name}
-                    onClick={() => toggleTag(t.name)}
-                    className={cn(
-                      "rounded-full border px-2.5 py-1 font-mono text-[11px] transition-colors",
-                      on
-                        ? "border-ui-toggle-on-border bg-ui-toggle-on-bg text-ui-toggle-on-fg"
-                        : "border-border text-fg-subtle hover:border-border-strong",
-                    )}
-                  >
-                    #{t.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {active > 0 && (
-          <button
-            onClick={() => setFilters({})}
-            className="text-[12px] text-fg-subtle underline-offset-2 hover:text-fg hover:underline"
-          >
-            Clear all filters
-          </button>
-        )}
-      </PopoverContent>
-    </Popover>
   );
 }

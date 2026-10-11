@@ -382,3 +382,187 @@
 .cite-flash {
   animation: cite-flash 1.3s ease-out;
 }
+
+/* ------------------------------------------------------------------ *
+ * Chat page layout (docs/EVERYDAY_AI_PLAN.md § Messages / Citations /
+ * Chat width; mockup .col / .msg-ai / .ai-side / .src). The column grows to
+ * ~1100px of text. From 1600px, when an answer has sources, they become a
+ * sticky column beside it — the user bubbles and the composer step in by the
+ * same amount so everything lines up with the text — and from 2200px that
+ * column holds two cards across. Scoped to `.chat-col`, so the Reader's
+ * item chat (same <Message>) keeps sources in a row under the answer.
+ * ------------------------------------------------------------------ */
+@layer components {
+  .chat-col {
+    --side-w: clamp(300px, 21vw, 380px);
+    width: min(1100px, 100%);
+    margin-inline: auto;
+  }
+
+  /* An assistant turn. The whole grid lives here (no grid utilities on the
+     element) so the wide-screen rules below aren't outranked by the
+     utilities layer. `.compact` = the Reader's item chat: no hat gutter. */
+  .msg-ai {
+    display: grid;
+    column-gap: 14px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .msg-ai > .ai-av {
+    display: none;
+    padding-top: 2px;
+  }
+  @media (min-width: 768px) {
+    .msg-ai:not(.compact) {
+      grid-template-columns: 30px minmax(0, 1fr);
+    }
+    .msg-ai:not(.compact) > .ai-av {
+      display: block;
+    }
+    .msg-ai:not(.compact) > .ai-side,
+    .msg-ai:not(.compact) > .ai-followups {
+      grid-column: 2;
+    }
+  }
+
+  /* Sources: a horizontal row of cards under the answer (default). */
+  .src-row {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    scroll-snap-type: x mandatory;
+    mask-image: linear-gradient(to right, #000 88%, transparent);
+  }
+  .src-card {
+    flex: 0 0 196px;
+    scroll-snap-align: start;
+    display: block;
+    padding: 6px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    transition:
+      border-color 0.15s,
+      background 0.15s,
+      transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+  }
+  .src-card:hover,
+  .src-card.cite-hot {
+    border-color: var(--color-ui-hover-border);
+    background: var(--color-surface-2);
+  }
+  @media (pointer: fine) {
+    .src-card:hover,
+    .src-card.cite-hot {
+      transform: translateY(-2px);
+    }
+  }
+  .src-card .src-title {
+    margin: 8px 4px 2px;
+  }
+  .src-card .src-meta {
+    margin: 0 4px 4px;
+  }
+
+  /* Inline [n] chips. `.cite-hot` = its source card is hovered (and back). */
+  .cite-chip {
+    display: inline-grid;
+    place-items: center;
+    min-width: 19px;
+    height: 19px;
+    padding: 0 4px;
+    margin: 0 1px;
+    border-radius: 5px;
+    border: 1px solid var(--color-ui-cite-border);
+    background: var(--color-ui-cite-bg);
+    color: var(--color-ui-cite-fg);
+    font: 500 11px/1 var(--font-mono);
+    vertical-align: 2px;
+    text-decoration: none !important;
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s,
+      transform 0.15s;
+  }
+  .cite-chip:hover,
+  .cite-chip.cite-hot {
+    border-color: transparent;
+    background: var(--color-ui-cite-hover-bg);
+    color: var(--color-ui-cite-hover-fg) !important;
+    transform: translateY(-1px);
+  }
+
+  @media (min-width: 1600px) {
+    .chat-col.has-side {
+      width: min(1520px, 100%);
+    }
+    .chat-col.has-side .msg-user,
+    .chat-col.has-side .chat-dock-inner {
+      padding-right: calc(var(--side-w) + 38px);
+    }
+    .chat-col.has-side .msg-ai.with-side {
+      grid-template-columns: 30px minmax(0, 1fr) var(--side-w);
+      grid-template-rows: auto 1fr;
+    }
+    .chat-col.has-side .msg-ai.with-side > .ai-side {
+      grid-column: 3;
+      grid-row: 1 / span 2;
+      position: sticky;
+      top: 10px;
+      align-self: start;
+      margin: 0 0 0 24px;
+    }
+    .chat-col.has-side .msg-ai.with-side > .ai-followups {
+      grid-row: 2;
+      align-self: start;
+    }
+    .chat-col .ai-side .src-head {
+      margin-top: 4px;
+    }
+    .chat-col .ai-side .src-row {
+      display: grid;
+      gap: 8px;
+      overflow: visible;
+      mask-image: none;
+      padding: 0;
+    }
+    .chat-col .ai-side .src-card {
+      display: grid;
+      grid-template-columns: 112px minmax(0, 1fr);
+      grid-template-rows: auto 1fr;
+      column-gap: 11px;
+      align-items: start;
+    }
+    .chat-col .ai-side .src-card .src-thumb {
+      grid-row: 1 / span 2;
+    }
+    .chat-col .ai-side .src-card .src-title {
+      margin: 3px 0 2px;
+    }
+    .chat-col .ai-side .src-card .src-meta {
+      margin: 0;
+    }
+  }
+  @media (min-width: 2200px) {
+    .chat-col {
+      --side-w: 600px;
+    }
+    .chat-col.has-side {
+      width: min(1880px, 100%);
+    }
+    .chat-col .ai-side .src-row {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .chat-col .ai-side .src-card {
+      display: block;
+    }
+    .chat-col .ai-side .src-card .src-title {
+      margin: 8px 4px 2px;
+    }
+    .chat-col .ai-side .src-card .src-meta {
+      margin: 0 4px 4px;
+    }
+  }
+}

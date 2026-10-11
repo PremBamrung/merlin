@@ -123,6 +123,7 @@ export function ItemChat({
                 onRegenerate={handleRegenerate}
                 onFollowup={runSend}
                 onEdit={handleEdit}
+                compact
               />
             ))}
             <div ref={bottomRef} />

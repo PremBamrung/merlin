@@ -196,13 +196,38 @@ def list_threads() -> list[dict]:
         ]
 
 
+_CITATION_PARTS = ("data-citations", "data-sources-viewed")
+
+
+def _fill_citation_cards(messages: list[dict]) -> None:
+    """Give citations saved before source cards existed their card fields
+    (thumbnail, channel, date…), in place and without overwriting anything —
+    so an old thread's sources render like a new one's."""
+    stale = [
+        c
+        for m in messages
+        for p in m["parts"]
+        if isinstance(p, dict) and p.get("type") in _CITATION_PARTS
+        for c in (p.get("data") or {}).get("items") or []
+        if isinstance(c, dict) and "thumbnail_url" not in c and c.get("item_id")
+    ]
+    if not stale:
+        return
+    from merlin.services.library import card_details
+
+    details = card_details(list({c["item_id"] for c in stale}))
+    for c in stale:
+        for key, value in details.get(c["item_id"], {}).items():
+            c.setdefault(key, value)
+
+
 def get_thread(thread_id: str) -> dict | None:
     """One thread with its ordered messages (parts parsed back to JSON), or None."""
     with get_db() as db:
         thread = db.get(ChatThread, thread_id)
         if thread is None:
             return None
-        return {
+        out = {
             "id": thread.id,
             "title": thread.title,
             "created_at": thread.created_at.isoformat() if thread.created_at else None,
@@ -216,6 +241,8 @@ def get_thread(thread_id: str) -> dict | None:
                 for m in thread.messages
             ],
         }
+    _fill_citation_cards(out["messages"])
+    return out
 
 
 def rename_thread(thread_id: str, title: str) -> bool:
