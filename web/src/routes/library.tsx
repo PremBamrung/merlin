@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Search,
   LayoutGrid,
@@ -15,7 +15,8 @@ import {
   Library as LibraryIcon,
 } from "lucide-react";
 import { useItems } from "@/hooks/useItems";
-import { useTopics, useUncategorisedCount } from "@/hooks/useTopics";
+import { useTopics } from "@/hooks/useTopics";
+import { useUnreadCount } from "@/hooks/useFeed";
 import { useIngestYouTube } from "@/hooks/useIngest";
 import { useDebounced } from "@/hooks/useDebounced";
 import { looksLikeUrl } from "@/lib/classify";
@@ -29,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ItemGrid } from "@/components/items/ItemGrid";
+import { LibraryPanel } from "@/components/library/LibraryPanel";
 import { IngestingStrip } from "@/components/layout/IngestingStrip";
 import { NeedsAttention } from "@/components/layout/NeedsAttention";
 import { CardGridSkeleton } from "@/components/common/Skeletons";
@@ -36,6 +38,13 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import type { ItemQuery } from "@/lib/api/endpoints";
 import { thousands } from "@/lib/format";
+import {
+  UNCATEGORISED,
+  libraryHref,
+  sameView,
+  viewOf,
+  type LibraryView,
+} from "@/lib/libraryView";
 import { cn } from "@/lib/utils";
 
 const PER_PAGE = 24;
@@ -47,8 +56,6 @@ const SORTS = [
   { value: "title", label: "Title A→Z" },
 ];
 const DENSITIES: Density[] = ["comfortable", "cozy", "compact"];
-/** Sentinel slug for items that have no topic assigned (matches the Feed + backend). */
-const UNCATEGORISED = "uncategorised";
 
 /** True when focus is in a text field — grid shortcuts are suppressed there. */
 function inEditable(el: EventTarget | null): boolean {
@@ -74,6 +81,8 @@ export default function LibraryRoute() {
   const tags = params.getAll("tags");
   const topics = params.getAll("topics");
   const savedOnly = params.get("saved") === "true";
+  const unreadOnly = params.get("read") === "false";
+  const channel = params.get("channel") ?? "";
   const searchTranscripts = params.get("search_transcripts") === "true";
 
   // Local, debounced search box that writes back to the URL.
@@ -138,30 +147,28 @@ export default function LibraryRoute() {
       tags: tags.length ? tags : undefined,
       topics: topics.length ? topics : undefined,
       saved: savedOnly || undefined,
+      read: unreadOnly ? false : undefined,
+      channel: channel || undefined,
       search_transcripts: searchTranscripts || undefined,
       page,
       per_page: PER_PAGE,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [search, sourceType, sort, page, tags.join(","), topics.join(","), savedOnly, searchTranscripts],
+    [search, sourceType, sort, page, tags.join(","), topics.join(","), savedOnly, unreadOnly, channel, searchTranscripts],
   );
 
   const q = useItems(query);
   const { data: topicList } = useTopics();
-  const { data: uncatCount = 0 } = useUncategorisedCount();
+  const unread = useUnreadCount().data ?? 0;
   const total = q.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "Newest";
 
-  // Multi-select topics — toggle a slug in/out of the URL (backend ORs them).
-  const toggleTopic = (slug: string) => {
-    const next = topics.includes(slug)
-      ? topics.filter((s) => s !== slug)
-      : [...topics, slug];
-    update({ topics: next.length ? next : undefined, page: undefined });
-  };
-
-  const hasFilters = !!(search || sourceType || tags.length || topics.length || savedOnly);
+  const libView = viewOf(params);
+  const viewTitle = titleOf(libView, topicList ?? []);
+  const hasFilters = !!(
+    search || sourceType || tags.length || topics.length || savedOnly || unreadOnly || channel
+  );
   const items = q.data?.items ?? [];
 
   const goToPage = (p: number) => {
@@ -172,7 +179,7 @@ export default function LibraryRoute() {
 
   // Reset keyboard focus whenever the result set changes (render-time pattern,
   // matching the search box above — no effect, no cascading render).
-  const resultSig = `${search}|${sourceType}|${sort}|${page}|${tags.join(",")}|${topics.join(",")}|${savedOnly}|${searchTranscripts}`;
+  const resultSig = `${search}|${sourceType}|${sort}|${page}|${tags.join(",")}|${topics.join(",")}|${savedOnly}|${unreadOnly}|${channel}|${searchTranscripts}`;
   const [prevSig, setPrevSig] = useState(resultSig);
   if (resultSig !== prevSig) {
     setPrevSig(resultSig);
@@ -206,10 +213,19 @@ export default function LibraryRoute() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between gap-4">
-        <h1 className="font-display text-[24px] font-semibold">Library</h1>
-        <span className="eyebrow pb-1">{thousands(total)} sources</span>
+      <LibraryPanel params={params} />
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h1 className="min-w-0 truncate font-display text-[26px] font-semibold leading-tight tracking-[-0.02em] md:text-[30px]">
+          {viewTitle}
+        </h1>
+        <span className="font-mono text-[12px] tabular-nums text-fg-subtle">
+          {q.data ? thousands(total) : "…"} {total === 1 ? "item" : "items"}
+          {libView.kind === "all" && !hasFilters && unread > 0 && ` · ${thousands(unread)} unread`}
+        </span>
       </div>
+
+      {/* Phones have no panel column, so the views are a chip strip here. */}
+      <MobileViewChips params={params} topics={topicList ?? []} unread={unread} />
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-2">
@@ -312,100 +328,50 @@ export default function LibraryRoute() {
         )}
       </div>
 
-      {/* Topic filter chips (multi-select) */}
-      {((topicList && topicList.length > 0) || uncatCount > 0) && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Chip
-            active={!topics.length}
-            onClick={() => update({ topics: undefined, page: undefined })}
-          >
-            All topics
-          </Chip>
-          {uncatCount > 0 && (
-            <Chip
-              active={topics.includes(UNCATEGORISED)}
-              onClick={() => toggleTopic(UNCATEGORISED)}
+      {/* Narrowing within the view: transcript search + tags clicked on cards. */}
+      {hasFilters && (
+        <div className="flex flex-wrap items-center gap-2">
+          {search && (
+            <button
+              onClick={() =>
+                update({
+                  search_transcripts: searchTranscripts ? undefined : "true",
+                  page: undefined,
+                })
+              }
+              aria-pressed={searchTranscripts}
+              title="Also match words spoken inside the video transcript"
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
+                searchTranscripts
+                  ? "border-ui-toggle-on-border bg-ui-toggle-on-bg text-ui-toggle-on-fg"
+                  : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
+              )}
             >
-              Uncategorised <Count n={uncatCount} />
-            </Chip>
+              <FileText className="size-3.5" /> Search transcripts
+            </button>
           )}
-          {topicList?.map((t) => (
-            <Chip
-              key={t.slug}
-              active={topics.includes(t.slug)}
-              onClick={() => toggleTopic(t.slug)}
+          {tags.map((t) => (
+            <button
+              key={t}
+              onClick={() =>
+                update({ tags: tags.filter((x) => x !== t), page: undefined })
+              }
+              className="inline-flex items-center gap-1 rounded-full border border-ui-toggle-on-border bg-ui-toggle-on-bg px-2.5 py-1 font-mono text-[11px] text-ui-toggle-on-fg"
             >
-              {t.label} <Count n={t.count} />
-            </Chip>
+              #{t} <X className="size-3" />
+            </button>
           ))}
+          {hasFilters && (
+            <button
+              onClick={() => setParams({}, { replace: true })}
+              className="text-[12px] text-fg-subtle underline-offset-2 hover:text-fg hover:underline"
+            >
+              {libView.kind === "all" ? "Clear filters" : "Back to all items"}
+            </button>
+          )}
         </div>
       )}
-
-      {/* Source-type chips + active tag filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Chip active={!sourceType} onClick={() => update({ source_type: undefined, page: undefined })}>
-          All
-        </Chip>
-        <Chip
-          active={sourceType === "youtube"}
-          onClick={() => update({ source_type: "youtube", page: undefined })}
-        >
-          YouTube
-        </Chip>
-        <button
-          onClick={() =>
-            update({ saved: savedOnly ? undefined : "true", page: undefined })
-          }
-          aria-pressed={savedOnly}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
-            savedOnly
-              ? "border-signal/50 bg-signal/12 text-signal"
-              : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
-          )}
-        >
-          <Star className={cn("size-3.5", savedOnly && "fill-signal")} /> Saved
-        </button>
-        {search && (
-          <button
-            onClick={() =>
-              update({
-                search_transcripts: searchTranscripts ? undefined : "true",
-                page: undefined,
-              })
-            }
-            aria-pressed={searchTranscripts}
-            title="Also match words spoken inside the video transcript"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
-              searchTranscripts
-                ? "border-ui-toggle-on-border bg-ui-toggle-on-bg text-ui-toggle-on-fg"
-                : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
-            )}
-          >
-            <FileText className="size-3.5" /> Search transcripts
-          </button>
-        )}
-        {tags.map((t) => (
-          <button
-            key={t}
-            onClick={() =>
-              update({ tags: tags.filter((x) => x !== t), page: undefined })
-            }
-            className="inline-flex items-center gap-1 rounded-full border border-ui-toggle-on-border bg-ui-toggle-on-bg px-2.5 py-1 font-mono text-[11px] text-ui-toggle-on-fg"
-          >
-            #{t} <X className="size-3" />
-          </button>
-        ))}
-        {hasFilters && (
-          <button
-            onClick={() => setParams({}, { replace: true })}
-            className="text-[12px] text-fg-subtle underline-offset-2 hover:text-fg hover:underline"
-          >
-            Clear filters
-          </button>
-        )}
-      </div>
 
       {/* Ingest state sits here — under the controls, above the results.
           Both strips come and go on their own schedule, so anything above them
@@ -461,36 +427,71 @@ export default function LibraryRoute() {
   );
 }
 
-function Chip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
-        active
-          ? "border-ui-toggle-on-border bg-ui-toggle-on-bg text-ui-toggle-on-fg"
-          : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
-      )}
-    >
-      {children}
-    </button>
-  );
+function titleOf(view: LibraryView, topics: { slug: string; label: string }[]): string {
+  switch (view.kind) {
+    case "unread":
+      return "Unread";
+    case "saved":
+      return "Saved";
+    case "channel":
+      return view.name;
+    case "source":
+      return view.type === "youtube" ? "YouTube" : view.type;
+    case "topic":
+      return view.slug === UNCATEGORISED
+        ? "Uncategorised"
+        : (topics.find((t) => t.slug === view.slug)?.label ?? "Topic");
+    default:
+      return "All items";
+  }
 }
 
-/** Small tabular count badge shown inside a filter chip. */
-function Count({ n }: { n: number }) {
+/** The panel's views as one scrolling chip row, for widths with no panel. */
+function MobileViewChips({
+  params,
+  topics,
+  unread,
+}: {
+  params: URLSearchParams;
+  topics: { slug: string; label: string; count: number }[];
+  unread: number;
+}) {
+  const current = viewOf(params);
+  const chip = (view: LibraryView, children: React.ReactNode) => {
+    const on = sameView(current, view);
+    return (
+      <Link
+        to={libraryHref(view, params)}
+        replace
+        aria-current={on ? "page" : undefined}
+        className={cn(
+          "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[13px] font-medium transition-colors",
+          on
+            ? "border-ui-toggle-on-border bg-ui-toggle-on-bg text-ui-toggle-on-fg"
+            : "border-border text-fg-muted",
+        )}
+      >
+        {children}
+      </Link>
+    );
+  };
   return (
-    <span className="ml-1 font-mono text-[11px] tabular-nums text-fg-subtle">
-      {thousands(n)}
-    </span>
+    <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 sm:-mx-6 sm:px-6 md:hidden">
+      {chip({ kind: "all" }, "All")}
+      {chip(
+        { kind: "unread" },
+        <>
+          <span className="size-1.5 rounded-full bg-signal" /> Unread
+          {unread > 0 && <span className="font-mono text-[11px] text-signal">{unread}</span>}
+        </>,
+      )}
+      {chip({ kind: "saved" }, <><Star className="size-3.5 text-signal" /> Saved</>)}
+      {topics.map((t) => (
+        <span key={t.slug} className="contents">
+          {chip({ kind: "topic", slug: t.slug }, t.label)}
+        </span>
+      ))}
+    </div>
   );
 }
 

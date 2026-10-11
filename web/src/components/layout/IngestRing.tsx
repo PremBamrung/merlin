@@ -1,7 +1,7 @@
 import { useIngestActivity } from "@/hooks/useTaskProgress";
 
 /**
- * Progress drawn *around* the top-bar mark while an ingest runs — one of the two
+ * Progress drawn *around* the rail's mark while an ingest runs — one of the two
  * state-tied motion moments the identity allows (the other is the gold-leaf ★).
  * Gold, because gold is "what wants you", and it exists only while something is
  * actually happening: no task, no ring.

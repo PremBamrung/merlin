@@ -10,7 +10,7 @@ const VISIBLE = 3;
 /**
  * Live ingest progress, for every route.
  *
- * The top-bar ring says *that* something is ingesting; it averages every task
+ * The ring around the mark says *that* something is ingesting; it averages every task
  * into one arc and can't say what, how far, or which stage. This is where the
  * per-task detail lives — title, pipeline message, percent, and the only cancel
  * button in the app.

@@ -72,6 +72,7 @@ import {
 import { detailRows } from "@/lib/itemDetails";
 import { vtThumb, vtTitle } from "@/lib/viewTransition";
 import { cn } from "@/lib/utils";
+import { LibraryPanel } from "@/components/library/LibraryPanel";
 
 const LENGTHS = ["short", "long"] as const;
 
@@ -81,14 +82,19 @@ export default function ReaderRoute() {
   const q = useItem(id);
   const [resumTask, setResumTask] = useState<string | null>(null);
 
-  if (q.isLoading) return <ReaderSkeleton />;
+  // The Reader belongs to the Library place, so it keeps the Library's panel.
+  const panel = <LibraryPanel params={null} />;
+  if (q.isLoading) return <>{panel}<ReaderSkeleton /></>;
   if (q.isError)
-    return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
+    return <>{panel}<ErrorState error={q.error} onRetry={() => q.refetch()} /></>;
   if (!q.data)
-    return <ErrorState title="Item not found" onRetry={() => navigate("/library")} />;
+    return <>{panel}<ErrorState title="Item not found" onRetry={() => navigate("/library")} /></>;
 
   return (
-    <Reader item={q.data} resumTask={resumTask} setResumTask={setResumTask} />
+    <>
+      {panel}
+      <Reader item={q.data} resumTask={resumTask} setResumTask={setResumTask} />
+    </>
   );
 }
 

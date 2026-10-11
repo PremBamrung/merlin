@@ -125,6 +125,7 @@ class KnowledgeItemRepository:
         page_size: int = 20,
         sort: str = "newest",
         search_transcripts: bool = False,
+        channel: str | None = None,
     ) -> tuple[list[KnowledgeItem], int]:
         """Return (items, total_count) with optional filters.
 
@@ -136,6 +137,7 @@ class KnowledgeItemRepository:
         sort: newest | oldest | longest | title | relevance
         search_transcripts: when True, search also matches full transcript text
         (raw_content); otherwise search is scoped to title/summary/tags.
+        channel: exact YouTube channel name (the Library panel's channel rows).
 
         The topic/tag/status filters are applied to the base query *before* the
         search branch, so they hold on every downstream path — the plain sort,
@@ -147,6 +149,12 @@ class KnowledgeItemRepository:
             q = q.filter(KnowledgeItem.source_type == source_type)
         if status:
             q = q.filter(KnowledgeItem.status == status)
+        if channel:
+            in_channel = select(YouTubeMetadata.knowledge_item_id).where(
+                YouTubeMetadata.knowledge_item_id == KnowledgeItem.id,
+                YouTubeMetadata.channel == channel,
+            )
+            q = q.filter(in_channel.exists())
         if read is not None:
             q = q.filter(
                 KnowledgeItem.read_at.isnot(None)

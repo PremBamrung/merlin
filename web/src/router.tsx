@@ -20,7 +20,7 @@ export const router = createBrowserRouter([
       // Library *is* the home page. It redirects rather than rendering here so
       // there's one canonical URL: the route keeps all its filter/sort/page
       // state in the query string, and a second path rendering it would split
-      // bookmarks and leave the top-bar nav with nothing marked active.
+      // bookmarks and leave the rail with nothing marked active.
       // Reloading the redirect target is safe — api/main.py serves the SPA
       // shell for any extensionless path, not just `/`.
       { index: true, element: <Navigate to="/library" replace /> },

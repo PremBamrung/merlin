@@ -3,11 +3,7 @@ import { Command } from "cmdk";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Library,
-  Layers,
-  Shapes,
   MessageSquare,
-  BarChart3,
   Plus,
   Search,
   CornerDownLeft,
@@ -16,15 +12,8 @@ import { getItems } from "@/lib/api/endpoints";
 import { useUi } from "@/store/ui";
 import { useDebounced } from "@/hooks/useDebounced";
 import { StatusDot } from "@/components/common/StatusDot";
+import { PLACES } from "./places";
 
-/** Mirrors Topbar's DESTINATIONS — keep the two in step. */
-const ROUTES = [
-  { to: "/library", label: "Library", icon: Library },
-  { to: "/feed", label: "Feed", icon: Layers },
-  { to: "/topics", label: "Topics", icon: Shapes },
-  { to: "/chat", label: "Chat", icon: MessageSquare },
-  { to: "/insights", label: "Insights", icon: BarChart3 },
-];
 
 export function CommandPalette() {
   const open = useUi((s) => s.paletteOpen);
@@ -127,7 +116,7 @@ export function CommandPalette() {
           heading="Go to"
           className="[&_[cmdk-group-heading]]:eyebrow [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
         >
-          {ROUTES.map((r) => (
+          {PLACES.map((r) => (
             <Command.Item
               key={r.to}
               value={`goto ${r.label}`}

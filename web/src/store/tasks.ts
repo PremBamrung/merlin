@@ -10,7 +10,7 @@ export type TaskFrameState = { task: Task | null; status: string };
  *
  * The frames live here rather than inside the component that renders them
  * because **three** surfaces show the same progress — the ingest ring around
- * the top-bar mark, the Library's Ingesting strip, and the Reader's
+ * the ring around the mark, the Library's Ingesting strip, and the Reader's
  * re-summarize row — and a task must only ever be streamed once (each stream is
  * an open connection, and browsers cap those per origin).
  * `TaskStreams` in hooks/useTaskProgress.tsx is the single writer; everything

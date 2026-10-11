@@ -32,6 +32,17 @@ def test_list_items_pagination_query(client, make_item):
     assert body["per_page"] == 2
 
 
+def test_list_items_filters_by_channel(client, make_item):
+    make_item(title="From A", source_id="a1", channel="Channel A")
+    make_item(title="Also A", source_id="a2", channel="Channel A")
+    make_item(title="From B", source_id="b1", channel="Channel B")
+    body = client.get("/api/items", params={"channel": "Channel A"}).json()
+    assert body["total"] == 2
+    assert {i["title"] for i in body["items"]} == {"From A", "Also A"}
+    # Exact match: a prefix of a real channel name matches nothing.
+    assert client.get("/api/items", params={"channel": "Channel"}).json()["total"] == 0
+
+
 def test_get_item_includes_raw_content(client, make_item):
     item_id = make_item()
     resp = client.get(f"/api/items/{item_id}")

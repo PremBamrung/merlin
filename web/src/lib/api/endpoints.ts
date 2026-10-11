@@ -26,6 +26,8 @@ export type ItemQuery = {
   page?: number;
   per_page?: number;
   search_transcripts?: boolean;
+  /** Exact YouTube channel name. */
+  channel?: string;
 };
 
 // Topic taxonomy types (from the generated schema).

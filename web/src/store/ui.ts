@@ -3,6 +3,9 @@ import { persist } from "zustand/middleware";
 
 export type Density = "comfortable" | "cozy" | "compact";
 export type LibraryView = "grid" | "list";
+/** An explicit open/closed choice for the context panel; `null` = automatic
+ *  (open from 1280px, collapsed below — the approved default). */
+export type PanelPref = "open" | "closed" | null;
 
 /** A pending "this is already ingested — redo the summary?" confirmation. */
 export type ResummarizePrompt = {
@@ -13,6 +16,11 @@ export type ResummarizePrompt = {
 };
 
 type UiState = {
+  // Context panel (desktop column; persisted) + its mobile drawer (session).
+  panelPref: PanelPref;
+  setPanelPref: (p: PanelPref) => void;
+  drawerOpen: boolean;
+  setDrawerOpen: (open: boolean) => void;
   // Command palette
   paletteOpen: boolean;
   setPaletteOpen: (open: boolean) => void;
@@ -49,6 +57,11 @@ const DENSITY_ORDER: Density[] = ["comfortable", "cozy", "compact"];
 export const useUi = create<UiState>()(
   persist(
     (set, get) => ({
+      panelPref: null,
+      setPanelPref: (panelPref) => set({ panelPref }),
+      drawerOpen: false,
+      setDrawerOpen: (drawerOpen) => set({ drawerOpen }),
+
       paletteOpen: false,
       setPaletteOpen: (open) => set({ paletteOpen: open }),
 
@@ -96,6 +109,7 @@ export const useUi = create<UiState>()(
         density: s.density,
         view: s.view,
         pinnedThreads: s.pinnedThreads,
+        panelPref: s.panelPref,
       }),
     },
   ),

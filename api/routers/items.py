@@ -39,6 +39,7 @@ def list_items(
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=20, ge=1, le=100),
     search_transcripts: bool = Query(default=False),
+    channel: str | None = None,
 ):
     return library.list_items(
         search=search,
@@ -52,6 +53,7 @@ def list_items(
         page=page,
         per_page=per_page,
         search_transcripts=search_transcripts,
+        channel=channel,
     )
 
 

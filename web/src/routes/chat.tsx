@@ -9,18 +9,10 @@ import {
   Square,
   SlidersHorizontal,
   MessageSquare,
-  Plus,
   X,
-  PanelLeft,
   MoreHorizontal,
-  Pencil,
-  Trash2,
-  Check,
   AlertTriangle,
   RotateCw,
-  Search,
-  Pin,
-  PinOff,
   Download,
 } from "lucide-react";
 import {
@@ -32,10 +24,8 @@ import {
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import {
   saveChatThread,
-  deleteChatThread,
   useChatThread,
   useChatThreads,
-  useRenameThread,
   type ChatThreadSummary,
 } from "@/hooks/useChatThreads";
 import { useTags, useSourceTypes } from "@/hooks/useMeta";
@@ -53,13 +43,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Input } from "@/components/ui/input";
 import { Message } from "@/components/chat/Message";
+import { ThreadList } from "@/components/chat/ThreadList";
+import { PanelSlot } from "@/components/layout/panel";
 import { ContextMeter } from "@/components/chat/UsageFooter";
 import { AutoGrowTextarea } from "@/components/common/AutoGrowTextarea";
 import { toast } from "@/components/ui/toaster";
 import { keys } from "@/lib/queryKeys";
-import { relDate } from "@/lib/format";
 import { cn, randomId } from "@/lib/utils";
 
 const STARTERS = [
@@ -69,8 +59,8 @@ const STARTERS = [
 ];
 
 /**
- * The Chat tab. A ChatGPT-style thread sidebar (continuable, persisted
- * server-side) alongside the active conversation. The active thread lives in
+ * The Chat place. The thread list (continuable, persisted server-side) lives in
+ * the context panel; the active conversation is the main view. The active thread lives in
  * `?thread=<id>`; the conversation pane is keyed by it so switching threads
  * remounts a fresh `useChat` seeded from the thread's stored history.
  *
@@ -79,7 +69,6 @@ const STARTERS = [
  */
 export default function ChatRoute() {
   const [params, setParams] = useSearchParams();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // The active thread id always exists: from the URL, or a fresh client id for
   // a new conversation (the thread row is created lazily on its first turn, so
@@ -99,35 +88,22 @@ export default function ChatRoute() {
   }, []);
 
   const openThread = useCallback(
-    (id: string) => {
-      setParams({ thread: id });
-      setSidebarOpen(false);
-    },
+    (id: string) => setParams({ thread: id }),
     [setParams],
   );
-  const newChat = useCallback(() => {
-    setParams({ thread: randomId() });
-    setSidebarOpen(false);
-  }, [setParams]);
+  const newChat = useCallback(() => setParams({ thread: randomId() }), [setParams]);
 
-  // The sidebar list also powers next/prev-thread shortcuts (shared query cache).
+  // The panel's list also powers next/prev-thread shortcuts (shared query cache).
   const { data: threadList } = useChatThreads();
   useChatShortcuts({ threads: threadList, activeId, onNew: newChat, onSelect: openThread });
+  const n = threadList?.length ?? 0;
 
   return (
     <div className="flex h-full min-h-0">
-      <ThreadSidebar
-        activeId={activeId}
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        onSelect={openThread}
-        onNew={newChat}
-      />
-      <ChatPane
-        key={activeId}
-        threadId={activeId}
-        onOpenSidebar={() => setSidebarOpen(true)}
-      />
+      <PanelSlot title="Chats" sub={threadList ? `${n} conversation${n === 1 ? "" : "s"}` : undefined}>
+        <ThreadList activeId={activeId} onSelect={openThread} onNew={newChat} />
+      </PanelSlot>
+      <ChatPane key={activeId} threadId={activeId} />
     </div>
   );
 }
@@ -180,13 +156,7 @@ function useChatShortcuts({
 /** Fetch the thread's stored messages, then mount the conversation seeded with
  * them. Gating on load keeps `useChat` seeding clean (initial messages are only
  * applied at mount). */
-function ChatPane({
-  threadId,
-  onOpenSidebar,
-}: {
-  threadId: string;
-  onOpenSidebar: () => void;
-}) {
+function ChatPane({ threadId }: { threadId: string }) {
   const { data, isLoading } = useChatThread(threadId);
 
   if (isLoading || !data) {
@@ -203,7 +173,6 @@ function ChatPane({
     <ChatConversation
       threadId={threadId}
       initialMessages={data.messages as unknown as UIMessage[]}
-      onOpenSidebar={onOpenSidebar}
     />
   );
 }
@@ -211,14 +180,11 @@ function ChatPane({
 function ChatConversation({
   threadId,
   initialMessages,
-  onOpenSidebar,
 }: {
   threadId: string;
   initialMessages: UIMessage[];
-  onOpenSidebar: () => void;
 }) {
   const qc = useQueryClient();
-  const openAdd = useUi((s) => s.openAdd);
   const setChatDraft = useUi((s) => s.setChatDraft);
   const clearChatDraft = useUi((s) => s.clearChatDraft);
   const [params, setParams] = useSearchParams();
@@ -341,23 +307,10 @@ function ChatConversation({
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      {/* Header. App navigation lives in the global topbar on every width, so
-          this row only owns the chat's own controls: the thread panel, the title
-          and Filters. */}
-      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5 md:border-0 md:px-6 md:py-4">
-        <div className="flex items-center gap-1 md:hidden">
-          {/* Conversations (this chat's thread list). */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onOpenSidebar}
-            aria-label="Conversations"
-          >
-            <PanelLeft className="size-4" />
-          </Button>
-          <h1 className="font-display text-[17px] font-semibold">Chat</h1>
-        </div>
-        <div className="flex items-center gap-2 md:ml-auto">
+      {/* Header: only the chat's own controls. Navigation is the rail (or the
+          tabs on phones) and the thread list is the context panel. */}
+      <div className="flex items-center justify-end gap-2 px-4 py-2.5 md:px-6 md:py-4">
+        <div className="flex items-center gap-2">
           <FilterBar filters={filters} setFilters={setFilters} active={filtersActive} />
           {!isIdle && (
             <DropdownMenu>
@@ -373,16 +326,6 @@ function ChatConversation({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-          {/* Add-source lives in the global topbar, which is hidden on mobile for
-              this route — surface it here so it stays reachable. */}
-          <Button
-            size="icon"
-            className="md:hidden"
-            onClick={() => openAdd()}
-            aria-label="Add source"
-          >
-            <Plus className="size-4" />
-          </Button>
         </div>
       </div>
 
@@ -467,312 +410,6 @@ function ChatConversation({
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// --------------------------------------------------------------------------- //
-// Thread sidebar
-// --------------------------------------------------------------------------- //
-
-function ThreadSidebar({
-  activeId,
-  open,
-  onClose,
-  onSelect,
-  onNew,
-}: {
-  activeId: string;
-  open: boolean;
-  onClose: () => void;
-  onSelect: (id: string) => void;
-  onNew: () => void;
-}) {
-  return (
-    <>
-      {/* Desktop: a static left column. */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-border py-4 pl-4 pr-3 md:flex">
-        <ThreadList activeId={activeId} onSelect={onSelect} onNew={onNew} />
-      </aside>
-
-      {/* Mobile: a slide-in overlay. */}
-      {open && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-          <div className="absolute left-0 top-0 h-full w-72 max-w-[80%] bg-bg p-4 shadow-xl">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="eyebrow">Conversations</span>
-              <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
-                <X className="size-4" />
-              </Button>
-            </div>
-            <ThreadList activeId={activeId} onSelect={onSelect} onNew={onNew} />
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-// Sidebar date buckets, in display order. Threads arrive newest-first (the API
-// orders by updated_at desc), so iterating in order keeps each bucket sorted.
-const BUCKETS = ["Today", "Yesterday", "Previous 7 Days", "Older"] as const;
-
-function bucketOf(iso: string | null): (typeof BUCKETS)[number] {
-  if (!iso) return "Older";
-  const dt = new Date(iso);
-  if (Number.isNaN(dt.getTime())) return "Older";
-  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const days = Math.round(
-    (startOfDay(new Date()).getTime() - startOfDay(dt).getTime()) / 86_400_000,
-  );
-  if (days <= 0) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days < 7) return "Previous 7 Days";
-  return "Older";
-}
-
-function ThreadList({
-  activeId,
-  onSelect,
-  onNew,
-}: {
-  activeId: string;
-  onSelect: (id: string) => void;
-  onNew: () => void;
-}) {
-  const { data: threads, isLoading } = useChatThreads();
-  const qc = useQueryClient();
-  const pinnedThreads = useUi((s) => s.pinnedThreads);
-  const togglePin = useUi((s) => s.togglePin);
-  const pinnedSet = useMemo(() => new Set(pinnedThreads), [pinnedThreads]);
-  const [query, setQuery] = useState("");
-  const q = query.trim().toLowerCase();
-
-  // Optimistic delete with an undo window: drop the row immediately, defer the
-  // real DELETE, and let Undo cancel it (the thread was never actually removed,
-  // so undo just re-fetches). No backend "restore" needed. Timers outlive an
-  // unmount on purpose, so the delete still fires if the user navigates away.
-  const pendingDeletes = useRef<Map<string, number>>(new Map());
-  const deleteThread = useCallback(
-    (id: string) => {
-      qc.setQueryData<ChatThreadSummary[]>(keys.chatThreads(), (cur) =>
-        (cur ?? []).filter((t) => t.id !== id),
-      );
-      if (id === activeId) onNew();
-      const timer = window.setTimeout(() => {
-        pendingDeletes.current.delete(id);
-        deleteChatThread(id)
-          .catch(() => {})
-          .finally(() => qc.invalidateQueries({ queryKey: keys.chatThreads() }));
-      }, 4500);
-      pendingDeletes.current.set(id, timer);
-      toast("Conversation deleted", {
-        duration: 4000,
-        action: {
-          label: "Undo",
-          onClick: () => {
-            const t = pendingDeletes.current.get(id);
-            if (t) {
-              window.clearTimeout(t);
-              pendingDeletes.current.delete(id);
-            }
-            qc.invalidateQueries({ queryKey: keys.chatThreads() });
-          },
-        },
-      });
-    },
-    [qc, activeId, onNew],
-  );
-
-  // Client-side filter over title + first-message preview (the only text the
-  // list endpoint returns; deep message content isn't searched).
-  const filtered = useMemo(() => {
-    if (!threads) return [];
-    if (!q) return threads;
-    return threads.filter(
-      (t) =>
-        (t.title ?? "").toLowerCase().includes(q) ||
-        (t.preview ?? "").toLowerCase().includes(q),
-    );
-  }, [threads, q]);
-
-  // Grouped by date bucket, with pinned threads lifted into a "Pinned" group at
-  // the top — but a search shows a flat result list instead.
-  const groups = useMemo(() => {
-    if (q) return [];
-    const out: (readonly [string, ChatThreadSummary[]])[] = [];
-    const pinned = filtered.filter((t) => pinnedSet.has(t.id));
-    if (pinned.length) out.push(["Pinned", pinned] as const);
-    const map = new Map<string, ChatThreadSummary[]>();
-    for (const t of filtered) {
-      if (pinnedSet.has(t.id)) continue;
-      const b = bucketOf(t.updated_at);
-      (map.get(b) ?? map.set(b, []).get(b)!).push(t);
-    }
-    for (const b of BUCKETS) if (map.has(b)) out.push([b, map.get(b)!] as const);
-    return out;
-  }, [filtered, q, pinnedSet]);
-
-  const row = (t: ChatThreadSummary) => (
-    <ThreadRow
-      key={t.id}
-      thread={t}
-      active={t.id === activeId}
-      pinned={pinnedSet.has(t.id)}
-      onSelect={() => onSelect(t.id)}
-      onPin={() => togglePin(t.id)}
-      onDelete={() => deleteThread(t.id)}
-    />
-  );
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <Button variant="secondary" size="sm" className="mb-2 w-full justify-start" onClick={onNew}>
-        <Plus className="size-3.5" /> New chat
-      </Button>
-
-      <div className="relative mb-2">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-subtle" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search conversations…"
-          className="h-8 pl-8 text-[13px]"
-          aria-label="Search conversations"
-        />
-      </div>
-
-      <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
-        {isLoading ? (
-          <div className="space-y-2 px-1 py-2">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-          </div>
-        ) : !threads || threads.length === 0 ? (
-          <p className="px-2 py-6 text-center text-[12.5px] text-fg-subtle">
-            No saved conversations yet.
-          </p>
-        ) : filtered.length === 0 ? (
-          <p className="px-2 py-6 text-center text-[12.5px] text-fg-subtle">
-            No conversations match “{query.trim()}”.
-          </p>
-        ) : q ? (
-          filtered.map(row)
-        ) : (
-          groups.map(([label, items]) => (
-            <div key={label} className="pb-1">
-              <p className="eyebrow px-2.5 pb-1 pt-2 text-fg-subtle">{label}</p>
-              {items.map(row)}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ThreadRow({
-  thread,
-  active,
-  pinned,
-  onSelect,
-  onPin,
-  onDelete,
-}: {
-  thread: ChatThreadSummary;
-  active: boolean;
-  pinned: boolean;
-  onSelect: () => void;
-  onPin: () => void;
-  onDelete: () => void;
-}) {
-  const rename = useRenameThread();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-
-  const label = thread.title || thread.preview || "New conversation";
-
-  const commitRename = () => {
-    const title = draft.trim();
-    if (title && title !== thread.title) rename.mutate({ id: thread.id, title });
-    setEditing(false);
-  };
-
-  if (editing) {
-    return (
-      <div className="flex items-center gap-1 px-1.5 py-1">
-        <input
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commitRename();
-            if (e.key === "Escape") setEditing(false);
-          }}
-          onBlur={commitRename}
-          className="min-w-0 flex-1 rounded-[8px] border border-border-strong bg-surface px-2 py-1 text-[16px] outline-none sm:text-[13px]"
-        />
-        <Button variant="ghost" size="icon" className="size-7" onClick={commitRename}>
-          <Check className="size-3.5" />
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={cn(
-        "group flex items-center gap-1 rounded-[8px] pl-2.5 pr-1 transition-colors",
-        active ? "bg-surface-2" : "hover:bg-surface-2/60",
-      )}
-    >
-      <button
-        onClick={onSelect}
-        className="flex min-w-0 flex-1 items-center gap-1.5 py-2 text-left"
-        title={label}
-      >
-        {pinned && <Pin className="size-3 shrink-0 text-fg-subtle" />}
-        <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{label}</span>
-        <span className="shrink-0 text-[11px] text-fg-subtle">
-          {relDate(thread.updated_at)}
-          {thread.message_count > 0 && (
-            <span className="tabular-nums"> · {thread.message_count}</span>
-          )}
-        </span>
-      </button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            className="shrink-0 rounded-[6px] p-1 text-fg-subtle opacity-0 transition-opacity hover:text-fg group-hover:opacity-100 data-[state=open]:opacity-100"
-            aria-label="Conversation options"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <MoreHorizontal className="size-4" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={onPin}>
-            {pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
-            {pinned ? "Unpin" : "Pin"}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => {
-              setDraft(thread.title || "");
-              setEditing(true);
-            }}
-          >
-            <Pencil className="size-3.5" /> Rename
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={onDelete}
-            className="text-fail focus:text-fail"
-          >
-            <Trash2 className="size-3.5" /> Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
     </div>
   );
 }

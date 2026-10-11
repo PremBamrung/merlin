@@ -55,6 +55,9 @@ import {
 import { EmptyState } from "@/components/common/EmptyState";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
+import { PanelSlot } from "@/components/layout/panel";
+import { PanelButton, PanelLink, PanelSection } from "@/components/layout/PanelParts";
+import { UNCATEGORISED, libraryHref } from "@/lib/libraryView";
 
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
 
@@ -162,6 +165,7 @@ export default function TopicsRoute() {
 
   return (
     <div className="mx-auto max-w-[900px] space-y-8">
+      <TopicsPanel topics={topics.data ?? []} proposals={pending.length} uncategorised={uncat} />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-[24px] font-semibold">Topics</h1>
@@ -219,7 +223,7 @@ export default function TopicsRoute() {
 
       {/* Review queue */}
       {pending.length > 0 && (
-        <section className="space-y-3">
+        <section id="proposals" className="scroll-mt-8 space-y-3">
           <h2 className="font-display text-[15px] font-semibold">
             Proposed topics{" "}
             <span className="text-fg-subtle">({pending.length})</span>
@@ -682,5 +686,56 @@ function TopicRow({
         </>
       )}
     </li>
+  );
+}
+
+/** The Topics place's context panel: the taxonomy with counts (each opens its
+ *  slice of the Library), then what's waiting for review. */
+function TopicsPanel({
+  topics,
+  proposals,
+  uncategorised,
+}: {
+  topics: TopicItem[];
+  proposals: number;
+  uncategorised: number;
+}) {
+  return (
+    <PanelSlot title="Topics" sub={`${topics.length} active`}>
+      {(proposals > 0 || uncategorised > 0) && (
+        <PanelSection title="Review">
+          {proposals > 0 && (
+            <PanelButton
+              icon={Sparkles}
+              label="Proposed topics"
+              count={proposals}
+              onClick={() =>
+                document
+                  .getElementById("proposals")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            />
+          )}
+          {uncategorised > 0 && (
+            <PanelLink
+              to={libraryHref({ kind: "topic", slug: UNCATEGORISED })}
+              icon={TagsIcon}
+              label="Uncategorised"
+              count={uncategorised}
+            />
+          )}
+        </PanelSection>
+      )}
+      <PanelSection title="Topics">
+        {topics.map((t) => (
+          <PanelLink
+            key={t.slug}
+            to={libraryHref({ kind: "topic", slug: t.slug })}
+            label={t.label}
+            count={t.count}
+          />
+        ))}
+      </PanelSection>
+    </PanelSlot>
   );
 }

@@ -8,7 +8,7 @@ function TaskStream({ taskId }: { taskId: string }) {
 
 /**
  * Headless: streams every ingest submitted this session, one connection each.
- * Mounted once in the app shell so progress keeps flowing — and the top-bar ring
+ * Mounted once in the app shell so progress keeps flowing — and the ring around the mark
  * keeps turning — on every route, wherever you navigate mid-ingest.
  */
 export function TaskStreams() {

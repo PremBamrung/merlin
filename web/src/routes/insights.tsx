@@ -10,7 +10,9 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
-import { BarChart3 } from "lucide-react";
+import { BarChart3, CalendarDays, Coins, LayoutDashboard, Users } from "lucide-react";
+import { PanelSlot } from "@/components/layout/panel";
+import { PanelButton, PanelSection } from "@/components/layout/PanelParts";
 import {
   useTimeline,
   useTopChannels,
@@ -111,7 +113,7 @@ function SpendSection({ usage, loading }: { usage?: Usage; loading: boolean }) {
   const hasSpend = (total?.calls ?? 0) > 0;
 
   return (
-    <div className="space-y-4">
+    <div id="spend" className="scroll-mt-8 space-y-4">
       <div className="flex items-end justify-between">
         <h2 className="font-display text-[18px] font-semibold">Spend</h2>
         <span className="eyebrow pb-0.5">Token &amp; transcription cost — tracking only</span>
@@ -207,6 +209,7 @@ export default function InsightsRoute() {
   if (error) {
     return (
       <div className="space-y-5">
+        <InsightsPanel />
         <h1 className="font-display text-[24px] font-semibold">Insights</h1>
         <ErrorState
           error={error}
@@ -230,6 +233,7 @@ export default function InsightsRoute() {
 
   return (
     <div className="space-y-6">
+      <InsightsPanel />
       <div className="flex items-end justify-between">
         <h1 className="font-display text-[24px] font-semibold">Insights</h1>
         <span className="eyebrow pb-1">How your library has grown</span>
@@ -244,7 +248,7 @@ export default function InsightsRoute() {
       ) : (
         <>
           {/* Stat tiles */}
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div id="overview" className="grid scroll-mt-8 grid-cols-2 gap-4 sm:grid-cols-4">
             {loading ? (
               Array.from({ length: 4 }).map((_, i) => (
                 <Card key={i} className="p-5">
@@ -267,11 +271,13 @@ export default function InsightsRoute() {
           </div>
 
           {/* Timeline */}
-          <ChartCard title="Ingest activity" loading={loading}>
-            <CalendarHeatmap data={timeline.data ?? []} />
-          </ChartCard>
+          <div id="activity" className="scroll-mt-8">
+            <ChartCard title="Ingest activity" loading={loading}>
+              <CalendarHeatmap data={timeline.data ?? []} />
+            </ChartCard>
+          </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div id="channels" className="grid scroll-mt-8 grid-cols-1 gap-4 lg:grid-cols-2">
             {/* Top channels */}
             <ChartCard title="Top channels" loading={loading}>
               <ResponsiveContainer width="100%" height={320}>
@@ -347,5 +353,28 @@ export default function InsightsRoute() {
 
       <SpendSection usage={usage.data} loading={usage.isLoading} />
     </div>
+  );
+}
+
+const SECTIONS = [
+  { id: "overview", label: "Overview", icon: LayoutDashboard },
+  { id: "activity", label: "Ingest activity", icon: CalendarDays },
+  { id: "channels", label: "Channels & status", icon: Users },
+  { id: "spend", label: "Spend", icon: Coins },
+];
+
+/** The Insights place's context panel: jump links to each section. (Time
+ *  ranges land with the Insights restyle.) */
+function InsightsPanel() {
+  const go = (id: string) =>
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  return (
+    <PanelSlot title="Insights" sub="how your library grows">
+      <PanelSection title="Sections">
+        {SECTIONS.map((x) => (
+          <PanelButton key={x.id} icon={x.icon} label={x.label} onClick={() => go(x.id)} />
+        ))}
+      </PanelSection>
+    </PanelSlot>
   );
 }

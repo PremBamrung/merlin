@@ -11,6 +11,7 @@ import {
 } from "@/hooks/useFeed";
 import { useTopics, useUncategorisedCount } from "@/hooks/useTopics";
 import { FeedCard } from "@/components/feed/FeedCard";
+import { FeedPanel } from "@/components/feed/FeedPanel";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { ReaderSkeleton } from "@/components/common/Skeletons";
@@ -274,6 +275,16 @@ function FeedReader({
 
   return (
     <FeedFrame>
+      <FeedPanel
+        total={total}
+        topic={topic}
+        onTopic={onTopic}
+        topics={topics.data ?? []}
+        uncategorised={uncategorised.data ?? 0}
+        queue={queue}
+        index={Math.min(index, queue.length)}
+        onJump={setIndex}
+      />
       <div className="flex h-full flex-col">
         {filterBar}
         <div className="min-h-0 flex-1">{body}</div>
@@ -354,9 +365,10 @@ function FilterBar({
         </div>
       </div>
 
-      {/* Topic slice chips (single-select). Single-row horizontal scroll on
-          mobile so the many topics don't crush the card; wrap on sm+. */}
-      <div className="no-scrollbar -mx-4 flex items-center gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+      {/* Topic slice chips (single-select) — phones only: from `md` the slice
+          lives in the context panel, beside the up-next queue. One scrolling
+          row so the many topics don't crush the card. */}
+      <div className="no-scrollbar -mx-4 flex items-center gap-1.5 overflow-x-auto px-4 sm:-mx-6 sm:px-6 md:hidden">
         <FilterChip active={topic === null} onClick={() => onTopic(null)}>
           All
         </FilterChip>
@@ -413,10 +425,13 @@ function Count({ n }: { n: number }) {
 }
 
 /** Centered reading frame that fills the viewport height; wide on desktop so
- *  the two-column card uses the space instead of a narrow centered column. */
+ *  the two-column card uses the space instead of a narrow centered column.
+ *  Height = the viewport minus the shell's chrome and the content padding:
+ *  phones lose the 56px header + 62px tabs + py-6 (py-8 from sm); from `md`
+ *  there is no chrome above the content, only py-8. */
 function FeedFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto h-[calc(100vh-8rem)] max-w-[760px] sm:h-[calc(100vh-9rem)] lg:max-w-[1120px]">
+    <div className="mx-auto h-[calc(100dvh-166px)] max-w-[760px] sm:h-[calc(100dvh-182px)] md:h-[calc(100dvh-64px)] lg:max-w-[1120px]">
       {children}
     </div>
   );

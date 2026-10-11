@@ -86,6 +86,7 @@ def list_items(
     per_page: int = 20,
     sort: str = "newest",
     search_transcripts: bool = False,
+    channel: str | None = None,
 ) -> dict:
     from merlin.db.repositories.topics import TopicRepository
 
@@ -103,6 +104,7 @@ def list_items(
             page_size=per_page,
             sort=sort,
             search_transcripts=search_transcripts,
+            channel=channel,
         )
         # Batch-load topic assignments for the page (avoids N+1 per card).
         assignments = TopicRepository.assignments_for_items(

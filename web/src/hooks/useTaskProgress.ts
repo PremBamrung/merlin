@@ -21,7 +21,7 @@ export type TaskProgress = {
  *
  * **One stream per task, ever** — mounted only by `TaskStreams`
  * (components/layout/TaskStreams.tsx). Readers use `useTaskProgress` below,
- * which is a pure store selector. Until the top-bar ingest ring existed this
+ * which is a pure store selector. Until the ingest ring around the mark existed this
  * hook both streamed *and* rendered, which would now mean two connections per
  * task for anything shown in two places.
  */
@@ -104,7 +104,7 @@ export function useTaskProgress(taskId: string): TaskProgress {
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
 
 /**
- * Aggregate ingest activity for the top-bar ring: how many tasks are still
+ * Aggregate ingest activity for the ring around the mark: how many tasks are still
  * running, and their mean progress. Zero running ⇒ nothing to draw.
  */
 export function useIngestActivity(): { running: number; percent: number } {
