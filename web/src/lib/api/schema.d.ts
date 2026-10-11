@@ -230,6 +230,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Home
+         * @description `since` = the client's last visit (ISO 8601); defaults to 24 hours ago.
+         */
+        get: operations["home_api_home_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/topics": {
         parameters: {
             query?: never;
@@ -875,6 +895,70 @@ export interface components {
             status: string;
             /** Source Types */
             source_types?: string[];
+        };
+        /**
+         * HomeResponse
+         * @description The chat-first home's "since last time" digest (GET /api/home).
+         */
+        HomeResponse: {
+            /** Since */
+            since: string;
+            /** Unread Count */
+            unread_count: number;
+            /** New Since Count */
+            new_since_count: number;
+            /** Strip */
+            strip: components["schemas"]["ListItem"][];
+            /**
+             * Strip Kind
+             * @enum {string}
+             */
+            strip_kind: "new" | "unread";
+            continue_thread?: components["schemas"]["HomeThread"] | null;
+            busy_topic?: components["schemas"]["HomeTopic"] | null;
+            saved_revisit?: components["schemas"]["ListItem"] | null;
+        };
+        /**
+         * HomeThread
+         * @description The conversation to pick up, with the tail of its last answer.
+         */
+        HomeThread: {
+            /** Id */
+            id: string;
+            /** Title */
+            title?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Message Count
+             * @default 0
+             */
+            message_count: number;
+            /** Preview */
+            preview?: string | null;
+            /** Last Reply */
+            last_reply?: string | null;
+            /**
+             * Source Count
+             * @default 0
+             */
+            source_count: number;
+        };
+        /** HomeTopic */
+        HomeTopic: {
+            /** Slug */
+            slug: string;
+            /** Label */
+            label: string;
+            /** Count */
+            count: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "new" | "unread";
         };
         /** InboxCounts */
         InboxCounts: {
@@ -1872,6 +1956,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    home_api_home_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomeResponse"];
                 };
             };
             /** @description Validation Error */

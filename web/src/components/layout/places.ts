@@ -24,7 +24,14 @@ export const PLACES: Place[] = [
   { id: "insights", to: "/insights", label: "Insights", icon: BarChart3 },
 ];
 
-/** The place a pathname belongs to (for the mobile header title). */
+/** The place a pathname belongs to. Home (`/`) is the Chat place's front
+ *  door, so it belongs to Chat. */
 export function placeFor(pathname: string): Place | undefined {
+  if (pathname === "/") return PLACES[0];
   return PLACES.find((p) => pathname === p.to || pathname.startsWith(`${p.to}/`));
+}
+
+/** Whether a place is the current one — NavLink's own match, plus home → Chat. */
+export function isCurrent(place: Place, pathname: string): boolean {
+  return placeFor(pathname)?.id === place.id;
 }

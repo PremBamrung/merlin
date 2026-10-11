@@ -54,6 +54,11 @@ export type SearchResponse = components["schemas"]["SearchResponse"];
 export const searchLibrary = (q: string, limit = 20, source_type?: string) =>
   client.get<SearchResponse>("/api/search", { q, limit, source_type });
 
+// --- Home digest ("since last time") -----------------------------------------
+export type HomeDigest = components["schemas"]["HomeResponse"];
+
+export const getHome = (since: string) => client.get<HomeDigest>("/api/home", { since });
+
 export const updateItem = (
   id: string,
   body: components["schemas"]["UpdateItemRequest"],

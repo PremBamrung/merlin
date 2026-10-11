@@ -41,6 +41,7 @@ DEFAULT_WIDTHS = [390, 1440]
 # name -> path. ":item" is substituted with a real item id (see resolve_item).
 ROUTES: dict[str, str] = {
     "feed": "/feed",
+    "home": "/",
     "library": "/library",
     "reader": "/library/:item",
     "topics": "/topics",

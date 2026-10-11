@@ -7,6 +7,7 @@ import { MobileHeader } from "./MobileHeader";
 import { BottomTabs } from "./BottomTabs";
 import { PanelTargetsContext } from "./panelTargets";
 import { placeFor } from "./places";
+import { Wordmark } from "@/components/brand/Wordmark";
 import { CommandPalette } from "./CommandPalette";
 import { AddSourceDialog } from "@/components/ingest/AddSourceDialog";
 import { ResummarizeConfirmDialog } from "@/components/ingest/ResummarizeConfirmDialog";
@@ -134,7 +135,12 @@ export function AppShell() {
             headRef={setHead}
             bodyRef={setBody}
           />
-          {!desktop && <MobileHeader title={placeFor(pathname)?.label ?? "Merlin"} />}
+          {!desktop && (
+            <MobileHeader
+              // Home shows the wordmark; every other screen names its place.
+              title={pathname === "/" ? <Wordmark fontSize="1.16rem" /> : (placeFor(pathname)?.label ?? "Merlin")}
+            />
+          )}
           <main
             ref={mainRef}
             className={cn("min-w-0 flex-1", isChat ? "overflow-hidden" : "overflow-y-auto")}

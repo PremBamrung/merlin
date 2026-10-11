@@ -8,7 +8,7 @@ import { useUi } from "@/store/ui";
  * screen and opens the context panel as a drawer; then the place title, then
  * search + add. Translucent so content scrolls under it.
  */
-export function MobileHeader({ title }: { title: string }) {
+export function MobileHeader({ title }: { title: React.ReactNode }) {
   const setDrawerOpen = useUi((s) => s.setDrawerOpen);
   const setPaletteOpen = useUi((s) => s.setPaletteOpen);
   const openAdd = useUi((s) => s.openAdd);

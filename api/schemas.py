@@ -282,6 +282,35 @@ class ChatThreadSummary(BaseModel):
     preview: str | None = None
 
 
+class HomeThread(ChatThreadSummary):
+    """The conversation to pick up, with the tail of its last answer."""
+
+    last_reply: str | None = None
+    source_count: int = 0
+
+
+class HomeTopic(BaseModel):
+    slug: str
+    label: str
+    count: int
+    # "new": most items since the last visit; "unread": none were new, so the
+    # topic with the most unread items instead.
+    kind: Literal["new", "unread"]
+
+
+class HomeResponse(BaseModel):
+    """The chat-first home's "since last time" digest (GET /api/home)."""
+
+    since: str
+    unread_count: int
+    new_since_count: int
+    strip: list[ListItem]
+    strip_kind: Literal["new", "unread"]
+    continue_thread: HomeThread | None = None
+    busy_topic: HomeTopic | None = None
+    saved_revisit: ListItem | None = None
+
+
 class ChatThreadDetail(BaseModel):
     id: str
     title: str | None = None

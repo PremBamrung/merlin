@@ -1,10 +1,11 @@
 import { lazy, Suspense } from "react";
-import { createBrowserRouter, Navigate } from "react-router-dom";
+import { createBrowserRouter } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { ReaderSkeleton } from "@/components/common/Skeletons";
 import LibraryRoute from "@/routes/library";
 import ReaderRoute from "@/routes/reader";
 import FeedRoute from "@/routes/feed";
+import HomeRoute from "@/routes/home";
 
 // Insights pulls in Recharts — lazy-load it so it stays out of the main bundle.
 const InsightsRoute = lazy(() => import("@/routes/insights"));
@@ -17,13 +18,9 @@ export const router = createBrowserRouter([
     path: "/",
     element: <AppShell />,
     children: [
-      // Library *is* the home page. It redirects rather than rendering here so
-      // there's one canonical URL: the route keeps all its filter/sort/page
-      // state in the query string, and a second path rendering it would split
-      // bookmarks and leave the rail with nothing marked active.
-      // Reloading the redirect target is safe — api/main.py serves the SPA
-      // shell for any extensionless path, not just `/`.
-      { index: true, element: <Navigate to="/library" replace /> },
+      // The chat-first home: greeting, composer, what's new since last time.
+      // It belongs to the Chat place (the rail marks Chat as current here).
+      { index: true, element: <HomeRoute /> },
       { path: "feed", element: <FeedRoute /> },
       { path: "library", element: <LibraryRoute /> },
       { path: "library/:id", element: <ReaderRoute /> },

@@ -1,8 +1,8 @@
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { PanelLeft, Plus, Search } from "lucide-react";
 import { Mark } from "@/components/brand/Mark";
 import { IngestRing } from "./IngestRing";
-import { PLACES } from "./places";
+import { PLACES, isCurrent } from "./places";
 import { useIngestActivity } from "@/hooks/useTaskProgress";
 import { useUnreadCount } from "@/hooks/useFeed";
 import { useUi } from "@/store/ui";
@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
  */
 export function Rail({ panelOpen, onTogglePanel }: { panelOpen: boolean; onTogglePanel: () => void }) {
   const unread = useUnreadCount().data ?? 0;
+  const { pathname } = useLocation();
   const { running } = useIngestActivity();
   const setPaletteOpen = useUi((s) => s.setPaletteOpen);
   const openAdd = useUi((s) => s.openAdd);
@@ -45,19 +46,20 @@ export function Rail({ panelOpen, onTogglePanel }: { panelOpen: boolean; onToggl
         <NavLink
           key={p.id}
           to={p.to}
-          className={({ isActive }) =>
+          aria-current={isCurrent(p, pathname) ? "page" : undefined}
+          className={() =>
             cn(
               "group relative flex w-[54px] flex-col items-center gap-1 rounded-[11px] pb-[7px] pt-2 text-[10.5px] font-medium leading-3 transition-colors",
-              isActive
+              isCurrent(p, pathname)
                 ? "bg-ui-current-bg text-fg shadow-[inset_0_0_0_1px_var(--color-ui-current-border),0_1px_2px_rgb(0_0_0/0.35)]"
                 : "text-fg-subtle hover:bg-surface hover:text-fg",
             )
           }
         >
-          {({ isActive }) => (
+          {() => (
             <>
               <p.icon
-                className={cn("size-5", isActive && "text-ui-current-fg")}
+                className={cn("size-5", isCurrent(p, pathname) && "text-ui-current-fg")}
                 strokeWidth={1.75}
               />
               {p.label}

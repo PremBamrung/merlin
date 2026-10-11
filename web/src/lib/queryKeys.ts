@@ -24,6 +24,8 @@ export const keys = {
   unreadCount: () => ["unread-count"] as const,
   insights: (k: string) => ["insights", k] as const,
   health: () => ["health"] as const,
+  // Under "items" so ingest/read/save invalidations refresh the home too.
+  home: (since: string) => ["items", "home", since] as const,
   // Chat history (continuable threads): the sidebar list + one opened thread.
   chatThreads: () => ["chat-threads"] as const,
   chatThread: (id: string) => ["chat-thread", id] as const,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
 import {
@@ -203,7 +203,11 @@ function ChatConversation({
   // thread switch, so local state alone would drop unsent input). Read once at
   // mount via getState to avoid subscribing the whole pane to the draft map.
   const [input, setInput] = useState(() => useUi.getState().chatDrafts[threadId] ?? "");
-  const [filters, setFilters] = useState<ChatFilters>({});
+  // The home composer can hand over a library scope with its first question.
+  const location = useLocation();
+  const [filters, setFilters] = useState<ChatFilters>(
+    () => (location.state as { filters?: ChatFilters } | null)?.filters ?? {},
+  );
   const sentPrefill = useRef(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
 

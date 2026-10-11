@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from "react-router-dom";
 import { Menu } from "lucide-react";
-import { PLACES } from "./places";
+import { PLACES, isCurrent } from "./places";
 import { useUnreadCount } from "@/hooks/useFeed";
 import {
   DropdownMenu,
@@ -33,10 +33,18 @@ export function BottomTabs() {
       className="sticky bottom-0 z-30 flex h-[62px] shrink-0 gap-0.5 border-t border-border bg-ui-rail-bg/95 px-1.5 pb-2 pt-1.5 backdrop-blur-md"
     >
       {TABBED.map((p) => (
-        <NavLink key={p.id} to={p.to} className={({ isActive }) => tabClass(isActive)}>
-          {({ isActive }) => (
+        <NavLink
+          key={p.id}
+          to={p.to}
+          aria-current={isCurrent(p, pathname) ? "page" : undefined}
+          className={() => tabClass(isCurrent(p, pathname))}
+        >
+          {() => (
             <>
-              <p.icon className={cn("size-5", isActive && "text-ui-current-fg")} strokeWidth={1.75} />
+              <p.icon
+                className={cn("size-5", isCurrent(p, pathname) && "text-ui-current-fg")}
+                strokeWidth={1.75}
+              />
               {p.label}
               {p.id === "feed" && unread > 0 && (
                 <span className="absolute left-[calc(50%+6px)] top-px h-4 min-w-4 rounded-full bg-signal px-1 text-center font-mono text-[10px] font-semibold leading-4 text-bg">

@@ -27,7 +27,7 @@ from merlin.knowledge_sources.registry import registry
 from merlin.rag.embeddings import get_embedder
 
 from .errors import install_error_handlers, not_found
-from .routers import chat, inbox, ingest, insights, items, search, topics
+from .routers import chat, home, inbox, ingest, insights, items, search, topics
 from .schemas import HealthResponse
 
 # Dev origins for the Vite dev server. Override/extend with a comma-separated
@@ -94,6 +94,7 @@ def create_app() -> FastAPI:
 
     app.include_router(items.router)
     app.include_router(search.router)
+    app.include_router(home.router)
     app.include_router(topics.router)
     app.include_router(ingest.router)
     app.include_router(chat.router)
