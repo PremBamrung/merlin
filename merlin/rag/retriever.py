@@ -116,14 +116,36 @@ class HybridRetriever:
         tag_filters: list[str] | None = None,
         top_k: int = 5,
     ) -> list[RetrievedChunk]:
+        hits = self.search(session, query, source_types, tag_filters, top_k)
+        return [chunk for chunk, _ in hits]
+
+    def search(
+        self,
+        session: Session,
+        query: str,
+        source_types: list[str] | None = None,
+        tag_filters: list[str] | None = None,
+        top_k: int = 5,
+    ) -> list[tuple[RetrievedChunk, str]]:
+        """`retrieve()`, plus which arm found each hit: ``"fts"`` (keyword),
+        ``"vector"`` (meaning) or ``"both"`` — for search UIs that say why a
+        result matched."""
         top_k = max(1, top_k)
         # Each arm contributes a pool of candidates; fuse, rerank, then trim.
         pool = max(top_k, _RERANK_POOL)
         fts_hits = self._fts(session, query, source_types, tag_filters, pool)
         vec_hits = self._vector(session, query, source_types, tag_filters, pool)
+        lexical = {c.knowledge_item_id for c in fts_hits}
+        semantic = {c.knowledge_item_id for c in vec_hits}
         fused = self._rrf(fts_hits, vec_hits, top_k=_RERANK_POOL)
         reranked = self._rerank(query, fused)
-        return reranked[:top_k]
+
+        def arm(iid: str) -> str:
+            if iid in lexical and iid in semantic:
+                return "both"
+            return "fts" if iid in lexical else "vector"
+
+        return [(c, arm(c.knowledge_item_id)) for c in reranked[:top_k]]
 
     # -- arm 1: lexical (FTS5 + bm25) ------------------------------------- #
     def _fts(

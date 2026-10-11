@@ -13,6 +13,8 @@ models accept either form rather than silently coercing.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 # --------------------------------------------------------------------------- #
@@ -207,6 +209,20 @@ class ItemListResponse(BaseModel):
     total: int
     page: int
     per_page: int
+
+
+class SearchHit(ListItem):
+    """A Library item found by unified search, with why it matched."""
+
+    excerpt: str = ""
+    score: float = 0.0
+    # Which retrieval arm found it: keyword (fts), meaning (vector) or both.
+    match: Literal["fts", "vector", "both"] = "fts"
+
+
+class SearchResponse(BaseModel):
+    query: str
+    items: list[SearchHit]
 
 
 class Task(BaseModel):

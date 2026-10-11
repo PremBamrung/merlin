@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
+import { useItemHref } from "@/hooks/useItemHref";
 import { ImageOff } from "lucide-react";
 import type { ListItem } from "@/lib/api/endpoints";
 import { StatusDot } from "@/components/common/StatusDot";
@@ -48,7 +49,7 @@ function Thumb({ item }: { item: ListItem }) {
 
 /**
  * Library card: thumbnail, duration, title, mono meta line, status dot,
- * summary snippet, tag pills. Links to the Reader. `dense` drops the snippet.
+ * summary snippet, tag pills. Opens the item (drawer on desktop, Reader on phones). `dense` drops the snippet.
  */
 export function ItemCard({
   item,
@@ -67,6 +68,7 @@ export function ItemCard({
   const isFailed = item.status === "failed";
   const ref = useRef<HTMLAnchorElement>(null);
   const prefetch = usePrefetchItem();
+  const open = useItemHref()(item.id);
 
   useEffect(() => {
     if (focused) ref.current?.scrollIntoView({ block: "nearest" });
@@ -75,8 +77,9 @@ export function ItemCard({
   return (
     <Link
       ref={ref}
-      to={`/library/${item.id}`}
-      viewTransition
+      {...open}
+      // The card → Reader morph is for the full page; the drawer slides in.
+      viewTransition={typeof open.to === "string"}
       onMouseEnter={() => prefetch(item.id)}
       onFocus={() => prefetch(item.id)}
       className={cn(
@@ -149,6 +152,7 @@ export function ItemRow({
   const src = thumbnailUrl(item);
   const ref = useRef<HTMLAnchorElement>(null);
   const prefetch = usePrefetchItem();
+  const open = useItemHref()(item.id);
 
   useEffect(() => {
     if (focused) ref.current?.scrollIntoView({ block: "nearest" });
@@ -157,8 +161,9 @@ export function ItemRow({
   return (
     <Link
       ref={ref}
-      to={`/library/${item.id}`}
-      viewTransition
+      {...open}
+      // The card → Reader morph is for the full page; the drawer slides in.
+      viewTransition={typeof open.to === "string"}
       onMouseEnter={() => prefetch(item.id)}
       onFocus={() => prefetch(item.id)}
       className={cn(

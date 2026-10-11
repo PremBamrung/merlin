@@ -3,6 +3,7 @@ import { FileText } from "lucide-react";
 import { citeAnchorId, type Citation } from "@/hooks/useAgentChat";
 import { formatDuration, thumbnailUrl } from "@/lib/format";
 import { setCiteHot } from "@/lib/citeHot";
+import { useItemHref } from "@/hooks/useItemHref";
 
 /** One source: thumbnail with its number and duration, title, channel. The
  *  layout (row card / side card / 2-up) comes from `.src-*` CSS in index.css. */
@@ -17,6 +18,7 @@ export function SourceCard({
   messageId?: string;
 }) {
   const anchor = messageId ? citeAnchorId(messageId, citation.item_id) : undefined;
+  const open = useItemHref()(citation.item_id);
   const thumb =
     citation.thumbnail_url ??
     (citation.source_id
@@ -28,7 +30,7 @@ export function SourceCard({
   return (
     <Link
       id={anchor}
-      to={`/library/${citation.item_id}`}
+      {...open}
       className="src-card scroll-mt-6 text-left"
       onMouseEnter={anchor ? () => setCiteHot(anchor, true) : undefined}
       onMouseLeave={anchor ? () => setCiteHot(anchor, false) : undefined}

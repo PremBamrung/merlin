@@ -213,6 +213,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search */
+        get: operations["search_api_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/topics": {
         parameters: {
             query?: never;
@@ -284,6 +301,49 @@ export interface paths {
          *     task; poll the task_id).
          */
         post: operations["backfill_topics_api_topics_backfill_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/topics/reclassify-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reclassify All
+         * @description Re-scan the WHOLE library against the current taxonomy — re-decides every
+         *     classifiable item, not just the uncategorised pile (background task; poll the
+         *     task_id).
+         */
+        post: operations["reclassify_all_api_topics_reclassify_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/topics/{topic_id}/reclassify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reclassify Topic
+         * @description Re-scan a topic's members against the current taxonomy (background task;
+         *     poll the task_id) so a better-fitting topic can claim them.
+         */
+        post: operations["reclassify_topic_api_topics__topic_id__reclassify_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1111,6 +1171,93 @@ export interface components {
             title?: string | null;
         };
         /**
+         * SearchHit
+         * @description A Library item found by unified search, with why it matched.
+         */
+        SearchHit: {
+            /** Id */
+            id: string;
+            /** Source Type */
+            source_type: string;
+            /** Source Id */
+            source_id: string;
+            /** Title */
+            title?: string | null;
+            /** Author */
+            author?: string | null;
+            /** Published At */
+            published_at?: string | null;
+            /** Ingested At */
+            ingested_at?: string | null;
+            /** Summary */
+            summary?: string | null;
+            /** Summary Length */
+            summary_length?: string | null;
+            /** Tags */
+            tags?: string[];
+            /** Topics */
+            topics?: components["schemas"]["ItemTopicRef"][];
+            /** Sections */
+            sections?: {
+                [key: string]: unknown;
+            };
+            /** Llm Model */
+            llm_model?: string | null;
+            /** Word Count */
+            word_count?: number | null;
+            /** Status */
+            status?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Read At */
+            read_at?: string | null;
+            /** Saved At */
+            saved_at?: string | null;
+            /** Channel */
+            channel?: string | null;
+            /** Views */
+            views?: number | null;
+            /** Duration */
+            duration?: number | string | null;
+            /** Subscribers */
+            subscribers?: number | string | null;
+            /** Videos Count */
+            videos_count?: number | string | null;
+            /** Thumbnail Url */
+            thumbnail_url?: string | null;
+            /** Detected Language */
+            detected_language?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Timestamps */
+            timestamps?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Excerpt
+             * @default
+             */
+            excerpt: string;
+            /**
+             * Score
+             * @default 0
+             */
+            score: number;
+            /**
+             * Match
+             * @default fts
+             * @enum {string}
+             */
+            match: "fts" | "vector" | "both";
+        };
+        /** SearchResponse */
+        SearchResponse: {
+            /** Query */
+            query: string;
+            /** Items */
+            items: components["schemas"]["SearchHit"][];
+        };
+        /**
          * SetItemTopicsRequest
          * @description Manual assignment: the full topic set for an item + which is primary.
          */
@@ -1302,6 +1449,7 @@ export interface operations {
                 page?: number;
                 per_page?: number;
                 search_transcripts?: boolean;
+                channel?: string | null;
             };
             header?: never;
             path?: never;
@@ -1654,7 +1802,10 @@ export interface operations {
     };
     list_tags_api_tags_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Scope tag counts to unread items (the Feed). */
+                unread?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1668,6 +1819,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NameCount"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1692,10 +1852,45 @@ export interface operations {
             };
         };
     };
+    search_api_search_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+                source_type?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_topics_api_topics_get: {
         parameters: {
             query?: {
                 status?: string | null;
+                /** @description Scope counts to unread items and drop topics with no unread items (the Feed picker). */
+                unread?: boolean;
             };
             header?: never;
             path?: never;
@@ -1758,7 +1953,10 @@ export interface operations {
     };
     uncategorised_count_api_topics_uncategorised_count_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Scope the tally to unread items. */
+                unread?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1772,6 +1970,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1843,6 +2050,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskIdResponse"];
+                };
+            };
+        };
+    };
+    reclassify_all_api_topics_reclassify_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskIdResponse"];
+                };
+            };
+        };
+    };
+    reclassify_topic_api_topics__topic_id__reclassify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskIdResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

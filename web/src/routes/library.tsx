@@ -14,9 +14,10 @@ import {
   CornerDownLeft,
   Library as LibraryIcon,
 } from "lucide-react";
-import { useItems } from "@/hooks/useItems";
+import { useItems, useLibrarySearch } from "@/hooks/useItems";
 import { useTopics } from "@/hooks/useTopics";
 import { useUnreadCount } from "@/hooks/useFeed";
+import { ITEM_PARAM, useItemHref } from "@/hooks/useItemHref";
 import { useIngestYouTube } from "@/hooks/useIngest";
 import { useDebounced } from "@/hooks/useDebounced";
 import { looksLikeUrl } from "@/lib/classify";
@@ -69,6 +70,7 @@ function inEditable(el: EventTarget | null): boolean {
 export default function LibraryRoute() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
+  const itemHref = useItemHref();
   const { view, setView, density, setDensity } = useUi();
   // Index of the card focused via j/k (−1 = none).
   const [focused, setFocused] = useState(-1);
@@ -157,11 +159,33 @@ export default function LibraryRoute() {
     [search, sourceType, sort, page, tags.join(","), topics.join(","), savedOnly, unreadOnly, channel, searchTranscripts],
   );
 
-  const q = useItems(query);
+  // A typed query goes through unified hybrid search (keyword + meaning,
+  // decision O3): the 20 best matches by relevance, no paging, with the view's
+  // filters applied to them here. The transcript toggle stays on the paged
+  // keyword search, which is what can look inside transcripts.
+  const hybrid = !!search && !searchTranscripts;
+  const list = useItems(query, !hybrid);
+  const found = useLibrarySearch(search, sourceType || undefined, hybrid);
+  const q = hybrid ? found : list;
   const { data: topicList } = useTopics();
   const unread = useUnreadCount().data ?? 0;
-  const total = q.data?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const hybridItems = useMemo(
+    () =>
+      (found.data?.items ?? []).filter(
+        (it) =>
+          (!unreadOnly || !it.read_at) &&
+          (!savedOnly || !!it.saved_at) &&
+          (!channel || it.channel === channel) &&
+          (!topics.length ||
+            (it.topics ?? []).some((t) => topics.includes(t.slug)) ||
+            (topics.includes(UNCATEGORISED) && !(it.topics ?? []).length)) &&
+          tags.every((t) => (it.tags ?? []).includes(t)),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [found.data, unreadOnly, savedOnly, channel, topics.join(","), tags.join(",")],
+  );
+  const total = hybrid ? hybridItems.length : (list.data?.total ?? 0);
+  const totalPages = hybrid ? 1 : Math.max(1, Math.ceil(total / PER_PAGE));
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "Newest";
 
   const libView = viewOf(params);
@@ -169,7 +193,7 @@ export default function LibraryRoute() {
   const hasFilters = !!(
     search || sourceType || tags.length || topics.length || savedOnly || unreadOnly || channel
   );
-  const items = q.data?.items ?? [];
+  const items = hybrid ? hybridItems : (list.data?.items ?? []);
 
   const goToPage = (p: number) => {
     update({ page: p === 1 ? undefined : String(p) });
@@ -190,6 +214,8 @@ export default function LibraryRoute() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || inEditable(e.target)) return;
+      // The item drawer owns the keyboard while it's open.
+      if (params.has(ITEM_PARAM)) return;
       if (e.key === "j") {
         e.preventDefault();
         setFocused((f) => Math.min(f + 1, items.length - 1));
@@ -197,7 +223,8 @@ export default function LibraryRoute() {
         e.preventDefault();
         setFocused((f) => Math.max((f < 0 ? items.length : f) - 1, 0));
       } else if (e.key === "Enter" && focused >= 0 && items[focused]) {
-        navigate(`/library/${items[focused].id}`);
+        const { to, state } = itemHref(items[focused].id);
+        navigate(to, { state });
       } else if (e.key === "ArrowRight" && page < totalPages) {
         e.preventDefault();
         goToPage(page + 1);
@@ -209,7 +236,7 @@ export default function LibraryRoute() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, focused, page, totalPages]);
+  }, [items, focused, page, totalPages, params, itemHref]);
 
   return (
     <div className="space-y-5">
@@ -219,7 +246,8 @@ export default function LibraryRoute() {
           {viewTitle}
         </h1>
         <span className="font-mono text-[12px] tabular-nums text-fg-subtle">
-          {q.data ? thousands(total) : "…"} {total === 1 ? "item" : "items"}
+          {q.data ? thousands(total) : "…"}{" "}
+          {hybrid ? (total === 1 ? "best match" : "best matches") : total === 1 ? "item" : "items"}
           {libView.kind === "all" && !hasFilters && unread > 0 && ` · ${thousands(unread)} unread`}
         </span>
       </div>
@@ -264,24 +292,27 @@ export default function LibraryRoute() {
           )}
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="secondary" size="sm">
-              Sort: {sortLabel} <ChevronDown className="size-3.5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {SORTS.map((s) => (
-              <DropdownMenuItem
-                key={s.value}
-                onSelect={() => update({ sort: s.value, page: undefined })}
-                className={cn(sort === s.value && "font-semibold text-ui-current-fg")}
-              >
-                {s.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Hybrid results are ranked by relevance; there's nothing to sort. */}
+        {!hybrid && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="secondary" size="sm">
+                Sort: {sortLabel} <ChevronDown className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {SORTS.map((s) => (
+                <DropdownMenuItem
+                  key={s.value}
+                  onSelect={() => update({ sort: s.value, page: undefined })}
+                  className={cn(sort === s.value && "font-semibold text-ui-current-fg")}
+                >
+                  {s.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
 
         <div className="flex overflow-hidden rounded-md border border-border">
           <button

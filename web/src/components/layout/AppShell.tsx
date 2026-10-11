@@ -11,6 +11,8 @@ import { CommandPalette } from "./CommandPalette";
 import { AddSourceDialog } from "@/components/ingest/AddSourceDialog";
 import { ResummarizeConfirmDialog } from "@/components/ingest/ResummarizeConfirmDialog";
 import { TaskStreams } from "./TaskStreams";
+import { ItemDrawer } from "@/components/reader/ItemDrawer";
+import { ITEM_PARAM } from "@/hooks/useItemHref";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { DESKTOP, PANEL_AUTO_OPEN, useMediaQuery } from "@/hooks/useMediaQuery";
 import { ROUTE_CHANGE_EVENT, useRouteChange } from "@/hooks/useRouteChange";
@@ -25,7 +27,7 @@ import { cn } from "@/lib/utils";
  */
 export function AppShell() {
   useKeyboardShortcuts();
-  const { pathname, key } = useLocation();
+  const { pathname, search, key } = useLocation();
   const navType = useNavigationType();
   const mainRef = useRef<HTMLElement>(null);
   // Scroll offset per history entry. The scroll container is `main`, not the
@@ -85,9 +87,19 @@ export function AppShell() {
     return () => el.removeEventListener("scroll", onScroll);
   }, [key]);
 
+  // The page under the drawer: opening or closing `?item=` is not a new page,
+  // so it must not move the scroll (or the grid jumps to the top behind it).
+  const pageKey = pathname + stripParam(search, ITEM_PARAM);
+  const lastPage = useRef(pageKey);
+
   useLayoutEffect(() => {
     const el = mainRef.current;
     if (!el) return;
+    if (pageKey === lastPage.current && navType !== "POP") {
+      offsets.current.set(key, el.scrollTop);
+      return;
+    }
+    lastPage.current = pageKey;
     // Forward navigation starts at the top; back/forward returns you to where
     // you were — which is the whole point of coming back to a long grid.
     const target = navType === "POP" ? (offsets.current.get(key) ?? 0) : 0;
@@ -100,6 +112,7 @@ export function AppShell() {
       });
       return () => cancelAnimationFrame(raf);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, navType]);
 
   // Chat manages its own full-height layout, so it renders flush: no content
@@ -148,9 +161,16 @@ export function AppShell() {
       <CommandPalette />
       <AddSourceDialog />
       <ResummarizeConfirmDialog />
+      <ItemDrawer />
       {/* Headless: the only SSE connection per in-flight ingest. Lives here so
           progress (and the ring around the mark) survives navigation. */}
       <TaskStreams />
     </TooltipProvider>
   );
+}
+
+function stripParam(search: string, name: string): string {
+  const sp = new URLSearchParams(search);
+  sp.delete(name);
+  return sp.toString();
 }

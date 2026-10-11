@@ -47,6 +47,13 @@ export const getItems = (q: ItemQuery = {}) =>
 
 export const getItem = (id: string) => client.get<Item>(`/api/items/${id}`);
 
+// --- Unified search (hybrid keyword + meaning; ⌘K + Library box) -----------
+export type SearchHit = components["schemas"]["SearchHit"];
+export type SearchResponse = components["schemas"]["SearchResponse"];
+
+export const searchLibrary = (q: string, limit = 20, source_type?: string) =>
+  client.get<SearchResponse>("/api/search", { q, limit, source_type });
+
 export const updateItem = (
   id: string,
   body: components["schemas"]["UpdateItemRequest"],

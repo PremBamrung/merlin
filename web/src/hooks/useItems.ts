@@ -7,6 +7,7 @@ import {
 import {
   getItems,
   getItem,
+  searchLibrary,
   updateItem,
   deleteItem,
   clearSummary,
@@ -20,11 +21,23 @@ import { keys } from "@/lib/queryKeys";
 import { toast } from "@/components/ui/toaster";
 
 /** Paginated/filtered list. keepPreviousData avoids a flash on page/filter change. */
-export function useItems(query: ItemQuery) {
+export function useItems(query: ItemQuery, enabled = true) {
   return useQuery({
     queryKey: keys.items(query),
     queryFn: () => getItems(query),
     placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+/** Unified hybrid search (keyword + meaning), best first, ≤20 hits. Under the
+ *  items key, so anything that invalidates items refreshes it too. */
+export function useLibrarySearch(q: string, sourceType?: string, enabled = true) {
+  return useQuery({
+    queryKey: [...keys.items(), "search", q, sourceType ?? ""],
+    queryFn: () => searchLibrary(q, 20, sourceType),
+    placeholderData: keepPreviousData,
+    enabled: enabled && !!q.trim(),
   });
 }
 
