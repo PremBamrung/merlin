@@ -67,7 +67,7 @@ const components: Components = {
             e.preventDefault();
             flashCitation(href.slice(1));
           }}
-          className="ml-0.5 inline-block cursor-pointer rounded bg-accent-subtle px-1 align-super text-[10px] font-medium leading-none text-accent-lit !no-underline hover:bg-accent-border"
+          className="ml-0.5 inline-block cursor-pointer rounded border border-ui-cite-border bg-ui-cite-bg px-1 align-super text-[10px] font-medium leading-none text-ui-cite-fg !no-underline hover:border-transparent hover:bg-ui-cite-hover-bg hover:text-ui-cite-hover-fg"
         >
           {children}
         </a>
@@ -106,8 +106,8 @@ export function Markdown({
         "[&_p]:my-3 [&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1",
         "[&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5",
         "[&_strong]:font-semibold [&_strong]:text-fg",
-        "[&_a]:text-accent-lit [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-fg",
-        "[&_blockquote]:border-l-2 [&_blockquote]:border-accent-border [&_blockquote]:pl-4 [&_blockquote]:text-fg-muted [&_blockquote]:italic",
+        "[&_a]:text-ui-link [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-fg",
+        "[&_blockquote]:border-l-2 [&_blockquote]:border-ui-tint-border [&_blockquote]:pl-4 [&_blockquote]:text-fg-muted [&_blockquote]:italic",
         "[&_code]:rounded [&_code]:bg-surface-2 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[13px]",
         // Fenced blocks own their chrome (see `CodeBlock`); only the inner `pre`
         // needs horizontal scroll + a transparent `code` child.

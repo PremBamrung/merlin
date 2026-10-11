@@ -11,7 +11,7 @@ export function Toaster() {
           toast:
             "!bg-surface-2 !border !border-border-strong !text-fg !rounded-[12px] !shadow-xl !shadow-black/40",
           description: "!text-fg-muted",
-          actionButton: "!bg-accent !text-accent-fg",
+          actionButton: "!bg-ui-primary !text-ui-primary-fg",
           cancelButton: "!bg-surface !text-fg-muted",
           error: "!border-fail",
           success: "!text-fg",

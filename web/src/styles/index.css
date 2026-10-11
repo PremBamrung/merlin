@@ -32,10 +32,13 @@
   --color-fg-subtle: #8e8e98; /* metadata  —  5.3:1 on bg, 4.7:1 on surface.
                                  Lifted from #84848e *because* the ground rose. */
 
-  /* Chroma. Two families and nothing else:
-       indigo = WHERE YOU ARE  (active nav, primary button, links, topics)
-       gold   = WHAT WANTS YOU (unread, saved, running, focus)
-     plus rust for WHAT BROKE. */
+  /* Legacy indigo interface tokens. **Retired from the UI** — the mono `ui-*`
+     layer below replaced every use; they stay defined (with their measured
+     ratios) only so the brand/indigo values remain documented and a palette
+     alternate can bring them back. Do not use `accent-*` in new code.
+     The chroma rules still hold:
+       gold = WHAT WANTS YOU (unread, saved, running, focus)
+       rust = WHAT BROKE. */
   --color-accent: #4a60d6; /* interactive fill. 3.22:1 vs ground — the darkest
                               blue that may legally fill a component here.
                               There is NO headroom below it; anything deeper is
@@ -64,6 +67,101 @@
   /* Brand. The mark ONLY, never an interface element. */
   --color-brand: #2b3c9e; /* the cone */
   --color-brim: #4b5cb8; /* the brim */
+
+  /* ── Semantic UI layer: Monochrome + gold ────────────────────────────
+     Ported from mockups/redesign/direction/palettes.css (mono), the approved
+     palette (docs/EVERYDAY_AI_PLAN.md § Approved design spec). **Every screen
+     uses these `ui-*` tokens, never `accent-*` or raw hexes**, so a palette is
+     one block. The UI is greys and near-white; colour is information, not
+     decoration — hierarchy comes from surface steps, borders and type weight.
+     Indigo survives only in the mark (`brand`/`brim` above), gold is still
+     `signal`, rust still `fail`. Measured on #1a1b1f / #232529: */
+  --color-ui-rail-bg: #141518;
+  --color-ui-panel-bg: #17181b;
+
+  /* the one primary action: #17181b on #ececef 15.1:1, 14.6:1 vs ground */
+  --color-ui-primary: #ececef;
+  --color-ui-primary-hover: #ffffff;
+  --color-ui-primary-fg: #17181b;
+
+  /* "you are here": nav tile, tabs, segments — #f4f4f6 on #303237 11.7:1 */
+  --color-ui-current-bg: #303237;
+  --color-ui-current-fg: #f4f4f6;
+  --color-ui-current-border: #4a4c54;
+  --color-ui-current-bar: #e8e8eb;
+
+  /* selected rows (inset bar, 4.2:1) and selected cards (border + tint) */
+  --color-ui-selected-bg: #2c2e33;
+  --color-ui-selected-bar: #8e8e98;
+  --color-ui-selected-border: #4a4c54;
+  --color-ui-selected-tint: rgb(255 255 255 / 0.035);
+
+  /* on-state toggles and chips — #ffffff on #35373d 9.7:1+ */
+  --color-ui-toggle-on-bg: #35373d;
+  --color-ui-toggle-on-border: #4a4c54;
+  --color-ui-toggle-on-fg: #ffffff;
+  --color-ui-toggle-on-icon: #e8e8eb;
+  --color-ui-switch-on: #e8e8eb; /* 12.6:1 on surface */
+  --color-ui-switch-knob: #1a1b1f;
+
+  /* composer mode token ("Add to library"), palette mode tag */
+  --color-ui-token-bg: #35373d;
+  --color-ui-token-border: #4a4c54;
+  --color-ui-token-fg: #e8e8eb;
+  --color-ui-token-icon: #e8e8eb;
+
+  /* inline [n] chips — #b4b4bb on #2c2e33 6.6:1 — and thumbnail number badges */
+  --color-ui-cite-bg: #2c2e33;
+  --color-ui-cite-border: #3f4147;
+  --color-ui-cite-fg: #b4b4bb;
+  --color-ui-cite-hover-bg: #ececef;
+  --color-ui-cite-hover-fg: #17181b;
+  --color-ui-cite-num-bg: rgb(16 17 19 / 0.82);
+  --color-ui-cite-num-fg: #f4f4f6;
+
+  /* tinted callouts: notes, quotes, traces, tag chips — #c9c9cf on it 8.8:1 */
+  --color-ui-tint-bg: #27292e;
+  --color-ui-tint-border: #3f4147;
+  --color-ui-tint-fg: #c9c9cf;
+
+  --color-ui-badge-new-bg: #2c2e33;
+  --color-ui-badge-new-border: #4a4c54;
+  --color-ui-badge-new-fg: #e8e8eb;
+
+  /* Mono has no link hue (12.6 / 11.2:1 on bg / surface), so action text
+     earns its affordance by underline. */
+  --color-ui-link: #dcdce0;
+  --color-ui-icon: #c4c4ca; /* accent icons inside neutral UI — 8.8:1 */
+  --color-ui-eyebrow: #a6a6ad; /* topic / section eyebrows — 7.1:1 */
+  --color-ui-hover-border: #4a4c54;
+
+  --color-ui-wash: rgb(255 255 255 / 0.03); /* ambient glow behind greetings */
+  --color-ui-wash-strong: rgb(255 255 255 / 0.045);
+  --color-ui-flash: rgb(255 255 255 / 0.07); /* an arriving / matched row */
+  --color-ui-hl: rgb(255 255 255 / 0.12); /* matched text */
+
+  /* composer + input focus (the keyboard focus ring stays gold, below) */
+  --color-ui-focus-border: #5a5c64;
+  --color-ui-focus-ring: rgb(255 255 255 / 0.05);
+
+  --color-ui-caret: #f4f4f6;
+  --color-ui-caret-dim: #c9c9cf;
+  --color-ui-caret-glow: rgb(255 255 255 / 0.32);
+  --color-ui-caret-glow-dim: rgb(255 255 255 / 0.14);
+
+  /* Data marks: ONE series, sky. Passes the dataviz validator on the #232529
+     card (OKLCH L in the dark band, C ≥ 0.10, ≥ 3:1); -2 is emphasis/hover.
+     Recharts writes SVG attributes, so lib/chartColors.ts mirrors these as
+     hexes — change both together. */
+  --color-ui-chart-1: #3f97c9;
+  --color-ui-chart-2: #6fb6de;
+  --color-ui-chart-track: #2c2e33;
+  --color-ui-chart-track-border: #3f4147;
+
+  --color-ui-avatar-a: #4a4c54;
+  --color-ui-avatar-b: #303237;
+
+  --color-ui-selection: rgb(255 255 255 / 0.18);
 
   /* Status. Rust is the first error colour here that isn't the brand.
      NB: rust vs ok-green is ΔE 4.7 under deuteranopia, so every status must
@@ -121,7 +219,7 @@
     border-radius: 4px;
   }
   ::selection {
-    background: rgb(74 96 214 / 0.45);
+    background: var(--color-ui-selection);
     color: var(--color-fg);
   }
   /* Slim dark scrollbars */
@@ -270,11 +368,11 @@
 }
 
 /* Highlight pulse for a Source card when its inline citation chip is clicked.
-   Indigo — a citation is a link, not an alarm. */
+   Near-white — a citation is a link, not an alarm (gold would say "unread"). */
 @keyframes cite-flash {
   0% {
-    box-shadow: 0 0 0 0 var(--color-accent);
-    border-color: var(--color-accent);
+    box-shadow: 0 0 0 0 var(--color-ui-current-bar);
+    border-color: var(--color-ui-current-bar);
   }
   100% {
     box-shadow: 0 0 0 6px transparent;

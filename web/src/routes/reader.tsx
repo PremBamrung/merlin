@@ -249,7 +249,7 @@ function Reader({
                     className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[13px] capitalize text-fg-muted transition-colors hover:bg-surface hover:text-fg"
                   >
                     {l}
-                    {item.summary_length === l && <Check className="size-3.5 text-accent-lit" />}
+                    {item.summary_length === l && <Check className="size-3.5 text-ui-icon" />}
                   </button>
                 ))}
               </PopoverContent>
@@ -599,7 +599,7 @@ function Transcript({ text }: { text: string }) {
               key={i}
               className={cn(
                 "mb-3 [contain-intrinsic-size:auto_4rem] [content-visibility:auto] last:mb-0",
-                hit && "rounded bg-accent-subtle/60 px-1",
+                hit && "rounded bg-ui-flash px-1",
               )}
             >
               {hit ? <Highlight text={para} term={q} /> : para}
@@ -617,7 +617,7 @@ function Highlight({ text, term }: { text: string; term: string }) {
   return (
     <>
       {text.slice(0, idx)}
-      <mark className="bg-accent/40 text-fg">{text.slice(idx, idx + term.length)}</mark>
+      <mark className="bg-ui-hl text-fg">{text.slice(idx, idx + term.length)}</mark>
       {text.slice(idx + term.length)}
     </>
   );
@@ -674,7 +674,7 @@ function TopicAssign({
           className={cn(
             "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px]",
             a.is_primary
-              ? "border-accent-border bg-accent-subtle text-accent-lit"
+              ? "border-ui-toggle-on-border bg-ui-toggle-on-bg text-ui-toggle-on-fg"
               : "border-border text-fg-muted",
           )}
         >
@@ -683,7 +683,7 @@ function TopicAssign({
             title={a.is_primary ? "Primary topic" : "Make primary"}
             className="inline-flex items-center gap-1"
           >
-            {a.is_primary && <Star className="size-3 fill-accent-lit stroke-accent-lit" />}
+            {a.is_primary && <Star className="size-3 fill-ui-toggle-on-icon stroke-ui-toggle-on-icon" />}
             {a.label}
           </button>
           <button onClick={() => remove(a.slug)} aria-label={`Remove ${a.label}`}>

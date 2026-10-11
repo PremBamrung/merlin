@@ -1,25 +1,14 @@
 import { useMemo } from "react";
+import { SEQ_RAMP } from "@/lib/chartColors";
 
 type Point = { date: string; count: number };
 
 /**
  * Fixed thresholds (not max-relative) so a single bulk-import day doesn't wash
- * out ordinary daily activity — the old area chart's failure mode.
- *
- * Magnitude, so the fills are a **sequential ramp**: one hue (indigo, 265°),
- * monotone lightness, brightening with the count. Opacity tints were the old
- * approach and they aren't a ramp — they collapse against whatever sits behind
- * them. Validated as an ordinal ramp on the card surface (#232529): monotone L,
- * every adjacent gap ≥ 0.06, dim end 2.52:1 — the level-1 square has to be
- * visible against the empty one, which the old 28% tint barely was.
+ * out ordinary daily activity — the old area chart's failure mode. The fills are
+ * the validated sky sequential ramp in lib/chartColors.ts (`SEQ_RAMP`).
  */
-const LEVEL_FILL = [
-  "var(--color-surface-2)",
-  "#3e5fad",
-  "#577aca",
-  "#7195e8",
-  "#8bb2ff",
-];
+const LEVEL_FILL = SEQ_RAMP;
 function level(count: number): number {
   if (count <= 0) return 0;
   if (count >= 20) return 4;

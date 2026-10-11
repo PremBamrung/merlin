@@ -98,7 +98,7 @@ export function Topbar({ className }: { className?: string }) {
               cn(
                 "shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-[13px] font-medium transition-colors",
                 isActive
-                  ? "bg-accent text-accent-fg"
+                  ? "bg-ui-current-bg text-ui-current-fg shadow-[inset_0_0_0_1px_var(--color-ui-current-border)]"
                   : "text-fg-muted hover:bg-surface-2 hover:text-fg",
               )
             }

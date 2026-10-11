@@ -175,7 +175,7 @@ export const Message = memo(function Message({
   return (
     <div className="group/msg space-y-3">
       <div className="flex items-center gap-2">
-        <span className="text-accent-lit">✦</span>
+        <span className="text-ui-icon">✦</span>
         <span className="eyebrow">Merlin</span>
         <div className="ml-auto flex items-center gap-1">
           {timeLabel && <span className="text-[11px] text-fg-subtle">{timeLabel}</span>}

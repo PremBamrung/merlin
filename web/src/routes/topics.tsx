@@ -671,7 +671,7 @@ function TopicRow({
                   variant="ghost"
                   onDoubleClick={() => del.mutate(topic.id)}
                   aria-label="Delete topic (double-click to confirm)"
-                  className={cn("text-fg-subtle hover:text-red-500")}
+                  className={cn("text-fg-subtle hover:text-fail")}
                 >
                   <X className="size-3.5" />
                 </Button>

@@ -47,7 +47,7 @@ export function TaskRow({ taskId }: { taskId: string }) {
         {done && itemId ? (
           <Link
             to={`/library/${itemId}`}
-            className="shrink-0 text-[12px] font-medium text-accent-lit hover:text-fg"
+            className="shrink-0 text-[12px] font-medium text-ui-link hover:text-fg hover:underline underline-offset-2"
           >
             Open →
           </Link>

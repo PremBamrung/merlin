@@ -98,7 +98,7 @@ export function AddSourceDialog() {
                   className={cn(
                     "flex-1 rounded-md border px-3 py-1.5 text-[13px] capitalize transition-colors",
                     length === l
-                      ? "border-accent-border bg-accent-subtle text-fg"
+                      ? "border-ui-toggle-on-border bg-ui-toggle-on-bg text-ui-toggle-on-fg"
                       : "border-border text-fg-muted hover:border-border-strong",
                   )}
                 >
@@ -127,7 +127,7 @@ export function AddSourceDialog() {
                     className={cn(
                       "rounded-md border px-2.5 py-1 font-mono text-[11px] uppercase transition-colors",
                       langs.includes(l)
-                        ? "border-accent-border bg-accent-subtle text-accent-lit"
+                        ? "border-ui-toggle-on-border bg-ui-toggle-on-bg text-ui-toggle-on-fg"
                         : "border-border text-fg-subtle hover:border-border-strong",
                     )}
                   >

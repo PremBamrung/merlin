@@ -395,7 +395,7 @@ function FilterChip({
       className={cn(
         "inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
         active
-          ? "border-accent-border bg-accent-subtle text-fg"
+          ? "border-ui-toggle-on-border bg-ui-toggle-on-bg text-ui-toggle-on-fg"
           : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
       )}
     >

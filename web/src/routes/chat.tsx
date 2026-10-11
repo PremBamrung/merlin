@@ -904,7 +904,7 @@ function Chip({
     <button
       onClick={onRemove}
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-subtle px-2.5 py-1 text-[11px] text-accent-lit",
+        "inline-flex items-center gap-1 rounded-full border border-ui-toggle-on-border bg-ui-toggle-on-bg px-2.5 py-1 text-[11px] text-ui-toggle-on-fg",
         mono && "font-mono",
         className,
       )}
@@ -917,7 +917,7 @@ function Chip({
 function IdleState({ onPick }: { onPick: (q: string) => void }) {
   return (
     <div className="flex flex-col items-center gap-6 py-16 text-center">
-      <div className="flex size-12 items-center justify-center rounded-full bg-accent-subtle text-accent-lit">
+      <div className="flex size-12 items-center justify-center rounded-full bg-ui-tint-bg text-ui-icon">
         <MessageSquare className="size-6" strokeWidth={1.5} />
       </div>
       <div className="space-y-1">
@@ -933,7 +933,7 @@ function IdleState({ onPick }: { onPick: (q: string) => void }) {
             onClick={() => onPick(s)}
             className="group flex items-center gap-2.5 rounded-[10px] border border-border bg-surface px-4 py-3 text-left text-[13.5px] text-fg-muted transition-colors hover:border-border-strong hover:text-fg"
           >
-            <Sparkles className="size-4 shrink-0 text-fg-subtle group-hover:text-accent-lit" />
+            <Sparkles className="size-4 shrink-0 text-fg-subtle group-hover:text-ui-icon" />
             {s}
           </button>
         ))}
@@ -976,7 +976,7 @@ function FilterBar({
         <Button variant="secondary" size="sm">
           <SlidersHorizontal className="size-3.5" /> Filters
           {active > 0 && (
-            <span className="ml-1 flex size-4 items-center justify-center rounded-full bg-accent font-mono text-[10px] text-accent-fg">
+            <span className="ml-1 flex size-4 items-center justify-center rounded-full bg-ui-primary font-mono text-[10px] text-ui-primary-fg">
               {active}
             </span>
           )}
@@ -995,7 +995,7 @@ function FilterBar({
                   className={cn(
                     "rounded-full border px-2.5 py-1 text-[12px] capitalize transition-colors",
                     on
-                      ? "border-accent-border bg-accent-subtle text-accent-lit"
+                      ? "border-ui-toggle-on-border bg-ui-toggle-on-bg text-ui-toggle-on-fg"
                       : "border-border text-fg-muted hover:border-border-strong",
                   )}
                 >
@@ -1019,7 +1019,7 @@ function FilterBar({
                     className={cn(
                       "rounded-full border px-2.5 py-1 font-mono text-[11px] transition-colors",
                       on
-                        ? "border-accent-border bg-accent-subtle text-accent-lit"
+                        ? "border-ui-toggle-on-border bg-ui-toggle-on-bg text-ui-toggle-on-fg"
                         : "border-border text-fg-subtle hover:border-border-strong",
                     )}
                   >

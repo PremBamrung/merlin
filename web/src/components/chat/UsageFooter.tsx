@@ -8,11 +8,11 @@ function fillPct(usage: TurnUsage): number | null {
   return Math.min(100, (usage.context_used / usage.context_limit) * 100);
 }
 
-/** Tone by how full the window is — amber past 75%, red past 90%. */
+/** Tone by how full the window is — gold (wants you) past 75%, rust past 90%. */
 function tone(pct: number | null): { text: string; bar: string } {
   if (pct == null) return { text: "text-fg-subtle", bar: "bg-fg-subtle/60" };
-  if (pct > 90) return { text: "text-red-500", bar: "bg-red-500" };
-  if (pct > 75) return { text: "text-amber-500", bar: "bg-amber-500" };
+  if (pct > 90) return { text: "text-fail", bar: "bg-fail" };
+  if (pct > 75) return { text: "text-signal", bar: "bg-signal" };
   return { text: "text-fg-subtle", bar: "bg-fg-subtle/60" };
 }
 

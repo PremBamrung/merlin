@@ -15,11 +15,11 @@ export function StatTile({
   hint?: string;
   className?: string;
   /**
-   * `accent` highlights a figure worth noticing (indigo — structural);
+   * `emphasis` lifts a figure worth noticing (near-white — structural);
    * `fail` is for a count of things that broke (rust). Never gold: the tile is
    * a number, not a state that wants acting on.
    */
-  tone?: "default" | "accent" | "fail";
+  tone?: "default" | "emphasis" | "fail";
 }) {
   return (
     <Card className={cn("p-5", className)}>
@@ -27,8 +27,8 @@ export function StatTile({
       <p
         className={cn(
           "mt-2 font-display text-[28px] font-semibold leading-none tabular-nums",
-          tone === "accent"
-            ? "text-accent-lit"
+          tone === "emphasis"
+            ? "text-ui-link"
             : tone === "fail"
               ? "text-fail"
               : "text-fg",

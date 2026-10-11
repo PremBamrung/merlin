@@ -217,10 +217,10 @@ export default function LibraryRoute() {
           {/* The leading glyph is the mode indicator: magnifier while you're
               searching, spark once the box is holding a link. */}
           {ingest.isPending ? (
-            <Loader2 className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-accent-lit" />
+            <Loader2 className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-ui-token-icon" />
           ) : isUrl ? (
             <Sparkles
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-accent-lit"
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ui-token-icon"
               strokeWidth={1.5}
             />
           ) : (
@@ -237,12 +237,12 @@ export default function LibraryRoute() {
             }}
             placeholder="Search, or paste a link…"
             aria-label={isUrl ? "Press Enter to ingest this link" : "Search your library"}
-            className={cn("pl-9", isUrl && "border-accent-border pr-24")}
+            className={cn("pl-9", isUrl && "border-ui-focus-border pr-24")}
           />
           {/* Inside the field rather than under it: pasting a link shouldn't
               shove the whole grid down a row. */}
           {isUrl && !ingest.isPending && (
-            <span className="pointer-events-none absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 text-[11px] font-medium text-accent-lit">
+            <span className="pointer-events-none absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 text-[11px] font-medium text-ui-token-fg">
               <CornerDownLeft className="size-3" /> ingest
             </span>
           )}
@@ -259,7 +259,7 @@ export default function LibraryRoute() {
               <DropdownMenuItem
                 key={s.value}
                 onSelect={() => update({ sort: s.value, page: undefined })}
-                className={cn(sort === s.value && "text-accent-lit")}
+                className={cn(sort === s.value && "font-semibold text-ui-current-fg")}
               >
                 {s.label}
               </DropdownMenuItem>
@@ -302,7 +302,7 @@ export default function LibraryRoute() {
                 <DropdownMenuItem
                   key={d}
                   onSelect={() => setDensity(d)}
-                  className={cn("capitalize", density === d && "text-accent-lit")}
+                  className={cn("capitalize", density === d && "font-semibold text-ui-current-fg")}
                 >
                   {d}
                 </DropdownMenuItem>
@@ -379,7 +379,7 @@ export default function LibraryRoute() {
             className={cn(
               "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
               searchTranscripts
-                ? "border-accent-border bg-accent-subtle text-accent-lit"
+                ? "border-ui-toggle-on-border bg-ui-toggle-on-bg text-ui-toggle-on-fg"
                 : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
             )}
           >
@@ -392,7 +392,7 @@ export default function LibraryRoute() {
             onClick={() =>
               update({ tags: tags.filter((x) => x !== t), page: undefined })
             }
-            className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-subtle px-2.5 py-1 font-mono text-[11px] text-accent-lit"
+            className="inline-flex items-center gap-1 rounded-full border border-ui-toggle-on-border bg-ui-toggle-on-bg px-2.5 py-1 font-mono text-[11px] text-ui-toggle-on-fg"
           >
             #{t} <X className="size-3" />
           </button>
@@ -476,7 +476,7 @@ function Chip({
       className={cn(
         "rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
         active
-          ? "border-accent-border bg-accent-subtle text-fg"
+          ? "border-ui-toggle-on-border bg-ui-toggle-on-bg text-ui-toggle-on-fg"
           : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
       )}
     >
@@ -537,7 +537,7 @@ function Pager({
             className={cn(
               "flex h-8 min-w-8 items-center justify-center rounded-md px-2 font-mono text-[12px] tabular-nums transition-colors",
               p === page
-                ? "bg-accent-subtle text-fg"
+                ? "bg-ui-current-bg text-ui-current-fg"
                 : "text-fg-muted hover:bg-surface-2 hover:text-fg",
             )}
           >

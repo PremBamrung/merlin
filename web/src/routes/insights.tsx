@@ -26,32 +26,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { thousands } from "@/lib/format";
-
-// Chart chrome, on the new tokens: grid = rule, axis = fg-subtle, cursor/stroke
-// = surface-2. `series` is categorical slot 1 (see SURFACE_COLORS) rather than
-// the interface accent — #4a60d6 is tuned to be the darkest legal *fill*, which
-// is not what a data mark on a grid wants.
-const COLORS = {
-  series: "#5c82da",
-  grid: "#393b41",
-  axis: "#8e8e98",
-  surface: "#2c2e33",
-  border: "#4a4c54",
-};
-/**
- * Status is a **reserved** scale: green = done, gold = running, indigo = waiting
- * on us, grey = waiting in line, rust = broken. Never reused as "series N".
- * Rust and green are ΔE 4.7 apart under deuteranopia, which is why both charts
- * below render a named legend — colour alone never distinguishes failed from
- * completed.
- */
-const STATUS_COLORS: Record<string, string> = {
-  completed: "#4fa97a",
-  processing: "#ffb94a",
-  pending: "#96a5f5",
-  queued: "#8e8e98",
-  failed: "#d4705a",
-};
+import { CHART, STATUS_COLORS, SURFACE_COLORS, SURFACE_ORDER } from "@/lib/chartColors";
 
 type TooltipEntry = { value?: number; name?: string };
 function ChartTooltip(props: {
@@ -92,23 +67,6 @@ function ChartCard({
     </Card>
   );
 }
-
-/**
- * Categorical slots for the stacked spend bar, in **stacking order** — the order
- * is the colourblind-safety mechanism, so don't re-shuffle it. Stepped into the
- * dark-mode lightness band (OKLCH L 0.48–0.67) on Merlin's ground and validated:
- * all five clear the chroma floor and 3:1 vs #1a1b1f, worst adjacent pair is
- * ΔE 9.2 under deuteranopia / 21.4 normal. Re-run the check before touching a
- * value (skills/dataviz `validate_palette.js --mode dark --surface "#1a1b1f"`).
- */
-const SURFACE_COLORS: Record<string, string> = {
-  chat: "#5c82da",
-  summarize: "#b98a00",
-  transcribe: "#13a5b2",
-  classify: "#b93c8c",
-  discover: "#429c5a",
-};
-const SURFACE_ORDER = ["chat", "summarize", "transcribe", "classify", "discover"];
 
 function usd(n: number): string {
   if (!n) return "$0.00";
@@ -187,31 +145,31 @@ function SpendSection({ usage, loading }: { usage?: Usage; loading: boolean }) {
         <ChartCard title="Daily cost by surface" loading={loading}>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={daily} margin={{ top: 0, right: 12, bottom: 0, left: 8 }}>
-              <CartesianGrid stroke={COLORS.grid} vertical={false} />
+              <CartesianGrid stroke={CHART.grid} vertical={false} />
               <XAxis
                 dataKey="date"
-                stroke={COLORS.axis}
-                tick={{ fontSize: 11, fill: COLORS.axis }}
+                stroke={CHART.axis}
+                tick={{ fontSize: 11, fill: CHART.axis }}
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={(v: string) => v.slice(5)}
               />
               <YAxis
-                stroke={COLORS.axis}
-                tick={{ fontSize: 11, fill: COLORS.axis }}
+                stroke={CHART.axis}
+                tick={{ fontSize: 11, fill: CHART.axis }}
                 tickLine={false}
                 axisLine={false}
                 width={56}
                 tickFormatter={(v: number) => usd(v)}
               />
-              <Tooltip content={<SpendTooltip />} cursor={{ fill: COLORS.surface }} />
+              <Tooltip content={<SpendTooltip />} cursor={{ fill: CHART.surface }} />
               {surfaces.map((s, i) => (
                 <Bar
                   key={s}
                   dataKey={s}
                   name={s}
                   stackId="cost"
-                  fill={SURFACE_COLORS[s] ?? COLORS.axis}
+                  fill={SURFACE_COLORS[s] ?? CHART.axis}
                   radius={i === surfaces.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
                 />
               ))}
@@ -222,7 +180,7 @@ function SpendSection({ usage, loading }: { usage?: Usage; loading: boolean }) {
               <span key={s.surface} className="flex items-center gap-1.5 text-[12px]">
                 <span
                   className="size-2 rounded-full"
-                  style={{ background: SURFACE_COLORS[s.surface] ?? COLORS.axis }}
+                  style={{ background: SURFACE_COLORS[s.surface] ?? CHART.axis }}
                 />
                 <span className="capitalize text-fg-muted">{s.surface}</span>
                 <span className="font-mono tabular-nums text-fg-subtle">{usd(s.cost_usd)}</span>
@@ -322,11 +280,11 @@ export default function InsightsRoute() {
                   layout="vertical"
                   margin={{ top: 0, right: 12, bottom: 0, left: 8 }}
                 >
-                  <CartesianGrid stroke={COLORS.grid} horizontal={false} />
+                  <CartesianGrid stroke={CHART.grid} horizontal={false} />
                   <XAxis
                     type="number"
-                    stroke={COLORS.axis}
-                    tick={{ fontSize: 11, fill: COLORS.axis }}
+                    stroke={CHART.axis}
+                    tick={{ fontSize: 11, fill: CHART.axis }}
                     tickLine={false}
                     axisLine={false}
                     allowDecimals={false}
@@ -334,15 +292,15 @@ export default function InsightsRoute() {
                   <YAxis
                     type="category"
                     dataKey="name"
-                    stroke={COLORS.axis}
-                    tick={{ fontSize: 11, fill: COLORS.axis }}
+                    stroke={CHART.axis}
+                    tick={{ fontSize: 11, fill: CHART.axis }}
                     tickLine={false}
                     axisLine={false}
                     width={120}
                     tickFormatter={(v: string) => (v.length > 16 ? v.slice(0, 15) + "…" : v)}
                   />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: COLORS.surface }} />
-                  <Bar dataKey="count" name="items" fill={COLORS.series} radius={[0, 4, 4, 0]} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: CHART.surface }} />
+                  <Bar dataKey="count" name="items" fill={CHART.series} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -358,12 +316,12 @@ export default function InsightsRoute() {
                     innerRadius={52}
                     outerRadius={84}
                     paddingAngle={2}
-                    stroke={COLORS.surface}
+                    stroke={CHART.surface}
                   >
                     {statusData.map((s) => (
                       <Cell
                         key={s.name}
-                        fill={STATUS_COLORS[s.name] ?? COLORS.axis}
+                        fill={STATUS_COLORS[s.name] ?? CHART.axis}
                       />
                     ))}
                   </Pie>
@@ -375,7 +333,7 @@ export default function InsightsRoute() {
                   <span key={s.name} className="flex items-center gap-1.5 text-[12px]">
                     <span
                       className="size-2 rounded-full"
-                      style={{ background: STATUS_COLORS[s.name] ?? COLORS.axis }}
+                      style={{ background: STATUS_COLORS[s.name] ?? CHART.axis }}
                     />
                     <span className="capitalize text-fg-muted">{s.name}</span>
                     <span className="font-mono tabular-nums text-fg-subtle">{s.count}</span>
