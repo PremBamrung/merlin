@@ -15,6 +15,7 @@ import {
 } from "@/lib/format";
 import { usePrefetchItem } from "@/hooks/useItems";
 import { vtThumb, vtTitle } from "@/lib/viewTransition";
+import { setMorphOrigin } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 /** A thumbnail with a 16:9 crop, the duration, the saved ★, and a graceful
@@ -23,7 +24,7 @@ function Thumb({ item }: { item: ListItem }) {
   const src = thumbnailUrl(item);
   const duration = formatDuration(item.duration);
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-[10px] bg-surface-2 shadow-[0_1px_0_rgb(255_255_255/0.03)_inset,0_1px_2px_rgb(0_0_0/0.4)]">
+    <div className="m-thumb relative aspect-video w-full overflow-hidden rounded-[10px] bg-surface-2 shadow-[0_1px_0_rgb(255_255_255/0.03)_inset,0_1px_2px_rgb(0_0_0/0.4)]">
       {src ? (
         <img
           src={src}
@@ -32,7 +33,7 @@ function Thumb({ item }: { item: ListItem }) {
           // Flies into the Reader's thumbnail. Only ever one visible element per
           // name — see lib/viewTransition.ts.
           style={{ viewTransitionName: vtThumb(item.id) }}
-          className="size-full object-cover"
+          className="m-img size-full object-cover"
         />
       ) : (
         <div className="flex size-full items-center justify-center text-fg-subtle">
@@ -98,8 +99,9 @@ export function ItemCard({
       viewTransition={typeof open.to === "string"}
       onMouseEnter={() => prefetch(item.id)}
       onFocus={() => prefetch(item.id)}
+      onClick={(e) => setMorphOrigin(e.currentTarget.querySelector("img"))}
       className={cn(
-        "group block rounded-xl text-fg transition-transform duration-200 ease-[cubic-bezier(0.2,0,0,1)] [@media(pointer:fine)]:hover:-translate-y-0.5",
+        "m-lift group block rounded-xl text-fg transition-transform duration-200 ease-[cubic-bezier(0.2,0,0,1)] [@media(pointer:fine)]:hover:-translate-y-0.5",
         focused && "ring-2 ring-signal/50 ring-offset-4 ring-offset-bg",
       )}
     >

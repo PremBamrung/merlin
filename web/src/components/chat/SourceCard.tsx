@@ -4,6 +4,7 @@ import { citeAnchorId, type Citation } from "@/hooks/useAgentChat";
 import { formatDuration, thumbnailUrl } from "@/lib/format";
 import { setCiteHot } from "@/lib/citeHot";
 import { useItemHref } from "@/hooks/useItemHref";
+import { setMorphOrigin } from "@/lib/motion";
 
 /** One source: thumbnail with its number and duration, title, channel. The
  *  layout (row card / side card / 2-up) comes from `.src-*` CSS in index.css. */
@@ -32,13 +33,14 @@ export function SourceCard({
       id={anchor}
       {...open}
       className="src-card scroll-mt-6 text-left"
+      onClick={(e) => setMorphOrigin(e.currentTarget.querySelector("img"))}
       onMouseEnter={anchor ? () => setCiteHot(anchor, true) : undefined}
       onMouseLeave={anchor ? () => setCiteHot(anchor, false) : undefined}
       title={citation.snippet || citation.title}
     >
       <span className="src-thumb relative block aspect-video overflow-hidden rounded-lg bg-surface-2">
         {thumb ? (
-          <img src={thumb} alt="" loading="lazy" className="size-full object-cover" />
+          <img src={thumb} alt="" loading="lazy" className="m-img size-full object-cover" />
         ) : (
           <span className="grid size-full place-items-center text-fg-subtle">
             <FileText className="size-6" strokeWidth={1.3} />

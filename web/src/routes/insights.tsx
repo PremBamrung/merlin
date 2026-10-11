@@ -24,6 +24,7 @@ import { PanelButton, PanelSection } from "@/components/layout/PanelParts";
 import { CHART } from "@/lib/chartColors";
 import { thousands } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useCountUp } from "@/lib/motion";
 
 /**
  * Insights (docs/EVERYDAY_AI_PLAN.md § Topics / Insights; mockup `#insights`):
@@ -207,7 +208,7 @@ export default function InsightsRoute() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <Kpi
               k="Items"
-              v={thousands(total)}
+              v={<CountUp n={total} />}
               d={
                 range === "all" && spike
                   ? `+${thousands(spike.count)} imported ${shortDate(spike.date)}`
@@ -228,10 +229,10 @@ export default function InsightsRoute() {
                 </Link>
               }
             />
-            <Kpi k="Channels" v={thousands(channelCount.data?.count ?? 0)} d="distinct channels" />
+            <Kpi k="Channels" v={<CountUp n={channelCount.data?.count ?? 0} />} d="distinct channels" />
             <Kpi
               k="Conversations"
-              v={thousands(threads?.length ?? 0)}
+              v={<CountUp n={threads?.length ?? 0} />}
               d={turns ? `avg ${turns} turn${turns === 1 ? "" : "s"}` : "none yet"}
             />
             <Kpi
@@ -379,6 +380,12 @@ function InsightsPanel({ range, setRange }: { range: Range; setRange: (r: Range)
 // --------------------------------------------------------------------------- //
 // Pieces
 // --------------------------------------------------------------------------- //
+
+/** A whole number that counts up the first time it's seen. */
+function CountUp({ n }: { n: number }) {
+  const [ref, value] = useCountUp(n);
+  return <span ref={ref}>{thousands(value)}</span>;
+}
 
 function Kpi({ k, v, d }: { k: string; v: React.ReactNode; d: React.ReactNode }) {
   return (
@@ -529,7 +536,7 @@ function HBars({ rows, fmt = thousands }: { rows: HRow[]; fmt?: (n: number) => s
           <span className="h-2.5 overflow-hidden">
             <span
               className={cn(
-                "block h-full rounded-r-[3px] transition-colors",
+                "m-bar block h-full rounded-r-[3px] transition-colors",
                 r.muted ? "bg-ui-chart-track" : "bg-ui-chart-1 group-hover:bg-ui-chart-2",
               )}
               style={{ width: `${Math.max(0.8, (r.n / max) * 100)}%` }}

@@ -61,7 +61,7 @@ export function ContextPanel({
           "flex min-w-0 flex-col overflow-hidden bg-ui-panel-bg",
           desktop
             ? cn(
-                "shrink-0 border-r transition-[width,border-color] duration-[280ms] ease-[cubic-bezier(0.2,0,0,1)]",
+                "shrink-0 border-r transition-[width,border-color] duration-[320ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
                 open
                   ? "w-[280px] border-border min-[1900px]:w-[300px]"
                   : "w-0 border-transparent",
@@ -91,7 +91,8 @@ export function ContextPanel({
               {desktop ? <PanelLeftClose className="size-[18px]" /> : <X className="size-[18px]" />}
             </button>
           </div>
-          <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-0.5" />
+          {/* m-stagger: a place's rows slide in one after another. */}
+          <div ref={bodyRef} className="m-stagger min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-0.5" />
         </div>
       </aside>
     </>

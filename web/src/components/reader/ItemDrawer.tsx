@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { playMorph } from "@/lib/motion";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ExternalLink, MessageSquare, PanelRight, Play, Star, X } from "lucide-react";
+import { ExternalLink, MessageSquare, PanelRight, Play, X } from "lucide-react";
+import { SaveStar } from "@/components/common/SaveStar";
 import { useItem } from "@/hooks/useItems";
 import { useToggleSaved } from "@/hooks/useFeed";
 import { ITEM_PARAM, type DrawerState } from "@/hooks/useItemHref";
@@ -46,10 +48,10 @@ export function ItemDrawer() {
   return (
     <DialogPrimitive.Root open={!!id} onOpenChange={(open) => !open && close()}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[rgb(12_13_15/0.5)] backdrop-blur-[2px] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[rgb(12_13_15/0.5)] backdrop-blur-[3px] duration-[240ms] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
-          className="fixed inset-y-0 right-0 z-50 flex w-[min(560px,100vw)] flex-col border-l border-border-strong bg-surface shadow-[-24px_0_60px_rgb(0_0_0/0.45)] outline-none duration-300 ease-[cubic-bezier(0.2,0,0,1)] data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:slide-in-from-right min-[2200px]:w-[640px]"
+          className="fixed inset-y-0 right-0 z-50 flex w-[min(560px,100vw)] flex-col border-l border-border-strong bg-surface shadow-[-24px_0_60px_rgb(0_0_0/0.45)] outline-none duration-[400ms] ease-[cubic-bezier(0.16,1,0.3,1)] data-[state=closed]:animate-out data-[state=closed]:duration-200 data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:slide-in-from-right min-[2200px]:w-[640px]"
         >
           {shown && <DrawerItem id={shown} />}
         </DialogPrimitive.Content>
@@ -100,6 +102,13 @@ function DrawerItem({ id }: { id: string }) {
 
 function DrawerBody({ item }: { item: Item }) {
   const toggleSaved = useToggleSaved();
+  // Joy — open item: the thumbnail you clicked flies into this hero; the
+  // rest of the drawer fades in behind it.
+  const [morphed, setMorphed] = useState(false);
+  const heroRef = useRef<HTMLImageElement>(null);
+  useLayoutEffect(() => {
+    if (playMorph(heroRef.current)) setMorphed(true);
+  }, []);
   // Local mirror so the ★ answers at once; re-synced when the server's value
   // moves (render-time "adjust state on prop change", not an effect).
   const [saved, setSaved] = useState(!!item.saved_at);
@@ -127,7 +136,7 @@ function DrawerBody({ item }: { item: Item }) {
           rel="noreferrer"
           className="group relative block aspect-video overflow-hidden rounded-xl bg-surface-2"
         >
-          <img src={thumb} alt="" className="size-full object-cover" />
+          <img ref={heroRef} src={thumb} alt="" className="size-full object-cover" />
           {watch && (
             <span className="absolute inset-0 grid place-items-center">
               <span className="grid size-[58px] place-items-center rounded-full border border-white/20 bg-black/55 text-white backdrop-blur-sm transition-transform group-hover:scale-105">
@@ -142,59 +151,61 @@ function DrawerBody({ item }: { item: Item }) {
           )}
         </a>
       )}
-      <h2 className="mb-2 mt-[18px] font-display text-[24px] font-semibold leading-[30px] tracking-[-0.02em]">
-        {item.title ?? "Untitled"}
-      </h2>
-      <p className="flex flex-wrap gap-x-3.5 gap-y-1.5 font-mono text-[12px] leading-[18px] text-fg-subtle">
-        {meta.map((m, i) => (
-          <span key={i}>{m}</span>
-        ))}
-      </p>
-      <div className="mb-1.5 mt-4 flex flex-wrap gap-2">
-        {watch && (
-          <Button size="sm" asChild>
-            <a href={watch} target="_blank" rel="noreferrer">
-              <ExternalLink className="size-3.5" /> Watch on YouTube
-            </a>
-          </Button>
-        )}
-        <Button
-          variant="secondary"
-          size="sm"
-          aria-pressed={saved}
-          onClick={() => {
-            setSaved(!saved);
-            toggleSaved.mutate({ id: item.id, saved: !saved });
-          }}
-        >
-          <Star className={cn("size-3.5", saved && "fill-signal text-signal")} />
-          {saved ? "Saved" : "Save"}
-        </Button>
-        <Button variant="ghost" size="sm" asChild>
-          <Link to={`/library/${item.id}`}>
-            <MessageSquare className="size-3.5" /> Ask about this
-          </Link>
-        </Button>
-      </div>
-
-      <Tabs defaultValue="summary" className="mt-5">
-        <TabsList>
-          <TabsTrigger value="summary">Summary</TabsTrigger>
-          <TabsTrigger value="transcript" disabled={!item.raw_content}>
-            Transcript
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="summary" className="pt-5">
-          {item.summary ? (
-            <Markdown className="[&>:first-child]:mt-0">{normalizeSummary(item.summary)}</Markdown>
-          ) : (
-            <p className="text-[14px] text-fg-muted">No summary yet.</p>
+      <div className={cn(morphed && "m-drawer-fade")}>
+        <h2 className="mb-2 mt-[18px] font-display text-[24px] font-semibold leading-[30px] tracking-[-0.02em]">
+          {item.title ?? "Untitled"}
+        </h2>
+        <p className="flex flex-wrap gap-x-3.5 gap-y-1.5 font-mono text-[12px] leading-[18px] text-fg-subtle">
+          {meta.map((m, i) => (
+            <span key={i}>{m}</span>
+          ))}
+        </p>
+        <div className="mb-1.5 mt-4 flex flex-wrap gap-2">
+          {watch && (
+            <Button size="sm" asChild>
+              <a href={watch} target="_blank" rel="noreferrer">
+                <ExternalLink className="size-3.5" /> Watch on YouTube
+              </a>
+            </Button>
           )}
-        </TabsContent>
-        <TabsContent value="transcript" className="pt-5">
-          <Transcript text={item.raw_content ?? ""} />
-        </TabsContent>
-      </Tabs>
+          <Button
+            variant="secondary"
+            size="sm"
+            aria-pressed={saved}
+            onClick={() => {
+              setSaved(!saved);
+              toggleSaved.mutate({ id: item.id, saved: !saved });
+            }}
+          >
+            <SaveStar saved={saved} className="size-3.5" />
+            {saved ? "Saved" : "Save"}
+          </Button>
+          <Button variant="ghost" size="sm" asChild>
+            <Link to={`/library/${item.id}`}>
+              <MessageSquare className="size-3.5" /> Ask about this
+            </Link>
+          </Button>
+        </div>
+
+        <Tabs defaultValue="summary" className="mt-5">
+          <TabsList>
+            <TabsTrigger value="summary">Summary</TabsTrigger>
+            <TabsTrigger value="transcript" disabled={!item.raw_content}>
+              Transcript
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="summary" className="pt-5">
+            {item.summary ? (
+              <Markdown className="[&>:first-child]:mt-0">{normalizeSummary(item.summary)}</Markdown>
+            ) : (
+              <p className="text-[14px] text-fg-muted">No summary yet.</p>
+            )}
+          </TabsContent>
+          <TabsContent value="transcript" className="pt-5">
+            <Transcript text={item.raw_content ?? ""} />
+          </TabsContent>
+        </Tabs>
+      </div>
     </>
   );
 }

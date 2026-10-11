@@ -36,6 +36,7 @@ export function BottomTabs() {
         <NavLink
           key={p.id}
           to={p.to}
+          viewTransition
           aria-current={isCurrent(p, pathname) ? "page" : undefined}
           className={() => tabClass(isCurrent(p, pathname))}
         >

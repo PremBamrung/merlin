@@ -1,5 +1,5 @@
 import { forwardRef, useMemo, type ReactNode } from "react";
-import { ArrowUp, Library, Link2, Loader2, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, Library, Link2, Loader2, Paperclip, X } from "lucide-react";
 import type { ChatFilters } from "@/hooks/useAgentChat";
 import { useTags, useSourceTypes } from "@/hooks/useMeta";
 import { useIngestYouTube } from "@/hooks/useIngest";
@@ -54,7 +54,14 @@ export const Composer = forwardRef<
   };
 
   return (
-    <div className="rounded-[18px] border border-border-strong bg-surface shadow-[0_1px_0_rgb(255_255_255/0.04)_inset,0_8px_24px_rgb(0_0_0/0.5)] transition-[border-color,box-shadow] duration-150 focus-within:border-ui-focus-border focus-within:shadow-[0_1px_0_rgb(255_255_255/0.04)_inset,0_8px_24px_rgb(0_0_0/0.5),0_0_0_4px_var(--color-ui-focus-ring)]">
+    <div
+      onMouseMove={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        e.currentTarget.style.setProperty("--mx", `${e.clientX - r.left}px`);
+        e.currentTarget.style.setProperty("--my", `${e.clientY - r.top}px`);
+      }}
+      className="m-glow rounded-[18px] border border-border-strong bg-surface shadow-[0_1px_0_rgb(255_255_255/0.04)_inset,0_8px_24px_rgb(0_0_0/0.5)] transition-[border-color,box-shadow] duration-150 focus-within:border-ui-focus-border focus-within:shadow-[0_1px_0_rgb(255_255_255/0.04)_inset,0_8px_24px_rgb(0_0_0/0.5),0_0_0_4px_var(--color-ui-focus-ring)]"
+    >
       {(isUrl || hasFilters(filters)) && (
         <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3.5">
           {isUrl ? (
@@ -94,29 +101,23 @@ export const Composer = forwardRef<
         <LibraryScope filters={filters} setFilters={setFilters} />
         <span className="flex-1" />
         {meter}
-        {streaming ? (
-          <button
-            onClick={onStop}
-            aria-label="Stop"
-            title="Stop (Esc)"
-            className="grid size-[34px] shrink-0 place-items-center rounded-full bg-ui-primary text-ui-primary-fg transition-colors hover:bg-ui-primary-hover"
-          >
-            <Square className="size-3.5 fill-current" />
-          </button>
-        ) : (
-          <button
-            onClick={submit}
-            disabled={!canSend}
-            aria-label={isUrl ? "Add to library" : "Send"}
-            className="grid size-[34px] shrink-0 place-items-center rounded-full bg-ui-primary text-ui-primary-fg transition-[background,transform,opacity] hover:bg-ui-primary-hover disabled:opacity-40 [@media(pointer:fine)]:enabled:hover:-translate-y-px"
-          >
-            {ingest.isPending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <ArrowUp className="size-[17px]" strokeWidth={2.2} />
-            )}
-          </button>
-        )}
+        {/* One button: the arrow folds into a square while an answer streams. */}
+        <button
+          onClick={streaming ? onStop : submit}
+          disabled={!streaming && !canSend}
+          aria-label={streaming ? "Stop" : isUrl ? "Add to library" : "Send"}
+          title={streaming ? "Stop (Esc)" : undefined}
+          className={cn(
+            "m-send relative grid size-[34px] shrink-0 place-items-center rounded-full bg-ui-primary text-ui-primary-fg transition-[background,transform,opacity] hover:bg-ui-primary-hover disabled:opacity-40",
+            streaming ? "is-streaming" : "[@media(pointer:fine)]:enabled:hover:-translate-y-px",
+          )}
+        >
+          {ingest.isPending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <ArrowUp className="size-[17px]" strokeWidth={2.2} />
+          )}
+        </button>
       </div>
     </div>
   );

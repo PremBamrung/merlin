@@ -42,6 +42,7 @@ import { PanelSlot } from "@/components/layout/panel";
 import { ContextMeter } from "@/components/chat/UsageFooter";
 import { toast } from "@/components/ui/toaster";
 import { keys } from "@/lib/queryKeys";
+import { useTypewriter } from "@/lib/motion";
 import { cn, randomId } from "@/lib/utils";
 
 const STARTERS = [
@@ -231,6 +232,10 @@ function ChatConversation({
 
   const { messages, status, isStreaming, error, send, regenerate, editAndResend, stop } =
     useAgentChat({ id: threadId, initialMessages, onFinish: persist });
+  // History loaded with the thread doesn't animate; turns sent now do.
+  const [loadedIds] = useState(() => new Set(initialMessages.map((m) => m.id)));
+  // The server names a new thread after its first turn — the title types in.
+  const typed = useTypewriter(title);
 
   // Follow the stream to the bottom only while the user is already pinned there,
   // so scrolling up to re-read isn't interrupted by incoming tokens. `pinned`
@@ -327,7 +332,11 @@ function ChatConversation({
           (tabs on phones) and the thread list is the context panel. */}
       <div className="flex h-14 shrink-0 items-center gap-2 pl-4 pr-2 md:pl-4 md:pr-3">
         <h1 className="min-w-0 flex-1 truncate font-display text-[15px] font-semibold leading-5 tracking-[-0.01em]">
-          {isIdle ? "New chat" : title || "Conversation"}
+          {isIdle ? (
+            "New chat"
+          ) : (
+            <span className={cn(typed.typing && "m-typing")}>{typed.shown || "Conversation"}</span>
+          )}
         </h1>
         {!isIdle && (
           <DropdownMenu>
@@ -375,6 +384,7 @@ function ChatConversation({
                 onRegenerate={handleRegenerate}
                 onFollowup={runSend}
                 onEdit={handleEdit}
+                fresh={!loadedIds.has(m.id)}
               />
             ))
           )}

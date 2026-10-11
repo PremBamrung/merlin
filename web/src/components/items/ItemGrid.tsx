@@ -43,7 +43,7 @@ export function ItemGrid({
   const d = DENSITY[density];
   return (
     <div
-      className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-[repeat(auto-fill,minmax(var(--card-min),1fr))] sm:gap-x-[18px] sm:gap-y-[22px]"
+      className="m-grid grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-[repeat(auto-fill,minmax(var(--card-min),1fr))] sm:gap-x-[18px] sm:gap-y-[22px]"
       style={{ "--card-min": `${d.min}px` } as React.CSSProperties}
     >
       {items.map((it) => (

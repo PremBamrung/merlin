@@ -143,7 +143,8 @@ export function AppShell() {
           )}
           <main
             ref={mainRef}
-            className={cn("min-w-0 flex-1", isChat ? "overflow-hidden" : "overflow-y-auto")}
+            // m-view: the main view cross-fades on place changes (motion.css).
+            className={cn("m-view min-w-0 flex-1", isChat ? "overflow-hidden" : "overflow-y-auto")}
           >
             {isChat ? (
               <Outlet />

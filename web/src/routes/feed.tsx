@@ -305,12 +305,15 @@ function FeedReader({
                 ? "transition-transform duration-200 ease-out motion-reduce:transition-none"
                 : "select-none transition-none",
             )}
-            style={{ transform: `translateX(${dragX}px)` }}
+            // Delight: the card tilts with the drag and gets stamped.
+            style={{ transform: `translateX(${dragX}px) rotate(${dragX / 22}deg)` }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
           >
+            {dragX >= SWIPE_THRESHOLD / 2 && <span className="m-stamp read">READ</span>}
+            {dragX <= -SWIPE_THRESHOLD / 2 && <span className="m-stamp skip">SKIP</span>}
             <FeedCard key={item.id} item={item} />
           </div>
         </div>

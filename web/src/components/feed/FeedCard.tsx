@@ -1,35 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { SaveStar } from "@/components/common/SaveStar";
 import { Link } from "react-router-dom";
-import { Check, ExternalLink, MessageSquare, Star, X } from "lucide-react";
+import { Check, ExternalLink, MessageSquare, X } from "lucide-react";
 import { Markdown } from "@/components/common/Markdown";
 import { Button } from "@/components/ui/button";
 import type { ListItem } from "@/lib/api/endpoints";
 import { formatDuration, relDate, thumbnailUrl, youtubeUrl } from "@/lib/format";
 import { normalizeSummary } from "@/lib/summary";
 import { cn } from "@/lib/utils";
-
-/**
- * The gold-leaf save — one of exactly two state-tied motion moments in the app
- * (the other is the ingest ring on the mark). It fires on the *transition* into
- * saved, never on mount: a card that is already saved must not pop when you
- * swipe onto it. Unsaving is silent — taking something back doesn't deserve a
- * flourish. `prefers-reduced-motion` neutralises it globally.
- */
-export function SaveStar({ saved, className }: { saved: boolean; className?: string }) {
-  const wasSaved = useRef(saved);
-  const [leafing, setLeafing] = useState(false);
-
-  useEffect(() => {
-    const justSaved = saved && !wasSaved.current;
-    wasSaved.current = saved;
-    if (!justSaved) return;
-    setLeafing(true);
-    const t = window.setTimeout(() => setLeafing(false), 400);
-    return () => window.clearTimeout(t);
-  }, [saved]);
-
-  return <Star className={cn("size-4", saved && "fill-signal", leafing && "gold-leaf", className)} />;
-}
 
 /** Summary reading time, from its own word count (not the transcript's). */
 function readMinutes(markdown: string): number {
@@ -63,7 +41,7 @@ export function FeedCard({ item }: { item: ListItem }) {
   useEffect(measure, [item.id]);
 
   return (
-    <article className="relative z-[3] flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain rounded-[18px] border border-border-strong bg-surface shadow-[0_24px_60px_rgb(0_0_0/0.45)] lg:grid lg:grid-cols-[minmax(300px,2fr)_minmax(0,3fr)] lg:overflow-hidden min-[1900px]:grid-cols-[minmax(340px,5fr)_minmax(0,7fr)]">
+    <article className="m-card-in relative z-[3] flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain rounded-[18px] border border-border-strong bg-surface shadow-[0_24px_60px_rgb(0_0_0/0.45)] lg:grid lg:grid-cols-[minmax(300px,2fr)_minmax(0,3fr)] lg:overflow-hidden min-[1900px]:grid-cols-[minmax(340px,5fr)_minmax(0,7fr)]">
       <div className="flex min-w-0 flex-col p-4 sm:p-[22px] lg:overflow-y-auto lg:border-r lg:border-border min-[1900px]:p-7">
         {thumb && (
           <div className="relative aspect-video overflow-hidden rounded-xl bg-surface-2 shadow-[0_1px_2px_rgb(0_0_0/0.4)]">

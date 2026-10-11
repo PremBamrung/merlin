@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./motion.css";
 
 /* ------------------------------------------------------------------ *
  * Design tokens — the identity locked in docs/UI_UX_DIRECTION_HANDOFF.md

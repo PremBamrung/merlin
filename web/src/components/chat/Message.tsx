@@ -119,6 +119,7 @@ export const Message = memo(function Message({
   onFollowup,
   onEdit,
   compact = false,
+  fresh = false,
 }: {
   message: UIMessage;
   isLast: boolean;
@@ -128,6 +129,8 @@ export const Message = memo(function Message({
   /** Edit a user turn and re-run from there. Omit to disable editing. */
   onEdit?: (id: string, text: string) => void;
   compact?: boolean;
+  /** Sent in this session (not loaded from history) — rises into the thread. */
+  fresh?: boolean;
 }) {
   const parts = (message.parts ?? []) as AnyPart[];
   // Stripped of inline `[#id]` markers — used for the copy action.
@@ -147,6 +150,7 @@ export const Message = memo(function Message({
     return (
       <UserMessage
         text={textContent}
+        fresh={fresh}
         timeLabel={timeLabel}
         disabled={isStreaming}
         onEdit={onEdit ? (text) => onEdit(message.id, text) : undefined}
@@ -192,6 +196,7 @@ export const Message = memo(function Message({
       <div className="min-w-0">
         {segments.map((seg, idx) => {
           const isLastSeg = idx === segments.length - 1;
+          const writing = isThisStreaming && isLastSeg;
           if (seg.kind === "work") {
             return (
               <WorkTrace
@@ -203,16 +208,23 @@ export const Message = memo(function Message({
             );
           }
           return (
-            <Markdown key={seg.key} className="[&>:first-child]:mt-0 [&>:last-child]:mb-0">
+            // Joy — writing: a glowing caret rides the end of the answer.
+            <Markdown
+              key={seg.key}
+              className={cn("[&>:first-child]:mt-0 [&>:last-child]:mb-0", writing && "m-streaming")}
+            >
               {linkifyCitationMarkers(seg.text, citations, message.id)}
             </Markdown>
           );
         })}
 
-        {/* Before anything streams in. */}
+        {/* Joy — thinking: before anything streams in, the hat bobs. */}
         {isThisStreaming && !hasVisible && (
           <div className="flex h-[30px] items-center gap-2.5 text-[14px] text-fg-muted">
-            <Loader2 className="size-3.5 animate-spin text-fg-subtle" /> Thinking…
+            <span className="hat-think inline-grid">
+              <Mark size={20} decorative />
+            </span>
+            Thinking…
           </div>
         )}
 
@@ -301,11 +313,13 @@ function SourcesHead({ count }: { count: number }) {
  */
 function UserMessage({
   text,
+  fresh,
   timeLabel,
   disabled,
   onEdit,
 }: {
   text: string;
+  fresh?: boolean;
   timeLabel: string;
   disabled: boolean;
   onEdit?: (text: string) => void;
@@ -352,7 +366,7 @@ function UserMessage({
   }
 
   return (
-    <div className="msg-user group flex flex-col items-end gap-1">
+    <div className={cn("msg-user group flex flex-col items-end gap-1", fresh && "m-sent")}>
       <div className="max-w-[min(78%,560px)] whitespace-pre-wrap rounded-[20px_20px_6px_20px] border border-border bg-surface-2 px-4 py-[11px] text-[16px] leading-[25px] text-fg">
         {text}
       </div>
