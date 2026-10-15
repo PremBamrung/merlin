@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     litellm_base_url: str = ""
     litellm_api_key: str = ""
     litellm_model: str = "gemini-3.8-flash"
+    # A proxy alias with Google Search grounding, used by the chat agent's
+    # `web_search` tool (library chat only, LiteLLM only).
+    litellm_web_search_model: str = "gemini-web-search"
     # Reasoning effort for ingest LLM work (summarise + classify) on LiteLLM:
     # minimal | low | medium | high. Chat picks its own per message.
     ingest_thinking_level: str = "medium"

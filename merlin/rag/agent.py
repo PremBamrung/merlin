@@ -1,6 +1,6 @@
 """The agentic chat agent — a Pydantic AI `Agent` plus its tools.
 
-The agent is **model-less at construction**: the OpenRouter model is supplied at
+The agent is **model-less at construction**: the chat model is supplied at
 run time (`run_stream(model=...)` / `dispatch_request(model=...)`), so importing
 this module needs no API key and tests can inject a `TestModel`.
 
@@ -18,10 +18,12 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.tools import ToolDefinition
 
 from merlin.config import settings
+from merlin.core.logging import logger
 from merlin.db.engine import get_db
-from merlin.rag.prompts import AGENT_SYSTEM_PROMPT
+from merlin.rag.prompts import AGENT_SYSTEM_PROMPT, WEB_SEARCH_GUIDANCE
 from merlin.rag.retriever import HybridRetriever, RetrievedChunk
 from merlin.services import library
 
@@ -32,6 +34,13 @@ _MAX_SEARCH_LIMIT = 15
 _MAX_BROWSE_LIMIT = 25
 _TRANSCRIPT_EXCERPT_CHARS = 3000
 _MAX_TAGS = 60
+_WEB_ANSWER_CHARS = 4000
+_MAX_WEB_SOURCES = 8
+_WEB_SEARCH_TIMEOUT = 60.0
+# Vertex returns opaque redirect links for grounding sources; each is resolved to
+# the real page with one HEAD request (302 → Location) so the model cites it.
+_GROUNDING_REDIRECT = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/"
+_REDIRECT_TIMEOUT = 3.0
 
 
 @dataclass
@@ -140,6 +149,12 @@ def current_date() -> str:
 def budget_notice(ctx: RunContext[ChatDeps]) -> str:
     """Once over budget, tell the model to wrap up with what it has."""
     return _BUDGET_REFUSAL if _over_budget(ctx) else ""
+
+
+@agent.instructions
+def web_search_notice() -> str:
+    """Tell the model when to reach for `web_search` — only when it's offered."""
+    return WEB_SEARCH_GUIDANCE if settings.is_litellm else ""
 
 
 @agent.tool
@@ -271,6 +286,117 @@ def list_source_types(ctx: RunContext[ChatDeps]) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Web search (LiteLLM only). A separate sub-call to a Google-Search-grounded
+# proxy alias rather than grounding the chat model itself: Vertex has
+# historically restricted combining grounding with custom function tools in one
+# request. Web results are cited as markdown links in the answer; they never
+# enter `ctx.deps.cited` (the Sources panel stays library-only).
+# --------------------------------------------------------------------------- #
+
+
+def _only_on_litellm(
+    ctx: RunContext[ChatDeps], tool_def: ToolDefinition
+) -> ToolDefinition | None:
+    """Offer the tool only when the LiteLLM proxy is the provider."""
+    return tool_def if settings.is_litellm else None
+
+
+_web_client = None
+
+
+def _web_search_client():
+    """The OpenAI-compatible client for the proxy (built on first use)."""
+    global _web_client
+    if _web_client is None:
+        from openai import OpenAI
+
+        _web_client = OpenAI(
+            base_url=settings.litellm_base_url,
+            api_key=settings.litellm_api_key or "litellm-placeholder",
+            timeout=_WEB_SEARCH_TIMEOUT,
+        )
+    return _web_client
+
+
+@agent.tool(prepare=_only_on_litellm)
+def web_search(ctx: RunContext[ChatDeps], query: str) -> str:
+    """Search the public web and return a short answer with its source links.
+
+    For current events or anything outside the user's library. Phrase `query`
+    as a full question. Cite what you use as markdown links to the listed URLs.
+    """
+    if _over_budget(ctx):
+        return _BUDGET_REFUSAL
+    try:
+        resp = _web_search_client().chat.completions.create(
+            model=settings.litellm_web_search_model,
+            messages=[{"role": "user", "content": query}],
+        )
+        answer = (resp.choices[0].message.content or "").strip()
+        if not answer:
+            return f"The web search for {query!r} returned nothing."
+        return _format_web(answer, _web_sources(resp))
+    except Exception as exc:  # never crash the run
+        logger.warning("web_search failed", exc_info=True)
+        return f"web_search failed: {exc}"
+
+
+def _web_sources(resp) -> list[tuple[str, str]]:
+    """(title, url) pairs from LiteLLM's Vertex grounding metadata.
+
+    LiteLLM passes Vertex's metadata through as a non-standard
+    `vertex_ai_grounding_metadata` field (one entry per candidate), on the
+    response or its message. Best-effort: an unexpected shape yields no sources,
+    never an error.
+    """
+    meta = None
+    for obj in (resp, getattr(resp.choices[0], "message", None)):
+        extra = getattr(obj, "model_extra", None) or {}
+        meta = extra.get("vertex_ai_grounding_metadata") or meta
+    if isinstance(meta, dict):
+        meta = [meta]
+    sources: list[tuple[str, str]] = []
+    for entry in meta or []:
+        chunks = entry.get("groundingChunks") if isinstance(entry, dict) else None
+        for chunk in chunks or []:
+            web = (chunk or {}).get("web") or {}
+            url = web.get("uri")
+            if url and url not in (u for _, u in sources):
+                sources.append((web.get("title") or url, url))
+    sources = sources[:_MAX_WEB_SOURCES]
+    if not sources:
+        return sources
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=len(sources)) as pool:
+        resolved = list(pool.map(_resolve_redirect, (u for _, u in sources)))
+    # Distinct redirect links can land on the same page — keep the first.
+    out: list[tuple[str, str]] = []
+    for (title, _), url in zip(sources, resolved, strict=True):
+        if url not in (u for _, u in out):
+            out.append((title, url))
+    return out
+
+
+def _resolve_redirect(url: str) -> str:
+    """The page a Vertex grounding redirect points at, or `url` unchanged when
+    it isn't one or can't be resolved (the redirect link still works for a
+    while, so it beats dropping the source)."""
+    if not url.startswith(_GROUNDING_REDIRECT):
+        return url
+    try:
+        import requests
+
+        resp = requests.head(url, allow_redirects=False, timeout=_REDIRECT_TIMEOUT)
+        location = resp.headers.get("Location")
+        if resp.is_redirect and location and location.startswith("http"):
+            return location
+    except Exception:
+        logger.debug("Could not resolve grounding redirect", exc_info=True)
+    return url
+
+
+# --------------------------------------------------------------------------- #
 # Compact, capped formatting — keep tool output small (it enters history).
 # --------------------------------------------------------------------------- #
 
@@ -338,3 +464,12 @@ def _format_browse(items: list[dict], total: int) -> str:
             row += f" — tags: {tags}"
         rows.append(row)
     return header + "\n" + "\n".join(rows)
+
+
+def _format_web(answer: str, sources: list[tuple[str, str]]) -> str:
+    if len(answer) > _WEB_ANSWER_CHARS:
+        answer = answer[:_WEB_ANSWER_CHARS] + "…[truncated]"
+    if not sources:
+        return f"WEB ANSWER (no source links returned):\n{answer}"
+    links = "\n".join(f"- {title}: {url}" for title, url in sources)
+    return f"WEB ANSWER:\n{answer}\n\nWEB SOURCES:\n{links}"

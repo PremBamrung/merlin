@@ -82,6 +82,18 @@ Style: concise but substantive, markdown formatting, no invented sources or \
 fabricated timestamps. Prefer quoting or paraphrasing what you retrieved.
 """
 
+# Added to the agent's instructions only when the `web_search` tool is offered
+# (LLM_PROVIDER=litellm) — so the model never hears of a tool it can't call.
+WEB_SEARCH_GUIDANCE = """\
+You also have `web_search`, which searches the public web. The library comes \
+first: use `web_search` only when the user asks for current or outside \
+information, or when the library doesn't cover the question and an up-to-date \
+answer would genuinely help. Keep web findings clearly separate from library \
+content, cite each one as a markdown link to the URL it came from (never as a \
+`[#id]` marker — those are for library items only), and say when something \
+comes from the web rather than their library.\
+"""
+
 
 # --------------------------------------------------------------------------- #
 # Single-item chat — talk to ONE item using its full transcript, not RAG.

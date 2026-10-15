@@ -1,11 +1,13 @@
-"""LiteLLM provider switch — model selection, the chat thinking level, and
-chat cost capture without OpenRouter's /generation.
+"""LiteLLM provider switch — model selection, the chat thinking level, the
+`web_search` tool, and chat cost capture without OpenRouter's /generation.
 
-No network: models are built but never called, and chat runs on a scripted
-FunctionModel.
+No network: models are built but never called, chat runs on a scripted
+FunctionModel, and the web-search client is a stub.
 """
 
 from __future__ import annotations
+
+from types import SimpleNamespace
 
 import pytest
 
@@ -162,6 +164,167 @@ def test_health_reports_thinking_support(client, monkeypatch):
     assert client.get("/api/health").json()["chat_thinking"] is False
     monkeypatch.setattr("merlin.config.settings.llm_provider", "litellm")
     assert client.get("/api/health").json()["chat_thinking"] is True
+
+
+# --------------------------------------------------------------------------- #
+# web_search tool
+# --------------------------------------------------------------------------- #
+
+
+def test_web_search_offered_only_on_litellm(client, monkeypatch, litellm):
+    captured: dict = {}
+    _patch_model(monkeypatch, _capturing_model(captured))
+    client.post("/api/chat", json=_chat_body("news?"))
+    assert "web_search" in captured["tools"]
+    assert "web_search" in captured["instructions"]
+
+    monkeypatch.setattr("merlin.config.settings.llm_provider", "openrouter")
+    client.post("/api/chat", json=_chat_body("news?"))
+    assert "web_search" not in captured["tools"]
+    assert "web_search" not in captured["instructions"]
+    assert "search_library" in captured["tools"]
+
+
+def test_item_chat_never_gets_web_search(client, monkeypatch, litellm):
+    monkeypatch.setattr(
+        "merlin.services.library.get_item",
+        lambda _id: {"id": "item-1", "title": "T", "raw_content": "words"},
+    )
+    captured: dict = {}
+    _patch_model(monkeypatch, _capturing_model(captured))
+    client.post("/api/chat", json=_chat_body("hi", {"item_id": "item-1"}))
+    assert captured["tools"] == []
+
+
+class _FakeCompletions:
+    def __init__(self, response, calls):
+        self._response = response
+        self._calls = calls
+
+    def create(self, **kwargs):
+        self._calls.append(kwargs)
+        if isinstance(self._response, Exception):
+            raise self._response
+        return self._response
+
+
+def _fake_client(monkeypatch, response):
+    calls: list[dict] = []
+    fake = SimpleNamespace(
+        chat=SimpleNamespace(completions=_FakeCompletions(response, calls))
+    )
+    monkeypatch.setattr("merlin.rag.agent._web_search_client", lambda: fake)
+    return calls
+
+
+def _completion(content: str, grounding=None):
+    """A real openai ChatCompletion carrying LiteLLM's grounding passthrough."""
+    from openai.types.chat import ChatCompletion
+
+    payload = {
+        "id": "chatcmpl-1",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "gemini-web-search",
+        "choices": [
+            {
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {"role": "assistant", "content": content},
+            }
+        ],
+    }
+    if grounding is not None:
+        payload["vertex_ai_grounding_metadata"] = grounding
+    return ChatCompletion.model_validate(payload)
+
+
+class _Ctx:
+    def __init__(self):
+        from merlin.rag.agent import ChatDeps
+
+        self.deps = ChatDeps()
+
+
+def test_web_search_returns_answer_and_sources(monkeypatch, litellm):
+    from merlin.rag.agent import web_search
+
+    grounding = [
+        {
+            "webSearchQueries": ["gemini 3.8 release"],
+            "groundingChunks": [
+                {"web": {"uri": "https://a.example/x", "title": "a.example"}},
+                {"web": {"uri": "https://b.example/y", "title": "b.example"}},
+                {"web": {"uri": "https://a.example/x", "title": "dup"}},
+            ],
+        }
+    ]
+    calls = _fake_client(monkeypatch, _completion("It shipped in May.", grounding))
+
+    ctx = _Ctx()
+    out = web_search(ctx, query="When did Gemini 3.8 ship?")  # type: ignore[arg-type]
+
+    assert calls[0]["model"] == "gemini-web-search"
+    assert calls[0]["messages"][0]["content"] == "When did Gemini 3.8 ship?"
+    assert "It shipped in May." in out
+    assert "- a.example: https://a.example/x" in out
+    assert "- b.example: https://b.example/y" in out
+    assert out.count("https://a.example/x") == 1  # de-duplicated
+    # Web results never enter the library Sources list.
+    assert ctx.deps.cited == {}
+
+
+def test_web_search_resolves_vertex_redirects(monkeypatch, litellm):
+    """Opaque Vertex redirect links become the real page URLs; an unresolvable
+    one is kept as-is, and two links landing on one page collapse to one."""
+    from merlin.rag import agent as agent_mod
+
+    redirect = agent_mod._GROUNDING_REDIRECT
+    targets = {
+        f"{redirect}aaa": "https://docs.python.org/3/whatsnew/3.15.html",
+        f"{redirect}bbb": "https://docs.python.org/3/whatsnew/3.15.html",
+    }
+
+    def fake_head(url, allow_redirects, timeout):
+        assert allow_redirects is False
+        if url not in targets:
+            raise RuntimeError("timeout")
+        return SimpleNamespace(is_redirect=True, headers={"Location": targets[url]})
+
+    monkeypatch.setattr("requests.head", fake_head)
+    grounding = [
+        {
+            "groundingChunks": [
+                {"web": {"uri": f"{redirect}aaa", "title": "python.org"}},
+                {"web": {"uri": f"{redirect}bbb", "title": "python.org"}},
+                {"web": {"uri": f"{redirect}ccc", "title": "blog.example"}},
+            ]
+        }
+    ]
+    _fake_client(monkeypatch, _completion("3.15 is out.", grounding))
+
+    out = agent_mod.web_search(_Ctx(), query="q")  # type: ignore[arg-type]
+    assert "- python.org: https://docs.python.org/3/whatsnew/3.15.html" in out
+    assert out.count("docs.python.org") == 1
+    assert f"- blog.example: {redirect}ccc" in out
+
+
+def test_web_search_without_grounding_metadata(monkeypatch, litellm):
+    from merlin.rag.agent import web_search
+
+    _fake_client(monkeypatch, _completion("Plain answer."))
+    out = web_search(_Ctx(), query="q")  # type: ignore[arg-type]
+    assert "no source links returned" in out
+    assert "Plain answer." in out
+
+
+def test_web_search_failure_is_a_tool_message(monkeypatch, litellm):
+    from merlin.rag.agent import web_search
+
+    _fake_client(monkeypatch, RuntimeError("proxy down"))
+    out = web_search(_Ctx(), query="q")  # type: ignore[arg-type]
+    assert out.startswith("web_search failed")
+    assert "proxy down" in out
 
 
 # --------------------------------------------------------------------------- #

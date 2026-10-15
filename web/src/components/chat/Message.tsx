@@ -7,6 +7,7 @@ import {
   List,
   Tags,
   Layers,
+  Globe,
   ChevronDown,
   ChevronRight,
   Brain,
@@ -43,6 +44,7 @@ const TOOL_ICONS: Record<string, typeof Wrench> = {
   browse_library: List,
   list_tags: Tags,
   list_source_types: Layers,
+  web_search: Globe,
 };
 
 // Loose view of a UIMessage part — the SDK's union is wide; we narrow on `type`.
@@ -499,11 +501,13 @@ function workSummary(streaming: boolean, toolParts: AnyPart[]): string {
   const searches = count(["search_library"]);
   const reads = count(["get_item"]);
   const browses = count(["browse_library", "list_tags", "list_source_types"]);
-  const other = toolParts.length - searches - reads - browses;
+  const webs = count(["web_search"]);
+  const other = toolParts.length - searches - reads - browses - webs;
   const bits: string[] = [];
   if (searches) bits.push(searches > 1 ? `Searched library ×${searches}` : "Searched library");
   if (browses) bits.push("browsed library");
   if (reads) bits.push(`read ${reads} source${reads === 1 ? "" : "s"}`);
+  if (webs) bits.push(webs > 1 ? `searched the web ×${webs}` : "searched the web");
   if (other) bits.push(`${other} other step${other === 1 ? "" : "s"}`);
   if (!bits.length) return "Thought it through";
   const s = bits.join(" · ");
@@ -520,6 +524,8 @@ function streamingVerb(name: string): string {
     case "list_tags":
     case "list_source_types":
       return "Browsing your library";
+    case "web_search":
+      return "Searching the web";
     default:
       return "Working";
   }
