@@ -123,6 +123,10 @@ class YouTubeMetadata(Base):
     detected_language = Column(String(20))
     thumbnail_url = Column(String(512))
     description = Column(Text)  # video description (grounds summary + chat)
+    # Provenance of the text the summary was built from (migration 012).
+    transcript_language = Column(String(20))  # subtitle track code, e.g. "fr"
+    transcript_source = Column(String(10))  # manual | auto | audio
+    summary_language = Column(String(30))  # language name, e.g. "french"
 
     knowledge_item = relationship("KnowledgeItem", back_populates="youtube_metadata")
 

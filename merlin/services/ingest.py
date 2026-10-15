@@ -78,6 +78,13 @@ def persist_result(task_id: str, result) -> None:
         }
 
         if existing:
+            # A re-ingest (refetch, or a retry with no stored transcript)
+            # refreshes the content in place. The plugin emits tags=[] — keep
+            # whatever tags the item already has rather than wiping them, and
+            # bump ingested_at like a re-summarise does.
+            if not result.tags:
+                item_data.pop("tags")
+            item_data["ingested_at"] = datetime.now(UTC)
             for k, v in item_data.items():
                 setattr(existing, k, v)
             item = existing
@@ -319,6 +326,7 @@ def resummarize(
             description=description,
         )
         summ_usage = getattr(plugin.summarizer, "last_usage", None) or {}
+        summary_lang = plugin.pick_summary_language(detected, langs)
 
         report(90, "Saving to knowledge base…")
         with SessionFactory() as session:
@@ -334,6 +342,7 @@ def resummarize(
             item.ingested_at = datetime.now(UTC)  # bump to top of "Newest"
             if item.youtube_metadata is not None:
                 item.youtube_metadata.timestamps = json.dumps(timestamps)
+                item.youtube_metadata.summary_language = summary_lang
                 # Persist any fields filled by the self-heal fetch above.
                 for field, value in healed.items():
                     setattr(item.youtube_metadata, field, value)
@@ -409,6 +418,45 @@ def retry(
     # A retry always proceeds — force past the already-ingested confirmation
     # gate. (No transcript here anyway, so this hits the fresh-ingest path.)
     return submit_youtube(url, langs, summary_length, force=True)["task_id"]
+
+
+def refetch(
+    item_id: str,
+    languages: list[str] | None = None,
+    summary_length: str | None = None,
+) -> str:
+    """Re-ingest an item from YouTube: fresh transcript, then a fresh summary.
+
+    Unlike `resummarize`/`retry`, this ignores the stored transcript — it's the
+    fix for an item built from the wrong subtitle track (e.g. an AI-dub
+    transcript instead of the original audio's). Runs the full plugin ingest;
+    `persist_result` updates the existing row in place, so the id, tags,
+    topics and read/saved state survive. Returns a task_id to poll.
+    """
+    with SessionFactory() as session:
+        item = KnowledgeItemRepository.get_by_id(session, item_id)
+        if not item or item.source_type != "youtube":
+            raise ValueError("Item not found")
+        meta = item.youtube_metadata
+        video_id = meta.video_id if meta else item.source_id
+        summary_length = _normalize_summary_length(
+            summary_length or item.summary_length
+        )
+
+    plugin = registry.get("youtube")
+    if not plugin:
+        raise ValueError("YouTube plugin not registered")
+    # The stored detected_language may be the very thing being fixed, so don't
+    # seed the summary languages from it — use the ingest defaults.
+    return task_queue.submit_ingest(
+        plugin=plugin,
+        raw_input=f"https://www.youtube.com/watch?v={video_id}",
+        options={
+            "languages": languages or ["en", "fr"],
+            "summary_length": summary_length,
+        },
+        on_complete=persist_result,
+    )
 
 
 # ------------------------------------------------------------------

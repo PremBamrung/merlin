@@ -18,6 +18,7 @@ from ..schemas import (
     CancelTaskResponse,
     IngestYouTubeRequest,
     IngestYouTubeResponse,
+    RefetchRequest,
     ResummarizeRequest,
     RetryRequest,
     Task,
@@ -47,6 +48,13 @@ def resummarize(item_id: str, body: ResummarizeRequest | None = None):
 def retry(item_id: str, body: RetryRequest | None = None):
     body = body or RetryRequest()
     task_id = ingest.retry(item_id, body.languages, body.summary_length)
+    return {"task_id": task_id}
+
+
+@router.post("/items/{item_id}/refetch", response_model=TaskIdResponse)
+def refetch(item_id: str, body: RefetchRequest | None = None):
+    body = body or RefetchRequest()
+    task_id = ingest.refetch(item_id, body.languages, body.summary_length)
     return {"task_id": task_id}
 
 

@@ -38,6 +38,11 @@ class RetryRequest(BaseModel):
     languages: list[str] | None = None
 
 
+class RefetchRequest(BaseModel):
+    summary_length: str | None = None
+    languages: list[str] | None = None
+
+
 class UpdateItemRequest(BaseModel):
     tags: list[str] | None = None
     title: str | None = None
@@ -225,14 +230,31 @@ class ListItem(BaseModel):
     videos_count: int | str | None = None
     thumbnail_url: str | None = None
     detected_language: str | None = None
+    # Provenance of the summarised text — null on items ingested before it was
+    # recorded. transcript_source: manual | auto | audio.
+    transcript_language: str | None = None
+    transcript_source: str | None = None
+    summary_language: str | None = None
     description: str | None = None
     timestamps: dict = Field(default_factory=dict)
 
 
+class IngestUsage(BaseModel):
+    """What building one item cost: the latest summary's tokens + total spend."""
+
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: float | None = None
+    audio_seconds: float | None = None
+    runs: int = 0
+
+
 class Item(ListItem):
-    """The detail shape (`GET /api/items/{id}`) — adds the full transcript."""
+    """The detail shape (`GET /api/items/{id}`) — adds the full transcript and
+    the item's ingest usage (null when nothing was recorded)."""
 
     raw_content: str | None = None
+    ingest_usage: IngestUsage | None = None
 
 
 class ItemListResponse(BaseModel):

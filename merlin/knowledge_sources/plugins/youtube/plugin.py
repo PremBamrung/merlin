@@ -162,9 +162,16 @@ class YouTubePlugin(KnowledgeSourcePlugin):
         request.set_title(video_info.get("title", ""))
 
         request.report(25, "Extracting subtitles…")
+        # Title + the start of the description: which language the video is
+        # presented in, used to tell the original audio from an AI dub.
+        hint_text = (
+            f"{video_info.get('title', '')}\n"
+            f"{(video_info.get('description') or '')[:500]}"
+        )
         subtitle_result = self._subtitle_extractor.extract_subtitles(
             video_id,
             user_languages + ["en", "fr", "de"],
+            hint_text=hint_text,
         )
 
         # Audio seconds billed by Groq — only set when the transcription
@@ -173,6 +180,8 @@ class YouTubePlugin(KnowledgeSourcePlugin):
         if subtitle_result:
             subtitles = subtitle_result["subtitles"]
             detected_language = subtitle_result["language_code"]
+            transcript_language = subtitle_result.get("transcript_language")
+            transcript_source = subtitle_result.get("transcript_source")
             raw_text = self._subtitle_extractor.extract_text(subtitles)
         else:
             request.report(
@@ -190,6 +199,8 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             # Whisper auto-detects the spoken language — use it instead of
             # assuming English, so a French video summarises as French.
             detected_language = _normalize_language(audio_language) or "en"
+            transcript_language = detected_language
+            transcript_source = "audio"
             raw_text = self._subtitle_extractor.extract_text(subtitles)
             # Approximate billed audio length from the last segment's end time
             # (Groq bills by audio duration). Best-effort — never blocks ingest.
@@ -202,7 +213,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
                 transcribe_audio_seconds = None
 
         request.report(50, "Generating summary…")
-        summary_lang = self._pick_summary_language(detected_language, user_languages)
+        summary_lang = self.pick_summary_language(detected_language, user_languages)
         summary, sections, timestamps = self.summarizer.summarize(
             subtitles=raw_text,
             title=video_info["title"],
@@ -268,6 +279,9 @@ class YouTubePlugin(KnowledgeSourcePlugin):
                 "videos_count": video_info.get("videos"),
                 "timestamps": json.dumps(timestamps),
                 "detected_language": detected_language,
+                "transcript_language": transcript_language,
+                "transcript_source": transcript_source,
+                "summary_language": summary_lang,
                 "thumbnail_url": thumbnail_url,
                 "description": video_info.get("description", ""),
             },
@@ -291,7 +305,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
         the caller wants to ground the summary with. Returns
         (summary, sections, timestamps).
         """
-        summary_lang = self._pick_summary_language(
+        summary_lang = self.pick_summary_language(
             detected_language or "", user_languages
         )
         return self.summarizer.summarize(
@@ -308,7 +322,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _pick_summary_language(detected_code: str, user_languages: list[str]) -> str:
+    def pick_summary_language(detected_code: str, user_languages: list[str]) -> str:
         """Pick the summary language from the languages the user understands.
 
         If the video's own language is one the user understands, summarise in it

@@ -290,6 +290,35 @@ def spend_by_model() -> list[dict]:
     ]
 
 
+def ingest_usage_for_item(item_id: str) -> dict | None:
+    """What it took to build this item: the latest summary's token counts plus
+    the total recorded cost (every summarise/transcribe run, incl. redos).
+
+    Chat turns aren't attributed to items, so this is ingest spend only. None
+    when nothing was recorded — older items predate tracking. `cost_usd` is
+    None when the rows exist but none were priced ("unknown", not "free").
+    """
+    with SessionFactory() as session:
+        rows = (
+            session.query(LlmUsage)
+            .filter(LlmUsage.knowledge_item_id == item_id)
+            .order_by(LlmUsage.created_at.desc())
+            .all()
+        )
+        if not rows:
+            return None
+        latest = next((r for r in rows if r.surface == "summarize"), None)
+        costs = [r.cost_usd for r in rows if r.cost_usd is not None]
+        audio = [r.audio_seconds for r in rows if r.audio_seconds]
+        return {
+            "input_tokens": latest.input_tokens if latest else None,
+            "output_tokens": latest.output_tokens if latest else None,
+            "cost_usd": float(sum(costs)) if costs else None,
+            "audio_seconds": float(audio[0]) if audio else None,
+            "runs": sum(1 for r in rows if r.surface == "summarize"),
+        }
+
+
 def cost_for_item(item_id: str) -> float | None:
     """Total recorded cost attributable to one knowledge item (ingest spend).
 

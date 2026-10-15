@@ -66,6 +66,9 @@ def serialize_item(
         "videos_count": meta.videos_count if meta else None,
         "thumbnail_url": meta.thumbnail_url if meta else None,
         "detected_language": meta.detected_language if meta else None,
+        "transcript_language": meta.transcript_language if meta else None,
+        "transcript_source": meta.transcript_source if meta else None,
+        "summary_language": meta.summary_language if meta else None,
         "description": meta.description if meta else None,
         "timestamps": _parse_json(meta.timestamps, {}) if meta else {},
     }
@@ -144,9 +147,16 @@ def card_details(item_ids: list[str]) -> dict[str, dict]:
 
 
 def get_item(item_id: str) -> dict | None:
+    from merlin.services import usage
+
     with SessionFactory() as session:
         item = KnowledgeItemRepository.get_by_id(session, item_id)
-        return serialize_item(item, include_content=True) if item else None
+        if not item:
+            return None
+        d = serialize_item(item, include_content=True)
+    # Detail view only — one extra query the list path shouldn't pay N times.
+    d["ingest_usage"] = usage.ingest_usage_for_item(item_id)
+    return d
 
 
 def update_item(
