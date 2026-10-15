@@ -2,6 +2,7 @@ from datetime import datetime
 from io import BytesIO
 import re
 from typing import Dict, List, Optional
+from urllib.parse import parse_qs, urlparse
 
 from PIL import Image
 import pytube
@@ -75,19 +76,35 @@ def _base_lang(code: str) -> str:
     return code.split("-")[0].split("_")[0].lower()
 
 
+def _is_dub_track(track) -> bool:
+    """Whether an ASR track transcribes one of YouTube's AI-dubbed audio tracks.
+
+    Dub tracks' caption URLs carry `variant=timing-optimized`; the original
+    audio's has no variant or `variant=gemini`. The URL is a private attribute
+    of youtube-transcript-api, so read it defensively — if it ever goes away
+    this returns False and the caller's other rules take over.
+    """
+    url = getattr(track, "_url", None)
+    if not isinstance(url, str):
+        return False
+    return parse_qs(urlparse(url).query).get("variant") == ["timing-optimized"]
+
+
 def _pick_original_language(tracks: list, hint_text: str = "") -> str | None:
     """Choose the video's spoken language from its caption tracks.
 
     The auto-generated (ASR) track carries the spoken language. A video that
-    YouTube has AI-dubbed has one ASR track *per audio track*, and the dub's is
-    region-tagged ("en-US") while the original's is a bare code ("fr") — so
-    prefer bare codes. If that still leaves several, the language the title /
-    description is written in breaks the tie. With no ASR track at all, the
-    first listed track (manual tracks come first) is the best guess.
+    YouTube has AI-dubbed has one ASR track *per audio track* — up to ~20 — so
+    in order: drop the dub tracks (`_is_dub_track`); then prefer bare codes
+    ("fr") over region-tagged ones ("en-US", which dubs used to be tagged
+    with); then let the language the title / description is written in break
+    any tie. With no ASR track at all, the first listed track (manual tracks
+    come first) is the best guess.
     """
     generated = [t for t in tracks if t.is_generated]
     if not generated:
         return tracks[0].language_code if tracks else None
+    generated = [t for t in generated if not _is_dub_track(t)] or generated
     bare = [t for t in generated if "-" not in t.language_code]
     candidates = bare or generated
     if len(candidates) > 1:

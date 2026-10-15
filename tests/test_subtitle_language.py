@@ -12,9 +12,15 @@ from merlin.knowledge_sources.plugins.youtube.extractors import SubtitleExtracto
 
 
 class _FakeTranscript:
-    def __init__(self, language_code, is_generated, fetch_error=None):
+    def __init__(self, language_code, is_generated, fetch_error=None, variant=None):
         self.language_code = language_code
         self.is_generated = is_generated
+        # Mirrors youtube-transcript-api's private caption URL; dub tracks carry
+        # variant=timing-optimized.
+        self._url = (
+            f"https://www.youtube.com/api/timedtext?v=vid&lang={language_code}"
+            + (f"&variant={variant}" if variant else "")
+        )
         self._fetch_error = fetch_error
         self.translate_called = False
 
@@ -179,3 +185,41 @@ def test_guess_text_language():
     assert _guess_text_language("Le CRA en MONOCOMPTE sur DOFUS") == "fr"
     assert _guess_text_language("How to pick the best class for your first run") == "en"
     assert _guess_text_language("DOFUS 3.6") is None
+
+
+def test_many_language_dub_picks_the_non_dub_track():
+    # gAUYvSB0fdU's real layout: auto-dubbed into ~20 languages, all bare codes,
+    # Bengali listed first. Only the original's URL lacks timing-optimized.
+    from merlin.knowledge_sources.plugins.youtube.extractors import (
+        _pick_original_language,
+    )
+
+    dubs = ["bn", "nl", "fr", "de", "hi", "ja", "es"]
+    tracks = [_FakeTranscript(c, True, variant="timing-optimized") for c in dubs[:2]]
+    tracks.append(_FakeTranscript("en", True, variant="gemini"))
+    tracks += [_FakeTranscript(c, True, variant="timing-optimized") for c in dubs[2:]]
+    # Even a title in another language can't pull it onto a dub track.
+    assert _pick_original_language(tracks, "Le guide pour la machine") == "en"
+
+
+def test_region_tagged_dub_with_variant_marker():
+    # zyJqVR7Svqo's real layout: en-US dub (timing-optimized) + original fr.
+    transcripts = [
+        _FakeTranscript("en-US", True, variant="timing-optimized"),
+        _FakeTranscript("fr", True),
+    ]
+    result = _extract(transcripts, ["en", "fr", "de"])
+    assert result["language_code"] == "fr"
+    assert result["transcript_language"] == "fr"
+
+
+def test_track_without_url_falls_back_to_other_rules():
+    from merlin.knowledge_sources.plugins.youtube.extractors import (
+        _is_dub_track,
+        _pick_original_language,
+    )
+
+    bare = _FakeTranscript("en", True)
+    del bare._url
+    assert _is_dub_track(bare) is False
+    assert _pick_original_language([bare]) == "en"
