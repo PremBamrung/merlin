@@ -169,14 +169,22 @@ def record_chat_turn(
     the cached portion is billed at the discounted rate (flagged in meta as
     ``cost_estimated``) — and NULL when even that is unavailable (unknown model).
     Token counts are always captured regardless.
+
+    On LiteLLM there is no /generation endpoint, so the lookup is skipped and the
+    cost comes from the pricing map alone (NULL for unpriced Gemini models —
+    "unknown" in Insights, never a wrong number).
     """
-    cost, complete = fetch_openrouter_costs(generation_ids)
+    provider = settings.llm_provider_name
+    if settings.is_litellm:
+        cost, complete = None, False
+    else:
+        cost, complete = fetch_openrouter_costs(generation_ids)
     estimated = False
     if not complete:
         # Don't keep a partial sum — estimate the *whole* turn from its tokens so
         # the recorded cost matches the (aggregate) token counts beside it.
         cost = llm_pricing.cost(
-            "openrouter",
+            provider,
             model,
             input_tokens=input_tokens or 0,
             output_tokens=output_tokens or 0,
@@ -192,7 +200,7 @@ def record_chat_turn(
     merged = {**(meta or {}), **extra}
     record(
         surface="chat",
-        provider="openrouter",
+        provider=provider,
         model=model,
         input_tokens=input_tokens,
         output_tokens=output_tokens,

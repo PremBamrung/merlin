@@ -154,8 +154,8 @@ def _record_usage(result, *, surface: str = "classify") -> None:
 
         usage.record(
             surface=surface,
-            provider="openrouter",
-            model=model or settings.openrouter_model_deployment,
+            provider=settings.llm_provider_name,
+            model=model or settings.ingest_model_name,
             input_tokens=getattr(u, "input_tokens", None),
             output_tokens=getattr(u, "output_tokens", None),
             cache_read_tokens=getattr(u, "cache_read_tokens", None),

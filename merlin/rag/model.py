@@ -1,10 +1,11 @@
-"""Pydantic AI models — OpenRouter, built lazily.
+"""Pydantic AI models — OpenRouter or the LiteLLM proxy, built lazily.
 
-Every LLM path (agentic chat, summarisation, classification) runs on OpenRouter
-(OpenAI-compatible) through Pydantic AI. Models are constructed on first use (not
-at import) to match `config.py`'s deliberate avoidance of import-time LLM
-creation: importing this module must not require an API key, so tests can inject
-a `TestModel` instead.
+Every LLM path (agentic chat, summarisation, classification) runs on one
+OpenAI-compatible provider through Pydantic AI, picked by `LLM_PROVIDER`:
+OpenRouter (default) or the self-hosted LiteLLM proxy (Gemini on Vertex). Models
+are constructed on first use (not at import) to match `config.py`'s deliberate
+avoidance of import-time LLM creation: importing this module must not require an
+API key, so tests can inject a `TestModel` instead.
 """
 
 from __future__ import annotations
@@ -43,13 +44,46 @@ def _build_openrouter_model(model_name: str) -> Model:
     )
 
 
+def _build_litellm_model(
+    model_name: str, *, reasoning_effort: str | None = None
+) -> Model:
+    """Construct a model on the LiteLLM proxy for `model_name` (uncached).
+
+    `reasoning_effort` becomes the model's default effort.
+    """
+    from pydantic_ai.models.openai import OpenAIChatModel, OpenAIChatModelSettings
+    from pydantic_ai.providers.litellm import LiteLLMProvider
+
+    if not settings.litellm_base_url:
+        raise ValueError("LITELLM_BASE_URL is required when LLM_PROVIDER=litellm.")
+    if not model_name:
+        raise ValueError("No model configured (LITELLM_MODEL).")
+
+    provider = LiteLLMProvider(
+        api_base=settings.litellm_base_url, api_key=settings.litellm_api_key or None
+    )
+    model_settings = (
+        OpenAIChatModelSettings(openai_reasoning_effort=reasoning_effort)
+        if reasoning_effort
+        else None
+    )
+    return OpenAIChatModel(model_name, provider=provider, settings=model_settings)
+
+
 @lru_cache(maxsize=1)
 def build_chat_model() -> Model:
-    """The OpenRouter model for the agentic chat agent (cached after first use)."""
+    """The model for the agentic chat agent (cached after first use)."""
+    if settings.is_litellm:
+        return _build_litellm_model(settings.chat_model_name)
     return _build_openrouter_model(settings.chat_model_name)
 
 
 @lru_cache(maxsize=1)
 def build_ingest_model() -> Model:
-    """The OpenRouter model for ingest LLM work — summarise + classify (cached)."""
-    return _build_openrouter_model(settings.openrouter_model_deployment)
+    """The model for ingest LLM work — summarise + classify (cached)."""
+    if settings.is_litellm:
+        return _build_litellm_model(
+            settings.ingest_model_name,
+            reasoning_effort=settings.ingest_thinking_level or None,
+        )
+    return _build_openrouter_model(settings.ingest_model_name)

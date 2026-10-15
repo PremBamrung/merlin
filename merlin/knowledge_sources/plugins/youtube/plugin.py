@@ -250,7 +250,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             # Prefer the resolved model from the response (e.g.
             # deepseek/deepseek-v4-flash) so the pricing map can price it; our
             # configured id is an unpriceable @preset/… .
-            llm_model=summ_usage.get("model") or settings.openrouter_model_deployment,
+            llm_model=summ_usage.get("model") or settings.ingest_model_name,
             summarize_input_tokens=summ_usage.get("input_tokens"),
             summarize_output_tokens=summ_usage.get("output_tokens"),
             summarize_cache_read_tokens=summ_usage.get("cache_read_tokens"),

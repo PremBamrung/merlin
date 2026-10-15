@@ -25,15 +25,29 @@ class Settings(BaseSettings):
     # main .db file.
     sqlite_journal_mode: str = "WAL"
 
-    # OpenRouter — the sole LLM provider (OpenAI-compatible). Every LLM path
-    # (summarise, classify, chat) runs on it via Pydantic AI.
+    # Which LLM backend every path (summarise, classify, chat) runs on, via
+    # Pydantic AI: "openrouter" (default) or "litellm" (the self-hosted proxy on
+    # the NAS, fronting Gemini on Vertex — see docs/LITELLM_GEMINI_PLAN.md).
+    llm_provider: str = "openrouter"
+
+    # OpenRouter (OpenAI-compatible).
     openrouter_api_key: str = ""
     openrouter_model_deployment: str = ""
     openrouter_endpoint: str = "https://openrouter.ai/api/v1"
 
-    # Agentic chat (Pydantic AI). The chat agent runs on OpenRouter independently
-    # of the ingest model (summarise/classify). `chat_model` is an optional
-    # override; it falls back to `openrouter_model_deployment` so no new config.
+    # LiteLLM proxy (OpenAI-compatible). Model names are the proxy's
+    # `model_name` aliases from its config.yaml, not Vertex ids. Use a LiteLLM
+    # virtual key for Merlin, not the master key.
+    litellm_base_url: str = ""
+    litellm_api_key: str = ""
+    litellm_model: str = "gemini-3.8-flash"
+    # Reasoning effort for ingest LLM work (summarise + classify) on LiteLLM:
+    # minimal | low | medium | high. Chat picks its own per message.
+    ingest_thinking_level: str = "medium"
+
+    # Agentic chat (Pydantic AI). The chat agent runs independently of the
+    # ingest model (summarise/classify). `chat_model` is an optional override;
+    # it falls back to the provider's default model so no new config.
     # The chosen model MUST support tool-calling (a reasoning model surfaces a
     # `reasoning` part in the UI; a standard one shows only the tool trace).
     chat_model: str = ""
@@ -50,9 +64,25 @@ class Settings(BaseSettings):
     chat_context_window: int = 1_048_576
 
     @property
+    def is_litellm(self) -> bool:
+        return self.llm_provider.strip().lower() == "litellm"
+
+    @property
+    def ingest_model_name(self) -> str:
+        """Model id for ingest LLM work (summarise + classify) on the provider."""
+        return (
+            self.litellm_model if self.is_litellm else self.openrouter_model_deployment
+        )
+
+    @property
     def chat_model_name(self) -> str:
-        """Model id for the chat agent — explicit override or OpenRouter default."""
-        return self.chat_model or self.openrouter_model_deployment
+        """Model id for the chat agent — explicit override or provider default."""
+        return self.chat_model or self.ingest_model_name
+
+    @property
+    def llm_provider_name(self) -> str:
+        """Provider label stored on llm_usage rows ("openrouter" | "litellm")."""
+        return "litellm" if self.is_litellm else "openrouter"
 
     # Classification / backfill (non-ingestion bulk LLM jobs — topic backfill,
     # per-topic + full re-scan, and the clustering pipeline all run through

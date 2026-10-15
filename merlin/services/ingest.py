@@ -115,7 +115,7 @@ def _record_ingest_usage(item_id: str, result) -> None:
     ):
         usage.record(
             surface="summarize",
-            provider="openrouter",
+            provider=settings.llm_provider_name,
             model=result.llm_model,
             input_tokens=result.summarize_input_tokens,
             output_tokens=result.summarize_output_tokens,
@@ -328,9 +328,7 @@ def resummarize(
             item.summary = summary
             item.summary_length = length
             item.sections = json.dumps(sections)
-            item.llm_model = (
-                summ_usage.get("model") or settings.openrouter_model_deployment
-            )
+            item.llm_model = summ_usage.get("model") or settings.ingest_model_name
             item.status = "completed"
             item.error_message = None
             item.ingested_at = datetime.now(UTC)  # bump to top of "Newest"
@@ -352,8 +350,8 @@ def resummarize(
 
             usage.record(
                 surface="summarize",
-                provider="openrouter",
-                model=summ_usage.get("model") or settings.openrouter_model_deployment,
+                provider=settings.llm_provider_name,
+                model=summ_usage.get("model") or settings.ingest_model_name,
                 input_tokens=summ_usage.get("input_tokens"),
                 output_tokens=summ_usage.get("output_tokens"),
                 cache_read_tokens=summ_usage.get("cache_read_tokens"),
