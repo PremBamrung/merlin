@@ -14,6 +14,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from merlin.config import settings
 from merlin.core.logging import logger
 from merlin.core.rate_limit import MinIntervalRateLimiter
+from merlin.knowledge_sources.plugins.youtube.cookies import transcript_http_client
 
 # Shared across all ingest workers so concurrent video ingestions don't
 # burst-hit YouTube's transcript endpoint and get the IP banned (HTTP 429).
@@ -256,7 +257,7 @@ class SubtitleExtractor:
             return None
 
         try:
-            ytt_api = YouTubeTranscriptApi()
+            ytt_api = YouTubeTranscriptApi(http_client=transcript_http_client())
             _subtitle_rate_limiter.wait()
             transcript_list = ytt_api.list(video_id)
             transcript = None

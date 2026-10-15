@@ -151,6 +151,10 @@ class Settings(BaseSettings):
     # fetch in between) escalate the pause by doubling, up to the _max cap.
     youtube_subtitle_cooldown: float = 1800.0  # 30 minutes
     youtube_subtitle_cooldown_max: float = 7200.0  # 2 hour escalation cap
+    # Optional Netscape cookies.txt from a browser signed in to YouTube, sent
+    # with transcript fetches and yt-dlp audio downloads (helps when YouTube
+    # blocks this server). Empty = no cookies.
+    youtube_cookies_file: str = ""
 
 
 settings = Settings()

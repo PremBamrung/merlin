@@ -13,6 +13,7 @@ import yt_dlp
 
 from merlin.config import settings
 from merlin.core.logging import logger
+from merlin.knowledge_sources.plugins.youtube.cookies import ytdlp_cookie_copy
 
 GROQ_API_KEY = settings.groq_api_key
 GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
@@ -64,6 +65,9 @@ class AudioTranscriber:
             "quiet": True,  # Suppress yt-dlp output
             "progress_hooks": [progress_hook],
         }
+        cookie_copy = ytdlp_cookie_copy(os.path.dirname(output_path) or ".")
+        if cookie_copy:
+            ydl_opts["cookiefile"] = cookie_copy
 
         logger.info(f"Starting audio download for: {video_url}")
 
@@ -113,13 +117,26 @@ class AudioTranscriber:
             return True, actual_file_path
 
         except yt_dlp.utils.DownloadError as e:
-            error_msg = f"Error during download: {e}"
+            if "403" in str(e):
+                # yt-dlp's raw "unable to download video data" hides the two
+                # usual causes; name them so the task error is actionable.
+                hint = "" if cookie_copy else " Setting YOUTUBE_COOKIES_FILE may help."
+                error_msg = (
+                    "YouTube refused the audio download (HTTP 403). yt-dlp "
+                    f"{yt_dlp.version.__version__} may be outdated (update and "
+                    "rebuild), or YouTube is blocking this server." + hint
+                )
+            else:
+                error_msg = f"Error during download: {e}"
             logger.error(error_msg)
             return False, error_msg
         except Exception as e:
             error_msg = f"An unexpected error occurred during download: {e}"
             logger.error(error_msg)
             return False, error_msg
+        finally:
+            if cookie_copy:
+                Path(cookie_copy).unlink(missing_ok=True)
 
     @staticmethod
     def _result_to_subtitles(result: Dict, offset: float = 0.0) -> List[Dict]:
