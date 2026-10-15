@@ -929,6 +929,11 @@ export interface components {
             status: string;
             /** Source Types */
             source_types?: string[];
+            /**
+             * Chat Thinking
+             * @default false
+             */
+            chat_thinking: boolean;
         };
         /**
          * HomeResponse

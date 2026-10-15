@@ -19,6 +19,35 @@ if TYPE_CHECKING:
     from pydantic_ai.models import Model
 
 
+# Chat thinking levels the UI offers → the `reasoning_effort` sent to LiteLLM,
+# which maps it onto Gemini's thinking config. There is no "off": Gemini 3.8
+# Flash can't disable thinking (even `none` still thinks on a hard question), so
+# the floor is "minimal" — the model then thinks only when it has to.
+THINKING_EFFORT = {
+    "minimal": "minimal",
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+}
+
+
+def thinking_supported() -> bool:
+    """Whether per-message thinking control is available (LiteLLM only)."""
+    return settings.is_litellm
+
+
+def thinking_model_settings(level: str | None) -> dict | None:
+    """Per-request model settings for a chat thinking level, or None.
+
+    None (the model's default) for an unknown level or when the provider doesn't
+    support the control — an OpenRouter preset decides its own reasoning.
+    """
+    effort = THINKING_EFFORT.get((level or "").strip().lower())
+    if effort is None or not thinking_supported():
+        return None
+    return {"openai_reasoning_effort": effort}
+
+
 def _build_openrouter_model(model_name: str) -> Model:
     """Construct an OpenRouter chat model for `model_name` (uncached).
 
@@ -49,7 +78,8 @@ def _build_litellm_model(
 ) -> Model:
     """Construct a model on the LiteLLM proxy for `model_name` (uncached).
 
-    `reasoning_effort` becomes the model's default effort.
+    `reasoning_effort` becomes the model's default; a chat request can override
+    it per run via `thinking_model_settings`.
     """
     from pydantic_ai.models.openai import OpenAIChatModel, OpenAIChatModelSettings
     from pydantic_ai.providers.litellm import LiteLLMProvider

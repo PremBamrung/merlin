@@ -25,6 +25,7 @@ from merlin.config import settings
 from merlin.core.logging import logger
 from merlin.knowledge_sources.registry import registry
 from merlin.rag.embeddings import get_embedder
+from merlin.services.chat import thinking_supported
 
 from .errors import install_error_handlers, not_found
 from .routers import chat, home, inbox, ingest, insights, items, search, topics
@@ -103,7 +104,11 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health", response_model=HealthResponse, tags=["meta"])
     def health():
-        return {"status": "ok", "source_types": registry.source_types()}
+        return {
+            "status": "ok",
+            "source_types": registry.source_types(),
+            "chat_thinking": thinking_supported(),
+        }
 
     # Serve the built SPA when present (prod, same origin → no CORS). A plain
     # StaticFiles(html=True) mount only serves index.html for the *root* request,

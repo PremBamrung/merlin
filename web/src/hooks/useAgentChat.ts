@@ -1,6 +1,7 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { useCallback, useEffect, useRef } from "react";
+import { useUi, type ThinkingLevel } from "@/store/ui";
 
 /**
  * Chat filters sent alongside the AI SDK message payload (the backend's request
@@ -11,7 +12,16 @@ export type ChatFilters = {
   source_types?: string[] | null;
   tags?: string[] | null;
   item_id?: string | null;
+  /** Thinking level for this message — attached by `useAgentChat` from the
+   * stored preference; the backend ignores it when unsupported. */
+  thinking?: ThinkingLevel | null;
 };
+
+/** The request body for a send: the caller's filters plus the stored thinking
+ * level, read at send time so a picker change applies to the next message. */
+function requestBody(filters?: ChatFilters) {
+  return { filters: { ...filters, thinking: useUi.getState().thinking } };
+}
 
 /** A consolidated citation, emitted by the server as a citation data-part.
  * The card fields (thumbnail…source_id) are added by the chat router for the
@@ -330,14 +340,14 @@ export function useAgentChat(opts?: UseAgentChatOptions) {
     if (!q || isStreamingRef.current) return;
     turnStartRef.current = Date.now();
     workMsRef.current = null;
-    void sdkRef.current.sendMessage({ text: q }, { body: { filters: filters ?? null } });
+    void sdkRef.current.sendMessage({ text: q }, { body: requestBody(filters) });
   }, []);
 
   const regenerateWith = useCallback((filters?: ChatFilters) => {
     if (isStreamingRef.current) return;
     turnStartRef.current = Date.now();
     workMsRef.current = null;
-    void sdkRef.current.regenerate({ body: { filters: filters ?? null } });
+    void sdkRef.current.regenerate({ body: requestBody(filters) });
   }, []);
 
   /**
@@ -358,7 +368,7 @@ export function useAgentChat(opts?: UseAgentChatOptions) {
       sdkRef.current.setMessages(msgs.slice(0, idx));
       turnStartRef.current = Date.now();
       workMsRef.current = null;
-      void sdkRef.current.sendMessage({ text: q }, { body: { filters: filters ?? null } });
+      void sdkRef.current.sendMessage({ text: q }, { body: requestBody(filters) });
     },
     [],
   );

@@ -290,6 +290,8 @@ async def chat(request: Request, background_tasks: BackgroundTasks) -> Response:
     item_id = filters.get("item_id")
 
     model = chat_service.build_chat_model()
+    # The composer's thinking level (LiteLLM only; None → model default).
+    model_settings = chat_service.model_settings_from_filters(filters)
 
     if item_id:
         # Reader single-item chat: tool-less agent, transcript as instructions.
@@ -300,6 +302,7 @@ async def chat(request: Request, background_tasks: BackgroundTasks) -> Response:
             agent=chat_service.item_agent,
             deps=chat_service.ChatDeps(),
             model=model,
+            model_settings=model_settings,
             instructions=instructions,
             # No tools → a single model request; keep a tiny margin.
             usage_limits=UsageLimits(request_limit=2),
@@ -321,6 +324,7 @@ async def chat(request: Request, background_tasks: BackgroundTasks) -> Response:
         agent=chat_service.agent,
         deps=deps,
         model=model,
+        model_settings=model_settings,
         usage_limits=UsageLimits(
             request_limit=settings.chat_max_requests + _BUDGET_GRACE
         ),

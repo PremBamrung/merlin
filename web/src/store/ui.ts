@@ -6,6 +6,9 @@ export type LibraryView = "grid" | "list";
 /** An explicit open/closed choice for the context panel; `null` = automatic
  *  (open from 1280px, collapsed below — the approved default). */
 export type PanelPref = "open" | "closed" | null;
+/** Chat thinking level, sent with every chat message (LiteLLM only — the
+ *  composer hides the picker when the backend can't honour it). */
+export type ThinkingLevel = "minimal" | "low" | "medium" | "high";
 
 /** A pending "this is already ingested — redo the summary?" confirmation. */
 export type ResummarizePrompt = {
@@ -44,6 +47,9 @@ type UiState = {
   // to a "Pinned" group at the top of the conversation sidebar.
   pinnedThreads: string[];
   togglePin: (id: string) => void;
+  // Chat thinking level (persisted) — shared by the chat page and Reader chat.
+  thinking: ThinkingLevel;
+  setThinking: (t: ThinkingLevel) => void;
   // Per-thread composer drafts (session-only, NOT persisted). The chat pane is
   // keyed by thread id and remounts on switch, which would otherwise drop
   // typed-but-unsent input; this map carries it across switches.
@@ -91,6 +97,9 @@ export const useUi = create<UiState>()(
             : [...s.pinnedThreads, id],
         })),
 
+      thinking: "medium",
+      setThinking: (thinking) => set({ thinking }),
+
       chatDrafts: {},
       setChatDraft: (id, text) =>
         set((s) => ({ chatDrafts: { ...s.chatDrafts, [id]: text } })),
@@ -110,6 +119,7 @@ export const useUi = create<UiState>()(
         view: s.view,
         pinnedThreads: s.pinnedThreads,
         panelPref: s.panelPref,
+        thinking: s.thinking,
       }),
     },
   ),

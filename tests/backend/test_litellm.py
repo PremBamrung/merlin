@@ -1,7 +1,8 @@
-"""LiteLLM provider switch — model selection and chat cost capture without
-OpenRouter's /generation.
+"""LiteLLM provider switch — model selection, the chat thinking level, and
+chat cost capture without OpenRouter's /generation.
 
-No network: models are built but never called.
+No network: models are built but never called, and chat runs on a scripted
+FunctionModel.
 """
 
 from __future__ import annotations
@@ -96,6 +97,71 @@ def test_openrouter_stays_the_default():
     assert s.llm_provider == "openrouter"
     assert not s.is_litellm
     assert s.llm_provider_name == "openrouter"
+
+
+# --------------------------------------------------------------------------- #
+# Thinking level
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "level,effort",
+    [
+        ("minimal", "minimal"),
+        ("low", "low"),
+        ("medium", "medium"),
+        ("HIGH", "high"),
+    ],
+)
+def test_thinking_level_maps_to_reasoning_effort(litellm, level, effort):
+    from merlin.services.chat import model_settings_from_filters
+
+    assert model_settings_from_filters({"thinking": level}) == {
+        "openai_reasoning_effort": effort
+    }
+
+
+def test_thinking_level_ignored_when_invalid_or_unsupported(litellm, monkeypatch):
+    from merlin.services.chat import model_settings_from_filters
+
+    assert model_settings_from_filters({"thinking": "max"}) is None
+    # No "off": Gemini can't disable thinking, so the floor is "minimal".
+    assert model_settings_from_filters({"thinking": "off"}) is None
+    assert model_settings_from_filters({}) is None
+    assert model_settings_from_filters(None) is None
+    monkeypatch.setattr("merlin.config.settings.llm_provider", "openrouter")
+    assert model_settings_from_filters({"thinking": "high"}) is None
+
+
+def test_library_chat_sends_thinking_level(client, monkeypatch, litellm):
+    captured: dict = {}
+    _patch_model(monkeypatch, _capturing_model(captured))
+
+    resp = client.post("/api/chat", json=_chat_body("hi", {"thinking": "low"}))
+    assert resp.status_code == 200
+    assert captured["model_settings"].get("openai_reasoning_effort") == "low"
+
+
+def test_item_chat_sends_thinking_level(client, monkeypatch, litellm):
+    monkeypatch.setattr(
+        "merlin.services.library.get_item",
+        lambda _id: {"id": "item-1", "title": "T", "raw_content": "words"},
+    )
+    captured: dict = {}
+    _patch_model(monkeypatch, _capturing_model(captured))
+
+    resp = client.post(
+        "/api/chat",
+        json=_chat_body("hi", {"item_id": "item-1", "thinking": "minimal"}),
+    )
+    assert resp.status_code == 200
+    assert captured["model_settings"].get("openai_reasoning_effort") == "minimal"
+
+
+def test_health_reports_thinking_support(client, monkeypatch):
+    assert client.get("/api/health").json()["chat_thinking"] is False
+    monkeypatch.setattr("merlin.config.settings.llm_provider", "litellm")
+    assert client.get("/api/health").json()["chat_thinking"] is True
 
 
 # --------------------------------------------------------------------------- #

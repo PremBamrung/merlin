@@ -1,18 +1,20 @@
-import { forwardRef, useMemo, type ReactNode } from "react";
-import { ArrowUp, Library, Link2, Loader2, Paperclip, X } from "lucide-react";
+import { forwardRef, useMemo, useState, type ReactNode } from "react";
+import { ArrowUp, Brain, Check, Library, Link2, Loader2, Paperclip, X } from "lucide-react";
 import type { ChatFilters } from "@/hooks/useAgentChat";
-import { useTags, useSourceTypes } from "@/hooks/useMeta";
+import { useHealth, useTags, useSourceTypes } from "@/hooks/useMeta";
 import { useIngestYouTube } from "@/hooks/useIngest";
 import { useOnline } from "@/hooks/useOnline";
 import { AutoGrowTextarea } from "@/components/common/AutoGrowTextarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { looksLikeUrl } from "@/lib/classify";
 import { cn } from "@/lib/utils";
+import { useUi, type ThinkingLevel } from "@/store/ui";
 
 /**
  * The composer card (docs/EVERYDAY_AI_PLAN.md § Composer; mockup `.composer`):
- * the text area over a toolbar — attach, the Library scope, then the round
- * send that turns into Stop while an answer streams. Pasting a link turns the
+ * the text area over a toolbar — attach, the Library scope, the thinking level
+ * (when the backend supports it), then the round send that turns into Stop
+ * while an answer streams. Pasting a link turns the
  * message into "Add to library": Enter ingests it instead of asking.
  *
  * Not here yet, on purpose: the Web toggle and the model menu arrive with
@@ -102,6 +104,7 @@ export const Composer = forwardRef<
           <Paperclip className="size-[18px]" />
         </button>
         <LibraryScope filters={filters} setFilters={setFilters} />
+        <ThinkingPicker />
         <span className="flex-1" />
         {meter}
         {/* One button: the arrow folds into a square while an answer streams. */}
@@ -259,6 +262,62 @@ function LibraryScope({
             Search everything
           </button>
         )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+const THINKING: { level: ThinkingLevel; label: string; hint: string }[] = [
+  { level: "minimal", label: "Minimal", hint: "Fastest, thinks only when it must" },
+  { level: "low", label: "Low", hint: "A little reasoning first" },
+  { level: "medium", label: "Medium", hint: "Balanced (default)" },
+  { level: "high", label: "High", hint: "Deepest reasoning, slowest" },
+];
+
+/**
+ * How hard the model thinks before answering — one stored preference sent with
+ * every chat message (the Reader's chat uses it too). Hidden unless the backend
+ * reports it can honour it (`/api/health` → `chat_thinking`, LiteLLM only).
+ */
+function ThinkingPicker() {
+  const health = useHealth();
+  const thinking = useUi((s) => s.thinking);
+  const setThinking = useUi((s) => s.setThinking);
+  const [open, setOpen] = useState(false);
+  if (!health.data?.chat_thinking) return null;
+  const current = THINKING.find((t) => t.level === thinking) ?? THINKING[2];
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className="inline-flex h-[30px] items-center gap-1.5 rounded-full border border-border px-2.5 text-[13px] text-fg-muted transition-colors hover:border-border-strong hover:text-fg"
+          title="Thinking level"
+          aria-label={`Thinking: ${current.label}`}
+        >
+          <Brain className="size-[15px]" strokeWidth={1.75} />
+          {current.label}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" side="top" className="w-64 p-1.5">
+        <p className="eyebrow px-2.5 pb-1.5 pt-1">Thinking</p>
+        {THINKING.map((t) => (
+          <button
+            key={t.level}
+            onClick={() => {
+              setThinking(t.level);
+              setOpen(false);
+            }}
+            aria-pressed={t.level === thinking}
+            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-surface-2"
+          >
+            <span className="flex-1">
+              <span className="block text-[13px] text-fg">{t.label}</span>
+              <span className="block text-[12px] text-fg-subtle">{t.hint}</span>
+            </span>
+            {t.level === thinking && <Check className="size-4 text-fg-muted" />}
+          </button>
+        ))}
       </PopoverContent>
     </Popover>
   );

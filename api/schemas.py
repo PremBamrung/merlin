@@ -407,6 +407,9 @@ class UsageResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     source_types: list[str] = Field(default_factory=list)
+    # Whether chat accepts a per-message `filters.thinking` level (LiteLLM only);
+    # the composer hides its thinking picker when false.
+    chat_thinking: bool = False
 
 
 # --------------------------------------------------------------------------- #
