@@ -1,14 +1,14 @@
+from concurrent.futures import ThreadPoolExecutor
+from functools import cache
 import glob
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import tempfile
 from typing import Dict, List, Optional
 
-from dotenv import load_dotenv
-import requests
+import groq
 import yt_dlp
 
 from merlin.config import settings
@@ -16,105 +16,73 @@ from merlin.core.logging import logger
 from merlin.knowledge_sources.plugins.youtube.cookies import ytdlp_cookie_copy
 
 GROQ_API_KEY = settings.groq_api_key
-GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+GROQ_MODEL = "whisper-large-v3-turbo"
+# Per-request timeout; the SDK retries 429s, 5xx and connection errors with
+# backoff (honouring Retry-After) up to _GROQ_MAX_RETRIES times.
+_GROQ_TIMEOUT_SECONDS = 300.0
+_GROQ_MAX_RETRIES = 3
+# Chunks of one oversized file transcribed at once — small, to stay inside
+# Groq's free-tier requests-per-minute.
+_CHUNK_CONCURRENCY = 3
+
+# A speech-sized audio stream: YouTube's ~50 kbps Opus (249) or 48 kbps AAC
+# (139) instead of the ~130 kbps "bestaudio" — 2-3x less to download. It's
+# re-encoded below anyway, so the higher-bitrate tracks buy nothing.
+_AUDIO_FORMAT = "bestaudio[abr<=70]/bestaudio/best"
+
+
+@cache
+def _groq_client() -> groq.Groq:
+    return groq.Groq(
+        api_key=GROQ_API_KEY,
+        timeout=_GROQ_TIMEOUT_SECONDS,
+        max_retries=_GROQ_MAX_RETRIES,
+    )
 
 
 class AudioTranscriber:
     """Handles audio download and transcription for videos without subtitles."""
 
     @staticmethod
-    def download_audio(video_url: str, output_path: str) -> tuple[bool, Optional[str]]:
-        """Downloads the best audio from a given YouTube URL and saves it as an MP3 file.
+    def download_audio(video_url: str, out_dir: str) -> tuple[bool, Optional[str]]:
+        """Download a speech-sized audio stream of a YouTube video into `out_dir`.
 
-        Args:
-            video_url (str): The URL of the YouTube video.
-            output_path (str): The output template for the filename.
+        One `extract_info(download=True)` pass (resolving the video twice made
+        two round-trips and doubled yt-dlp's bot-detection exposure). The file
+        is saved as-is (webm/m4a); `_to_speech_audio` re-encodes it.
 
         Returns:
             tuple[bool, Optional[str]]: (success, file_path or error_message)
         """
-        actual_file_path = None
-
-        # Callback to capture the actual file path
-        def progress_hook(d):
-            nonlocal actual_file_path
-            if d["status"] == "finished":
-                filename = d.get("filename", "")
-                if filename:
-                    # The filename will be the base name, but postprocessor adds .mp3
-                    # So we need to replace the extension
-                    base_name = os.path.splitext(filename)[0]
-                    actual_file_path = f"{base_name}.mp3"
-
-        # Configuration options for yt-dlp.
-        # Whisper resamples to 16 kHz mono internally, so downmixing here is
-        # lossless for transcription and shrinks the file ~5x (a 192 kbps stereo
-        # MP3 hits Groq's 25 MB upload cap around ~17 min; 16 kHz mono @ 64 kbps
-        # pushes that past ~50 min, with chunking covering anything longer).
         ydl_opts = {
-            "format": "bestaudio/best",
-            "postprocessors": [
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "mp3",
-                    "preferredquality": "64",
-                }
-            ],
-            "postprocessor_args": ["-ar", "16000", "-ac", "1"],
-            "outtmpl": output_path,
+            "format": _AUDIO_FORMAT,
+            "outtmpl": os.path.join(out_dir, "source.%(ext)s"),
             "quiet": True,  # Suppress yt-dlp output
-            "progress_hooks": [progress_hook],
+            "noprogress": True,  # no [download] lines interleaved with the logs
         }
-        cookie_copy = ytdlp_cookie_copy(os.path.dirname(output_path) or ".")
+        cookie_copy = ytdlp_cookie_copy(out_dir)
         if cookie_copy:
             ydl_opts["cookiefile"] = cookie_copy
 
         logger.info(f"Starting audio download for: {video_url}")
 
         try:
-            # Create a YoutubeDL object with the specified options
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # Extract info first to get video title
-                info = ydl.extract_info(video_url, download=False)
-                title = info.get("title", "audio")
+                info = ydl.extract_info(video_url, download=True)
+                downloads = info.get("requested_downloads") or [{}]
+                file_path = downloads[0].get("filepath") or ydl.prepare_filename(info)
 
-                # Download the audio
-                ydl.download([video_url])
-
-            # If callback didn't set the path, construct it from the template
-            if not actual_file_path:
-                # Sanitize title for filesystem use
-                sanitized_title = re.sub(r'[<>:"/\\|?*]', "_", title)
-                # Replace template variables
-                actual_file_path = output_path.replace(
-                    "%(title)s", sanitized_title
-                ).replace("%(ext)s", "mp3")
-
-            # Verify file exists
-            if not os.path.exists(actual_file_path):
-                # Try to find the file in the same directory
-                base_dir = os.path.dirname(actual_file_path) or "."
-                if os.path.exists(base_dir):
-                    mp3_files = [f for f in os.listdir(base_dir) if f.endswith(".mp3")]
-                    if mp3_files:
-                        # Get the most recently modified one
-                        actual_file_path = os.path.join(
-                            base_dir,
-                            max(
-                                mp3_files,
-                                key=lambda f: os.path.getmtime(
-                                    os.path.join(base_dir, f)
-                                ),
-                            ),
-                        )
-
-            if not os.path.exists(actual_file_path):
-                error_msg = f"Downloaded file not found: {actual_file_path}"
+            if not file_path or not os.path.exists(file_path):
+                error_msg = f"Downloaded file not found: {file_path}"
                 logger.error(error_msg)
                 return False, error_msg
 
-            logger.info(f"Successfully downloaded audio to: {actual_file_path}")
-            return True, actual_file_path
+            size_mb = os.path.getsize(file_path) / 1_048_576
+            logger.info(
+                f"Downloaded audio ({info.get('format_id')}, {size_mb:.1f} MB) "
+                f"for: {info.get('title', video_url)}"
+            )
+            return True, file_path
 
         except yt_dlp.utils.DownloadError as e:
             if "403" in str(e):
@@ -137,6 +105,39 @@ class AudioTranscriber:
         finally:
             if cookie_copy:
                 Path(cookie_copy).unlink(missing_ok=True)
+
+    @staticmethod
+    def _to_speech_audio(source_path: str, out_dir: str) -> str:
+        """Re-encode to 16 kHz mono Opus at 24 kbps (Ogg) for Whisper.
+
+        Whisper resamples to 16 kHz mono internally, so this loses nothing it
+        would use, and ~24 kbps Opus keeps ~2.3 h of speech under Groq's 25 MB
+        upload cap — chunking rarely kicks in. Raises CalledProcessError.
+        """
+        out_path = os.path.join(out_dir, "speech.ogg")
+        cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            source_path,
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-c:a",
+            "libopus",
+            "-b:a",
+            "24k",
+            "-application",
+            "voip",
+            out_path,
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+        return out_path
 
     @staticmethod
     def _result_to_subtitles(result: Dict, offset: float = 0.0) -> List[Dict]:
@@ -175,34 +176,39 @@ class AudioTranscriber:
 
     @staticmethod
     def _post_audio(audio_file_path: str) -> tuple[bool, Optional[Dict], Optional[str]]:
-        """POST a single audio file to Groq and return the parsed JSON result."""
-        headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
-        with open(audio_file_path, "rb") as audio_file:
-            files = {"file": audio_file}
-            data = {
-                "model": "whisper-large-v3-turbo",
-                "temperature": 0,
-                "response_format": "verbose_json",
-            }
-            response = requests.post(GROQ_URL, headers=headers, files=files, data=data)
-
-        if not response.ok:
-            if response.status_code == 413:
+        """Send a single audio file to Groq and return the verbose_json result."""
+        try:
+            with open(audio_file_path, "rb") as audio_file:
+                # Bytes, not the handle: a retried request must re-send the body.
+                payload = (os.path.basename(audio_file_path), audio_file.read())
+            result = _groq_client().audio.transcriptions.create(
+                file=payload,
+                model=GROQ_MODEL,
+                temperature=0,
+                response_format="verbose_json",
+            )
+        except groq.APIStatusError as e:
+            if e.status_code == 413:
                 error_msg = (
                     "Audio too large for Groq transcription (HTTP 413). Lower "
                     "settings.groq_max_upload_mb or shorten the video."
                 )
             else:
-                error_msg = f"Groq API error: {response.status_code} - {response.text}"
+                error_msg = f"Groq API error: {e.status_code} - {e.message}"
+            logger.error(error_msg)
+            return False, None, error_msg
+        except groq.APIConnectionError as e:  # includes APITimeoutError
+            error_msg = f"Groq request failed after retries: {e}"
             logger.error(error_msg)
             return False, None, error_msg
 
-        return True, response.json(), None
+        return True, result.to_dict(), None
 
     @staticmethod
     def _split_audio(audio_file_path: str, out_dir: str) -> List[str]:
         """Split audio into time segments with ffmpeg (stream copy, no re-encode)."""
-        out_template = os.path.join(out_dir, "chunk_%03d.mp3")
+        ext = os.path.splitext(audio_file_path)[1] or ".ogg"
+        out_template = os.path.join(out_dir, f"chunk_%03d{ext}")
         cmd = [
             "ffmpeg",
             "-hide_banner",
@@ -219,13 +225,16 @@ class AudioTranscriber:
             out_template,
         ]
         subprocess.run(cmd, check=True, capture_output=True)
-        return sorted(glob.glob(os.path.join(out_dir, "chunk_*.mp3")))
+        return sorted(glob.glob(os.path.join(out_dir, f"chunk_*{ext}")))
 
     @staticmethod
     def _transcribe_chunked(
         audio_file_path: str,
     ) -> tuple[bool, Optional[List[Dict]], Optional[str], Optional[str]]:
-        """Split an oversized audio file, transcribe each chunk, and stitch.
+        """Split an oversized audio file, transcribe the chunks, and stitch.
+
+        Chunks are transcribed concurrently (`_CHUNK_CONCURRENCY` at a time)
+        and stitched in order afterwards.
 
         Returns (success, subtitles, error_msg, language) — language is the
         Whisper-detected language of the first chunk (the whole video is one
@@ -243,11 +252,13 @@ class AudioTranscriber:
                 )
 
             logger.info(f"Transcribing {len(chunk_paths)} audio chunks")
+            with ThreadPoolExecutor(max_workers=_CHUNK_CONCURRENCY) as pool:
+                results = list(pool.map(AudioTranscriber._post_audio, chunk_paths))
+
             all_subtitles: List[Dict] = []
             language: Optional[str] = None
             offset = 0.0
-            for i, chunk_path in enumerate(chunk_paths):
-                ok, result, error_msg = AudioTranscriber._post_audio(chunk_path)
+            for i, (ok, result, error_msg) in enumerate(results):
                 if not ok:
                     return (
                         False,
@@ -349,12 +360,16 @@ class AudioTranscriber:
 
     @staticmethod
     def transcribe_video(
-        video_url: str,
+        video_id: str,
     ) -> tuple[bool, Optional[List[Dict]], Optional[str], Optional[str]]:
-        """Downloads audio from video URL and transcribes it.
+        """Downloads a video's audio and transcribes it.
+
+        Everything lives in a private temp directory (removed afterwards), so
+        concurrent ingest workers can never pick up each other's files.
 
         Args:
-            video_url (str): The URL of the YouTube video.
+            video_id (str): The YouTube video id. The canonical watch URL is
+                built from it, dropping tracking/position params (`&pp=`, `&t=`).
 
         Returns:
             tuple[bool, Optional[List[Dict]], Optional[str], Optional[str]]:
@@ -362,34 +377,28 @@ class AudioTranscriber:
                 subtitles_list format: [{"start": float, "duration": float, "text": str}]
                 language: Whisper-detected language (raw, e.g. "english"/"fr"), or None.
         """
-        # Create a temporary file for the audio
-        temp_dir = tempfile.gettempdir()
-        temp_file_template = os.path.join(temp_dir, "yt_audio_%(title)s.%(ext)s")
-
+        video_url = f"https://www.youtube.com/watch?v={video_id}"
+        work_dir = tempfile.mkdtemp(prefix=f"yt_audio_{video_id}_")
         logger.info(f"Starting video transcription for: {video_url}")
 
-        # Download audio
-        success, result = AudioTranscriber.download_audio(video_url, temp_file_template)
-        if not success:
-            return False, None, result, None  # result contains error message
-
-        audio_file_path = result  # result contains the file path on success
-
         try:
-            # Transcribe audio
-            transcribe_success, subtitles, error_msg, language = (
-                AudioTranscriber.transcribe_audio(audio_file_path)
+            success, result = AudioTranscriber.download_audio(video_url, work_dir)
+            if not success:
+                return False, None, result, None  # result contains error message
+
+            try:
+                speech_path = AudioTranscriber._to_speech_audio(result, work_dir)
+            except subprocess.CalledProcessError as e:
+                stderr = e.stderr.decode("utf-8", "replace") if e.stderr else ""
+                error_msg = f"ffmpeg failed to re-encode audio: {stderr}"
+                logger.error(error_msg)
+                return False, None, error_msg, None
+            Path(result).unlink(missing_ok=True)
+            logger.info(
+                f"Re-encoded to speech audio "
+                f"({os.path.getsize(speech_path) / 1_048_576:.1f} MB)"
             )
 
-            return transcribe_success, subtitles, error_msg, language
-
+            return AudioTranscriber.transcribe_audio(speech_path)
         finally:
-            # Clean up temporary audio file
-            try:
-                if os.path.exists(audio_file_path):
-                    os.remove(audio_file_path)
-                    logger.info(f"Cleaned up temporary audio file: {audio_file_path}")
-            except Exception as e:
-                logger.warning(
-                    f"Failed to clean up temporary file {audio_file_path}: {e}"
-                )
+            shutil.rmtree(work_dir, ignore_errors=True)

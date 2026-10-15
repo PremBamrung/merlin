@@ -191,7 +191,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
                 f"No subtitles for {video_id}, falling back to audio transcription"
             )
             success, fallback_subtitles, error_msg, audio_language = (
-                AudioTranscriber.transcribe_video(url)
+                AudioTranscriber.transcribe_video(video_id)
             )
             if not success or not fallback_subtitles:
                 raise ValueError(f"Failed to get subtitles or transcript: {error_msg}")

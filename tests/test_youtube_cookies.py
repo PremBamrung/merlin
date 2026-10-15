@@ -75,7 +75,7 @@ def test_download_403_explains_itself_and_uses_a_cookie_copy(monkeypatch, tmp_pa
     out.mkdir()
     with patch.object(yt_dlp, "YoutubeDL", _Fake403YDL):
         ok, msg = AudioTranscriber.download_audio(
-            "https://youtu.be/x", str(out / "a.%(ext)s")
+            "https://youtu.be/x", str(out)
         )
     assert ok is False
     assert "refused the audio download (HTTP 403)" in msg
@@ -92,7 +92,7 @@ def test_download_403_without_cookies_suggests_them(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "youtube_cookies_file", "")
     with patch.object(yt_dlp, "YoutubeDL", _Fake403YDL):
         ok, msg = AudioTranscriber.download_audio(
-            "https://youtu.be/x", str(tmp_path / "a.%(ext)s")
+            "https://youtu.be/x", str(tmp_path)
         )
     assert ok is False
     assert "cookiefile" not in _Fake403YDL.seen
