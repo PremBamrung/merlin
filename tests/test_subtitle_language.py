@@ -8,7 +8,22 @@ The network (YouTubeTranscriptApi) is faked; no real requests are made.
 
 from unittest.mock import patch
 
+import pytest
+
 from merlin.knowledge_sources.plugins.youtube.extractors import SubtitleExtractor
+
+
+@pytest.fixture(autouse=True)
+def _no_cooldown_persistence(monkeypatch):
+    """Keep the module-level limiter's cooldown in memory — these tests trip it,
+    and must never write it to whatever DB DATABASE_URL points at."""
+    from merlin.knowledge_sources.plugins.youtube.extractors import (
+        _subtitle_rate_limiter,
+    )
+
+    monkeypatch.setattr(_subtitle_rate_limiter, "_load_state", None)
+    monkeypatch.setattr(_subtitle_rate_limiter, "_save_state", None)
+    monkeypatch.setattr(_subtitle_rate_limiter, "_loaded", True)
 
 
 class _FakeTranscript:
@@ -223,3 +238,42 @@ def test_track_without_url_falls_back_to_other_rules():
     del bare._url
     assert _is_dub_track(bare) is False
     assert _pick_original_language([bare]) == "en"
+
+
+def test_cooldown_tripped_while_waiting_skips_the_fetch():
+    # Listing succeeded, but while this worker waited for its fetch slot another
+    # worker's fetch hit an IP block. The fetch must not go out.
+    from merlin.knowledge_sources.plugins.youtube.extractors import (
+        _subtitle_rate_limiter,
+    )
+
+    _subtitle_rate_limiter.clear_cooldown()
+    transcript = _FakeTranscript("en", is_generated=True)
+    fetched = []
+    transcript.fetch = lambda: fetched.append(True)
+    waits = []
+
+    def wait():
+        waits.append(True)
+        if len(waits) == 2:  # the slot before fetch()
+            _subtitle_rate_limiter.trip_cooldown()
+
+    fake_api = type(
+        "Api", (), {"list": lambda self, vid: _FakeTranscriptList([transcript])}
+    )()
+    try:
+        with (
+            patch(
+                "merlin.knowledge_sources.plugins.youtube.extractors.YouTubeTranscriptApi",
+                return_value=fake_api,
+            ),
+            patch.object(_subtitle_rate_limiter, "wait", side_effect=wait),
+        ):
+            result = SubtitleExtractor.extract_subtitles("vid", ["en"])
+    finally:
+        cooled = _subtitle_rate_limiter.in_cooldown()
+        _subtitle_rate_limiter.clear_cooldown()
+
+    assert result is None
+    assert fetched == []
+    assert cooled

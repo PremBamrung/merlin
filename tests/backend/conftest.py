@@ -77,6 +77,7 @@ def _clean_tables(_migrate_temp_db):
             "knowledge_items",
             "chat_messages",
             "chat_threads",
+            "app_state",
         ):
             conn.execute(text(f"DELETE FROM {table}"))
 

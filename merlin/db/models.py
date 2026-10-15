@@ -389,3 +389,18 @@ class ChatMessage(Base):
     thread = relationship("ChatThread", back_populates="messages")
 
     __table_args__ = (Index("ix_chat_messages_thread_seq", "thread_id", "seq"),)
+
+
+class AppState(Base):
+    """Small runtime key-value state that must survive process restarts.
+
+    Not user data: e.g. the YouTube subtitle IP-block cooldown, so a rebuild
+    doesn't forget an active ban and re-probe the blocked endpoint. `value` is
+    JSON text; the owner of each key decides its shape.
+    """
+
+    __tablename__ = "app_state"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=False)  # JSON
+    updated_at = Column(DateTime, default=_now, onupdate=_now)

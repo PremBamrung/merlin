@@ -16,17 +16,47 @@ from merlin.core.logging import logger
 from merlin.core.rate_limit import MinIntervalRateLimiter
 from merlin.knowledge_sources.plugins.youtube.cookies import transcript_http_client
 
+_COOLDOWN_STATE_KEY = "youtube_subtitle_cooldown"
+
+
+def _load_cooldown_state() -> dict | None:
+    from merlin.db.engine import get_db
+    from merlin.db.repositories.app_state import AppStateRepository
+
+    with get_db() as session:
+        return AppStateRepository.get(session, _COOLDOWN_STATE_KEY)
+
+
+def _save_cooldown_state(state: dict) -> None:
+    from merlin.db.engine import get_db
+    from merlin.db.repositories.app_state import AppStateRepository
+
+    with get_db() as session:
+        AppStateRepository.set(session, _COOLDOWN_STATE_KEY, state)
+
+
 # Shared across all ingest workers so concurrent video ingestions don't
 # burst-hit YouTube's transcript endpoint and get the IP banned (HTTP 429).
 # Once a ban is detected it trips a process-wide cooldown (see trip_cooldown);
 # while cooled down, subtitle fetching is skipped in favour of audio transcription
-# so the IP can recover instead of being hammered further.
+# so the IP can recover instead of being hammered further. The cooldown is kept
+# in the app_state table, so a restart/rebuild doesn't re-probe a blocked IP.
 _subtitle_rate_limiter = MinIntervalRateLimiter(
     settings.youtube_subtitle_min_interval,
     name="youtube-subtitles",
     cooldown_seconds=settings.youtube_subtitle_cooldown,
     cooldown_max=settings.youtube_subtitle_cooldown_max,
+    load_state=_load_cooldown_state,
+    save_state=_save_cooldown_state,
 )
+
+
+def _cooldown_skip_message() -> str:
+    remaining = _subtitle_rate_limiter.cooldown_remaining()
+    return (
+        f"YouTube subtitle fetching paused (IP-block cooldown, "
+        f"{remaining / 60:.1f} min left) — skipping to audio transcription"
+    )
 
 
 def _is_ip_block(error_msg: str) -> bool:
@@ -249,16 +279,16 @@ class SubtitleExtractor:
         # If a recent IP block tripped the cooldown, don't touch YouTube at all —
         # skip straight to audio transcription so the IP can recover.
         if _subtitle_rate_limiter.in_cooldown():
-            remaining = _subtitle_rate_limiter.cooldown_remaining()
-            logger.warning(
-                f"YouTube subtitle fetching paused (IP-block cooldown, "
-                f"{remaining / 60:.1f} min left) — skipping to audio transcription"
-            )
+            logger.warning(_cooldown_skip_message())
             return None
 
         try:
             ytt_api = YouTubeTranscriptApi(http_client=transcript_http_client())
             _subtitle_rate_limiter.wait()
+            # Another worker may have hit a block while we waited for our slot.
+            if _subtitle_rate_limiter.in_cooldown():
+                logger.warning(_cooldown_skip_message())
+                return None
             transcript_list = ytt_api.list(video_id)
             transcript = None
             detected_language = None
@@ -332,6 +362,11 @@ class SubtitleExtractor:
             if detected_language is None:
                 detected_language = transcript.language_code
             _subtitle_rate_limiter.wait()
+            # Listing can succeed while the caption fetch is blocked; if another
+            # worker's fetch already tripped the cooldown, don't add one more.
+            if _subtitle_rate_limiter.in_cooldown():
+                logger.warning(_cooldown_skip_message())
+                return None
             result = transcript.fetch()
             kind = "auto-generated" if transcript.is_generated else "manual"
             logger.info(
