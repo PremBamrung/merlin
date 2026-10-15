@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
+  Captions,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -26,7 +27,7 @@ import {
   usePrefetchItem,
 } from "@/hooks/useItems";
 import { useTopics, useSetItemTopics } from "@/hooks/useTopics";
-import { useResummarize, useRetry } from "@/hooks/useIngest";
+import { useRefetch, useResummarize, useRetry } from "@/hooks/useIngest";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CopyButton } from "@/components/common/CopyButton";
@@ -69,7 +70,7 @@ import {
   readingTime,
   thumbnailUrl,
 } from "@/lib/format";
-import { detailRows } from "@/lib/itemDetails";
+import { DetailsList } from "@/components/reader/DetailsList";
 import { normalizeSummary } from "@/lib/summary";
 import { vtThumb, vtTitle } from "@/lib/viewTransition";
 import { cn } from "@/lib/utils";
@@ -114,6 +115,7 @@ function Reader({
   const clear = useClearSummary(item.id);
   const resummarize = useResummarize(item.id);
   const retry = useRetry(item.id);
+  const refetch = useRefetch(item.id);
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(item.title ?? "");
@@ -187,6 +189,9 @@ function Reader({
 
   const doRetry = () =>
     retry.mutate({}, { onSuccess: ({ task_id }) => setResumTask(task_id) });
+
+  const doRefetch = () =>
+    refetch.mutate({}, { onSuccess: ({ task_id }) => setResumTask(task_id) });
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
@@ -271,6 +276,11 @@ function Reader({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {isYouTube && (
+                <DropdownMenuItem onSelect={doRefetch} disabled={refetch.isPending}>
+                  <Captions className="size-4" /> Re-fetch transcript
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onSelect={() => clear.mutate()} disabled={!item.summary}>
                 <Eraser className="size-4" /> Clear summary
               </DropdownMenuItem>
@@ -464,18 +474,7 @@ function Reader({
 
           <div>
             <p className="eyebrow mb-3">Details</p>
-            <dl className="space-y-2 rounded-[10px] border border-border bg-surface p-4">
-              {detailRows(item).map(([label, value]) => (
-                <div key={label} className="flex items-baseline justify-between gap-3">
-                  <dt className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-fg-subtle">
-                    {label}
-                  </dt>
-                  <dd className="truncate text-right text-[12.5px] text-fg-muted">
-                    {value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+            <DetailsList item={item} />
           </div>
 
           {railEntries.length > 0 && (

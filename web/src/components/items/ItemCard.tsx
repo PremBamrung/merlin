@@ -63,7 +63,7 @@ function Thumb({ item }: { item: ListItem }) {
 /**
  * A Library card (mockup `.gc`): the thumbnail, then the title — a gold dot
  * when it's unread — and one mono meta line (topic · channel · date). Opens
- * the item (drawer on desktop, Reader on phones). `snippet` adds two lines of
+ * the item in the full Reader. `snippet` adds two lines of
  * summary (the comfortable density); `dense` tightens type for compact.
  */
 export function ItemCard({
@@ -95,7 +95,7 @@ export function ItemCard({
     <Link
       ref={ref}
       {...open}
-      // The card → Reader morph is for the full page; the drawer slides in.
+      // The card → Reader morph; `to` is an object only for a drawer peek.
       viewTransition={typeof open.to === "string"}
       onMouseEnter={() => prefetch(item.id)}
       onFocus={() => prefetch(item.id)}
@@ -169,7 +169,7 @@ export function ItemRow({
     <Link
       ref={ref}
       {...open}
-      // The card → Reader morph is for the full page; the drawer slides in.
+      // The card → Reader morph; `to` is an object only for a drawer peek.
       viewTransition={typeof open.to === "string"}
       onMouseEnter={() => prefetch(item.id)}
       onFocus={() => prefetch(item.id)}

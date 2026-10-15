@@ -512,6 +512,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/items/{item_id}/refetch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refetch */
+        post: operations["refetch_api_items__item_id__refetch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks": {
         parameters: {
             query?: never;
@@ -1030,6 +1047,25 @@ export interface components {
             failed?: components["schemas"]["Task"][];
             counts: components["schemas"]["InboxCounts"];
         };
+        /**
+         * IngestUsage
+         * @description What building one item cost: the latest summary's tokens + total spend.
+         */
+        IngestUsage: {
+            /** Input Tokens */
+            input_tokens?: number | null;
+            /** Output Tokens */
+            output_tokens?: number | null;
+            /** Cost Usd */
+            cost_usd?: number | null;
+            /** Audio Seconds */
+            audio_seconds?: number | null;
+            /**
+             * Runs
+             * @default 0
+             */
+            runs: number;
+        };
         /** IngestYouTubeRequest */
         IngestYouTubeRequest: {
             /** Url */
@@ -1065,7 +1101,8 @@ export interface components {
         };
         /**
          * Item
-         * @description The detail shape (`GET /api/items/{id}`) — adds the full transcript.
+         * @description The detail shape (`GET /api/items/{id}`) — adds the full transcript and
+         *     the item's ingest usage (null when nothing was recorded).
          */
         Item: {
             /** Id */
@@ -1120,6 +1157,12 @@ export interface components {
             thumbnail_url?: string | null;
             /** Detected Language */
             detected_language?: string | null;
+            /** Transcript Language */
+            transcript_language?: string | null;
+            /** Transcript Source */
+            transcript_source?: string | null;
+            /** Summary Language */
+            summary_language?: string | null;
             /** Description */
             description?: string | null;
             /** Timestamps */
@@ -1128,6 +1171,7 @@ export interface components {
             };
             /** Raw Content */
             raw_content?: string | null;
+            ingest_usage?: components["schemas"]["IngestUsage"] | null;
         };
         /** ItemListResponse */
         ItemListResponse: {
@@ -1219,6 +1263,12 @@ export interface components {
             thumbnail_url?: string | null;
             /** Detected Language */
             detected_language?: string | null;
+            /** Transcript Language */
+            transcript_language?: string | null;
+            /** Transcript Source */
+            transcript_source?: string | null;
+            /** Summary Language */
+            summary_language?: string | null;
             /** Description */
             description?: string | null;
             /** Timestamps */
@@ -1259,6 +1309,13 @@ export interface components {
             duration?: number | string | null;
             /** Source Id */
             source_id?: string | null;
+        };
+        /** RefetchRequest */
+        RefetchRequest: {
+            /** Summary Length */
+            summary_length?: string | null;
+            /** Languages */
+            languages?: string[] | null;
         };
         /** RenameThreadRequest */
         RenameThreadRequest: {
@@ -1358,6 +1415,12 @@ export interface components {
             thumbnail_url?: string | null;
             /** Detected Language */
             detected_language?: string | null;
+            /** Transcript Language */
+            transcript_language?: string | null;
+            /** Transcript Source */
+            transcript_source?: string | null;
+            /** Summary Language */
+            summary_language?: string | null;
             /** Description */
             description?: string | null;
             /** Timestamps */
@@ -2642,6 +2705,41 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": components["schemas"]["RetryRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskIdResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refetch_api_items__item_id__refetch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RefetchRequest"] | null;
             };
         };
         responses: {

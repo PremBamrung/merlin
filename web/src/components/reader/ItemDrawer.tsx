@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { playMorph } from "@/lib/motion";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ExternalLink, MessageSquare, PanelRight, Play, X } from "lucide-react";
+import { ChevronRight, ExternalLink, MessageSquare, PanelRight, Play, X } from "lucide-react";
 import { SaveStar } from "@/components/common/SaveStar";
 import { useItem } from "@/hooks/useItems";
 import { useToggleSaved } from "@/hooks/useFeed";
@@ -13,17 +13,19 @@ import { Markdown } from "@/components/common/Markdown";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/common/ErrorState";
 import { Transcript } from "@/components/reader/Transcript";
+import { DetailsList } from "@/components/reader/DetailsList";
 import type { Item } from "@/lib/api/endpoints";
 import { compactNumber, formatDuration, relDate, thumbnailUrl, youtubeUrl } from "@/lib/format";
 import { normalizeSummary } from "@/lib/summary";
 import { cn } from "@/lib/utils";
 
 /**
- * The slide-over reader (docs/EVERYDAY_AI_PLAN.md § Open an item; mockup
+ * The slide-over quick look (docs/EVERYDAY_AI_PLAN.md § Open an item; mockup
  * `.drawer`): opened by `?item=<id>` over whatever page you're on — a chat
- * source, a Library card, the palette — so reading an item never loses your
- * place. Esc, the scrim, the ✕ or Back close it. The full Reader is one click
- * away for editing (tags, topics, re-summarise) and the item's own chat.
+ * source or the ⌘K palette (see `useItemHref({ peek })`) — so checking a
+ * reference never loses your place. Browsing (Library, Feed, Topics) opens the
+ * full Reader instead. Esc, the scrim, the ✕ or Back close it. The full Reader
+ * is one click away for editing (tags, topics, re-summarise) and item chat.
  */
 export function ItemDrawer() {
   const [params] = useSearchParams();
@@ -186,6 +188,14 @@ function DrawerBody({ item }: { item: Item }) {
             </Link>
           </Button>
         </div>
+
+        <details className="group mt-4">
+          <summary className="eyebrow flex w-fit cursor-pointer list-none items-center gap-1 rounded-sm transition-colors hover:text-fg [&::-webkit-details-marker]:hidden">
+            <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" />
+            Details
+          </summary>
+          <DetailsList item={item} className="mt-3" />
+        </details>
 
         <Tabs defaultValue="summary" className="mt-5">
           <TabsList>

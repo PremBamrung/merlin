@@ -19,7 +19,7 @@ export function SourceCard({
   messageId?: string;
 }) {
   const anchor = messageId ? citeAnchorId(messageId, citation.item_id) : undefined;
-  const open = useItemHref()(citation.item_id);
+  const open = useItemHref({ peek: true })(citation.item_id);
   const thumb =
     citation.thumbnail_url ??
     (citation.source_id

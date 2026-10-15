@@ -1,6 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
-import { cancelTask, ingestYouTube, resummarize, retryItem } from "@/lib/api/endpoints";
+import {
+  cancelTask,
+  ingestYouTube,
+  refetchItem,
+  resummarize,
+  retryItem,
+} from "@/lib/api/endpoints";
 import type { components } from "@/lib/api/schema";
 import { keys } from "@/lib/queryKeys";
 import { useActiveTasks } from "@/store/tasks";
@@ -77,6 +83,27 @@ export function useResummarize(itemId: string) {
     },
     onError: (err: Error) =>
       toast.error("Couldn't re-summarize", { description: err.message }),
+  });
+}
+
+/** Re-fetch an item from YouTube: a fresh transcript, then a fresh summary
+ * (Re-summarize reuses the stored transcript). The fix for an item built from
+ * the wrong subtitle track. */
+export function useRefetch(itemId: string) {
+  const qc = useQueryClient();
+  const addTask = useActiveTasks((s) => s.add);
+  return useMutation({
+    mutationFn: (body: components["schemas"]["RefetchRequest"] = {}) =>
+      refetchItem(itemId, body),
+    onSuccess: ({ task_id }) => {
+      addTask(task_id);
+      qc.invalidateQueries({ queryKey: keys.tasks() });
+      toast.success("Re-fetching transcript…", {
+        description: `Tracking task ${task_id.slice(0, 8)}…`,
+      });
+    },
+    onError: (err: Error) =>
+      toast.error("Couldn't re-fetch", { description: err.message }),
   });
 }
 

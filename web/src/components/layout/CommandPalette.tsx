@@ -25,7 +25,7 @@ export function CommandPalette() {
   const setOpen = useUi((s) => s.setPaletteOpen);
   const openAdd = useUi((s) => s.openAdd);
   const navigate = useNavigate();
-  const itemHref = useItemHref();
+  const itemHref = useItemHref({ peek: true });
   const [query, setQuery] = useState("");
   const debounced = useDebounced(query.trim(), 200);
   const isMac = navigator.platform.toLowerCase().includes("mac");

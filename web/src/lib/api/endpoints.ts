@@ -174,6 +174,11 @@ export const retryItem = (
   body: components["schemas"]["RetryRequest"] = {},
 ) => client.post<TaskId>(`/api/items/${id}/retry`, body);
 
+export const refetchItem = (
+  id: string,
+  body: components["schemas"]["RefetchRequest"] = {},
+) => client.post<TaskId>(`/api/items/${id}/refetch`, body);
+
 export const getTasks = (limit = 10) =>
   client.get<Task[]>("/api/tasks", { limit });
 
