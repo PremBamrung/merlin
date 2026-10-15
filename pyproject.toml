@@ -22,7 +22,7 @@ dependencies = [
     # no runtime GitHub download is needed. The deno JS runtime (Dockerfile) runs
     # them; both halves are required or media downloads 403.
     # https://github.com/yt-dlp/yt-dlp/wiki/EJS
-    "yt-dlp[default]>=2026.7.4",
+    "yt-dlp[default]>=2026.8.19",
     "Pillow>=11.0.0",
     # Utilities
     "requests>=2.32.3",
