@@ -129,3 +129,53 @@ def test_ip_block_on_fetch_returns_none_and_never_translates():
     assert blocked.translate_called is False
     assert _subtitle_rate_limiter.in_cooldown()
     _subtitle_rate_limiter.clear_cooldown()
+
+
+def test_ai_dubbed_video_picks_original_over_dub_track():
+    # YouTube AI-dubbed a French video into English: there's an ASR track per
+    # audio track, and the dub's is region-tagged ("en-US"). Listed first, it
+    # used to win — the original-audio "fr" track must be detected and fetched.
+    transcripts = [
+        _FakeTranscript("en-US", is_generated=True),
+        _FakeTranscript("fr", is_generated=True),
+    ]
+    result = _extract(transcripts, ["en", "fr", "en", "fr", "de"])
+    assert result["language_code"] == "fr"
+    assert result["transcript_language"] == "fr"
+    assert result["transcript_source"] == "auto"
+    assert result["subtitles"][0]["text"] == "text-fr"
+
+
+def test_title_language_breaks_a_tie_between_bare_tracks():
+    from merlin.knowledge_sources.plugins.youtube.extractors import (
+        _pick_original_language,
+    )
+
+    tracks = [
+        _FakeTranscript("en", is_generated=True),
+        _FakeTranscript("fr", is_generated=True),
+    ]
+    assert _pick_original_language(tracks, "Le CRA en MONOCOMPTE sur DOFUS") == "fr"
+    # No usable hint → keep the listed order.
+    assert _pick_original_language(tracks, "DOFUS 3.6") == "en"
+
+
+def test_manual_track_reports_its_provenance():
+    transcripts = [
+        _FakeTranscript("en", is_generated=False),
+        _FakeTranscript("fr", is_generated=True),
+    ]
+    result = _extract(transcripts, ["en", "fr"])
+    assert result["language_code"] == "fr"  # spoken language
+    assert result["transcript_language"] == "en"  # the text actually used
+    assert result["transcript_source"] == "manual"
+
+
+def test_guess_text_language():
+    from merlin.knowledge_sources.plugins.youtube.extractors import (
+        _guess_text_language,
+    )
+
+    assert _guess_text_language("Le CRA en MONOCOMPTE sur DOFUS") == "fr"
+    assert _guess_text_language("How to pick the best class for your first run") == "en"
+    assert _guess_text_language("DOFUS 3.6") is None

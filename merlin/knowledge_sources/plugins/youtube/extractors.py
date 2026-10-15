@@ -1,5 +1,6 @@
 from datetime import datetime
 from io import BytesIO
+import re
 from typing import Dict, List, Optional
 
 from PIL import Image
@@ -36,6 +37,64 @@ def _is_ip_block(error_msg: str) -> bool:
         or "requestblocked" in m
         or "ipblocked" in m
     )
+
+
+# A few very common function words per language — enough to tell which
+# language a video title/description is written in, without a dependency.
+_STOPWORDS = {
+    lang: set(words.split())
+    for lang, words in {
+        "en": "the and of to is in how why what with for you this your are my on it",
+        "fr": "le la les des du un une et est en sur pour avec dans pas que qui ce "
+        "mon je vous au aux de",
+        "de": "der die das und ist ein eine mit für nicht auf ich wie zu den dem",
+        "es": "el los las y es un una con para por que del como mi en de la",
+        "it": "il lo gli e è un una con per che del della come non di la",
+        "pt": "o os as e é um uma com para que do da como não em de no na",
+    }.items()
+}
+
+
+def _guess_text_language(text: str) -> str | None:
+    """Best-effort base language code of `text` from stop-word hits.
+
+    Returns None unless one language clearly leads (at least two hits and
+    strictly more than any other), so a short or mixed title never decides.
+    """
+    words = re.findall(r"[^\W\d_]+", (text or "").lower())
+    scores = sorted(
+        (sum(1 for w in words if w in stop), lang) for lang, stop in _STOPWORDS.items()
+    )
+    (runner_up, _), (best_score, best) = scores[-2], scores[-1]
+    if best_score >= 2 and best_score > runner_up:
+        return best
+    return None
+
+
+def _base_lang(code: str) -> str:
+    return code.split("-")[0].split("_")[0].lower()
+
+
+def _pick_original_language(tracks: list, hint_text: str = "") -> str | None:
+    """Choose the video's spoken language from its caption tracks.
+
+    The auto-generated (ASR) track carries the spoken language. A video that
+    YouTube has AI-dubbed has one ASR track *per audio track*, and the dub's is
+    region-tagged ("en-US") while the original's is a bare code ("fr") — so
+    prefer bare codes. If that still leaves several, the language the title /
+    description is written in breaks the tie. With no ASR track at all, the
+    first listed track (manual tracks come first) is the best guess.
+    """
+    generated = [t for t in tracks if t.is_generated]
+    if not generated:
+        return tracks[0].language_code if tracks else None
+    bare = [t for t in generated if "-" not in t.language_code]
+    candidates = bare or generated
+    if len(candidates) > 1:
+        guess = _guess_text_language(hint_text)
+        matching = [t for t in candidates if _base_lang(t.language_code) == guess]
+        candidates = matching or candidates
+    return candidates[0].language_code
 
 
 class CustomPyYouTube(pytube.YouTube):
@@ -150,11 +209,20 @@ class SubtitleExtractor:
     """Handles extraction and processing of video subtitles."""
 
     @staticmethod
-    def extract_subtitles(video_id: str, languages: List[str]) -> Optional[Dict]:
+    def extract_subtitles(
+        video_id: str, languages: List[str], hint_text: str = ""
+    ) -> Optional[Dict]:
         """Extract subtitles in specified languages.
 
+        `hint_text` (title + description) breaks ties when several
+        auto-generated tracks could be the original — see
+        `_pick_original_language`.
+
         Returns:
-            Dict with keys 'subtitles' (List[Dict]) and 'language_code' (str), or None if extraction fails.
+            Dict with keys 'subtitles' (List[Dict]), 'language_code' (str, the
+            spoken language), 'transcript_language' (code of the track fetched)
+            and 'transcript_source' ("manual" | "auto"), or None if extraction
+            fails.
         """
         start_time = datetime.now()
         logger.info(f"Extracting subtitles for video ID: {video_id}")
@@ -182,15 +250,9 @@ class SubtitleExtractor:
             # This is independent of the caller's preferred-language list, so a
             # French video that also ships English subtitles is still detected as
             # French instead of whichever language sits first in `languages`.
-            original_language = None
-            first_available = None
-            for transcript_item in transcript_list:
-                if first_available is None:
-                    first_available = transcript_item.language_code
-                if transcript_item.is_generated:
-                    original_language = transcript_item.language_code
-                    break
-            original_language = original_language or first_available
+            original_language = _pick_original_language(
+                list(transcript_list), hint_text
+            )
             if original_language:
                 logger.info(f"Detected original spoken language: {original_language}")
 
@@ -287,6 +349,8 @@ class SubtitleExtractor:
                 "language_code": original_language
                 or detected_language
                 or "en",  # Default to "en" if somehow None
+                "transcript_language": transcript.language_code,
+                "transcript_source": "auto" if transcript.is_generated else "manual",
             }
         except Exception as e:
             duration = (datetime.now() - start_time).total_seconds()
