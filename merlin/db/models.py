@@ -95,6 +95,12 @@ class KnowledgeItem(Base):
     item_topics = relationship(
         "ItemTopic", back_populates="knowledge_item", cascade="all, delete-orphan"
     )
+    youtube_comments = relationship(
+        "YouTubeComment",
+        back_populates="knowledge_item",
+        cascade="all, delete-orphan",
+        order_by="YouTubeComment.rank",
+    )
 
     __table_args__ = (
         Index("ix_knowledge_source", "source_type", "source_id", unique=True),
@@ -127,8 +133,37 @@ class YouTubeMetadata(Base):
     transcript_language = Column(String(20))  # subtitle track code, e.g. "fr"
     transcript_source = Column(String(10))  # manual | auto | audio
     summary_language = Column(String(30))  # language name, e.g. "french"
+    # When youtube_comments was last fetched (migration 015). NULL = never
+    # looked, which is how "no comments" is told apart from "not fetched yet".
+    comments_fetched_at = Column(DateTime)
 
     knowledge_item = relationship("KnowledgeItem", back_populates="youtube_metadata")
+
+
+class YouTubeComment(Base):
+    """One top-level comment on a video (migration 015). The set is replaced
+    whole on every fetch; `rank` is the display order (pinned, then likes)."""
+
+    __tablename__ = "youtube_comments"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    knowledge_item_id = Column(
+        String(36), ForeignKey("knowledge_items.id", ondelete="CASCADE"), nullable=False
+    )
+    rank = Column(Integer, nullable=False)
+    comment_id = Column(String(100))  # YouTube's id
+    author = Column(String(255))  # handle, e.g. "@someone"
+    text = Column(Text, nullable=False)
+    like_count = Column(Integer, nullable=False, default=0)
+    is_pinned = Column(Boolean, nullable=False, default=False)
+    is_uploader = Column(Boolean, nullable=False, default=False)  # the creator
+    posted_at = Column(DateTime)  # approximate — YouTube only says "2 years ago"
+
+    knowledge_item = relationship("KnowledgeItem", back_populates="youtube_comments")
+
+    __table_args__ = (
+        Index("ix_youtube_comments_item", "knowledge_item_id", "rank", unique=True),
+    )
 
 
 class BackgroundTask(Base):

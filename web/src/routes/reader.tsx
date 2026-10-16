@@ -54,6 +54,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Markdown } from "@/components/common/Markdown";
 import { TagInput } from "@/components/items/TagInput";
 import { Transcript } from "@/components/reader/Transcript";
+import { Comments } from "@/components/reader/Comments";
 // Lazy so the Vercel AI SDK loads only when a Reader chat is actually shown.
 const ItemChat = lazy(() =>
   import("@/components/chat/ItemChat").then((m) => ({ default: m.ItemChat })),
@@ -77,6 +78,7 @@ import { cn } from "@/lib/utils";
 import { LibraryPanel } from "@/components/library/LibraryPanel";
 
 const LENGTHS = ["short", "long"] as const;
+type ReaderTab = "summary" | "transcript" | "comments";
 
 export default function ReaderRoute() {
   const { id = "" } = useParams();
@@ -121,7 +123,7 @@ function Reader({
   const [titleDraft, setTitleDraft] = useState(item.title ?? "");
   const [confirmDel, setConfirmDel] = useState(false);
   const [lenOpen, setLenOpen] = useState(false);
-  const [tab, setTab] = useState<"summary" | "transcript">("summary");
+  const [tab, setTab] = useState<ReaderTab>("summary");
 
   const { prev, next } = useAdjacentItems(item.id);
   const prefetch = usePrefetchItem();
@@ -374,11 +376,11 @@ function Reader({
           )}
         </div>
 
-        {/* Tabs — summary (with chat) + transcript */}
+        {/* Tabs — summary (with chat) + transcript + top comments */}
         <div className="order-3 min-w-0 lg:order-none lg:col-start-1 lg:row-start-2">
           <Tabs
-            value={tab}
-            onValueChange={(v) => setTab(v as "summary" | "transcript")}
+            value={tab === "comments" && !isYouTube ? "summary" : tab}
+            onValueChange={(v) => setTab(v as ReaderTab)}
           >
             <div className="flex items-center justify-between gap-3">
               <TabsList>
@@ -386,6 +388,7 @@ function Reader({
                 <TabsTrigger value="transcript" disabled={!item.raw_content}>
                   Transcript
                 </TabsTrigger>
+                {isYouTube && <TabsTrigger value="comments">Comments</TabsTrigger>}
               </TabsList>
               {tab === "summary" && item.summary && (
                 <CopyButton text={item.summary} label="Copy" />
@@ -437,6 +440,19 @@ function Reader({
             <TabsContent value="transcript" className="pt-6">
               <Transcript text={item.raw_content ?? ""} />
             </TabsContent>
+
+            {isYouTube && (
+              <TabsContent value="comments" className="pt-6">
+                <Comments
+                  itemId={item.id}
+                  hasViewerSection={/^##\s*What Viewers Say/im.test(item.summary ?? "")}
+                  onResummarize={
+                    isFailed ? undefined : () => doResummarize(item.summary_length || "short")
+                  }
+                  resummarizing={resummarize.isPending || !!resumTask}
+                />
+              </TabsContent>
+            )}
           </Tabs>
         </div>
 

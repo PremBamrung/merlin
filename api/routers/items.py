@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query, Response
 
-from merlin.services import library, topics as topics_service
+from merlin.services import comments, library, topics as topics_service
 
 from ..errors import not_found
 from ..schemas import (
+    CommentsResponse,
     CountResponse,
     Item,
     ItemListResponse,
@@ -97,6 +98,24 @@ def clear_summary(item_id: str):
     if not library.clear_summary(item_id):
         raise not_found("Item not found.")
     return Response(status_code=204)
+
+
+@router.get("/items/{item_id}/comments", response_model=CommentsResponse)
+def list_comments(item_id: str):
+    result = comments.list_comments(item_id)
+    if result is None:
+        raise not_found("Item not found.")
+    return result
+
+
+@router.post("/items/{item_id}/comments/refresh", response_model=CommentsResponse)
+def refresh_comments(item_id: str):
+    # Synchronous: one top-level page is a single ~3-5 s yt-dlp call. A fetch
+    # that's off / cooled down / failed is a ValueError → 400 with the reason.
+    result = comments.refresh_comments(item_id)
+    if result is None:
+        raise not_found("Item not found.")
+    return result
 
 
 @router.post("/items/{item_id}/read", response_model=ListItem)

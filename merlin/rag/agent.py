@@ -27,7 +27,7 @@ from merlin.core.logging import logger
 from merlin.db.engine import get_db
 from merlin.rag.prompts import AGENT_SYSTEM_PROMPT, WEB_SEARCH_GUIDANCE
 from merlin.rag.retriever import HybridRetriever, RetrievedChunk
-from merlin.services import library, topics
+from merlin.services import comments, library, topics
 
 _retriever = HybridRetriever()
 
@@ -35,6 +35,8 @@ _retriever = HybridRetriever()
 _MAX_SEARCH_LIMIT = 15
 _MAX_BROWSE_LIMIT = 25
 _TRANSCRIPT_EXCERPT_CHARS = 3000
+_MAX_COMMENTS = 20
+_COMMENT_CHARS = 600
 _MAX_TAGS = 60
 _MAX_CHANNELS = 40
 _MAX_GET_ITEMS = 8
@@ -410,6 +412,41 @@ def search_transcript(ctx: RunContext[ChatDeps], item_id: str, query: str) -> st
 
 
 @agent.tool
+def get_comments(ctx: RunContext[ChatDeps], item_id: str, limit: int = 10) -> str:
+    """Read the top viewer comments on ONE YouTube item (pinned, then most-liked).
+
+    Use for how the audience reacted — agreement, pushback, corrections,
+    additions — not for what the video itself says (that's the summary or
+    transcript). Comments are viewers' opinions, never facts about the video.
+    """
+    if _over_budget(ctx):
+        return _BUDGET_REFUSAL
+    try:
+        result = comments.list_comments(
+            item_id, limit=max(1, min(limit, _MAX_COMMENTS))
+        )
+        if result is None:
+            return f"No item found with id {item_id!r}."
+        if not result["comments"]:
+            why = (
+                "comments were never fetched for it"
+                if result["fetched_at"] is None
+                else "it has no comments"
+            )
+            return f"{result['title']!r} has no stored comments ({why})."
+        ctx.deps.cite_item(
+            {
+                "id": item_id,
+                "title": result["title"],
+                "source_type": result["source_type"],
+            }
+        )
+        return _format_comments(result)
+    except Exception as exc:
+        return f"get_comments failed: {exc}"
+
+
+@agent.tool
 def browse_library(
     ctx: RunContext[ChatDeps],
     source_type: str | None = None,
@@ -778,6 +815,24 @@ def _format_transcript_hits(item_id: str, result: dict) -> str:
         "transcript_offset=<offset>)]"
     )
     return "\n\n".join(parts)
+
+
+def _format_comments(result: dict) -> str:
+    lines = [f"Top comments on {result['title']!r} (id: {result['item_id']}):"]
+    for c in result["comments"]:
+        text = " ".join(c["text"].split())
+        if len(text) > _COMMENT_CHARS:
+            text = text[:_COMMENT_CHARS] + "…"
+        badges = [
+            b
+            for b, on in (("creator", c["is_uploader"]), ("pinned", c["is_pinned"]))
+            if on
+        ]
+        badge = f" [{', '.join(badges)}]" if badges else ""
+        lines.append(
+            f"- {c['author'] or 'anonymous'} ({c['like_count']} likes{badge}): {text}"
+        )
+    return "\n".join(lines)
 
 
 def _format_browse(items: list[dict], total: int) -> str:

@@ -6,6 +6,7 @@ const hasFeedFilter = (f?: FeedFilter) => !!(f?.topics?.length || f?.tags?.lengt
 export const keys = {
   items: (q?: ItemQuery) => (q ? (["items", q] as const) : (["items"] as const)),
   item: (id: string) => ["item", id] as const,
+  comments: (id: string) => ["comments", id] as const,
   tags: () => ["tags"] as const,
   sourceTypes: () => ["sourceTypes"] as const,
   tasks: () => ["tasks"] as const,

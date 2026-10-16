@@ -31,6 +31,13 @@ os.environ["SQLITE_JOURNAL_MODE"] = "DELETE"
 # never hit the live Jina API (the project .env may set EMBEDDING_PROVIDER=jina).
 # Tests that exercise the Jina path monkeypatch the embedder explicitly.
 os.environ["EMBEDDING_PROVIDER"] = "none"
+# Comment fetching off, so ingest / re-summarise paths never reach YouTube.
+# Tests that exercise comments turn it back on via monkeypatch.
+os.environ["YOUTUBE_COMMENTS_LIMIT"] = "0"
+os.environ["YOUTUBE_COMMENTS_MIN_INTERVAL"] = "0"
+# Tests assume the code default provider, whatever the local .env picks (the
+# daily driver runs LiteLLM). LiteLLM tests opt in via monkeypatch.
+os.environ["LLM_PROVIDER"] = "openrouter"
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -68,6 +75,7 @@ def _clean_tables(_migrate_temp_db):
         # Children/related first; the FTS triggers keep knowledge_fts in sync.
         for table in (
             "background_tasks",
+            "youtube_comments",
             "youtube_metadata",
             "embeddings",
             "llm_usage",

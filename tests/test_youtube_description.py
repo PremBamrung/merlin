@@ -53,6 +53,7 @@ def _render(summarizer, length, description):
         title="T",
         channel="C",
         description_block=summarizer._build_description_block(description),
+        comments_block="",
     )
 
 

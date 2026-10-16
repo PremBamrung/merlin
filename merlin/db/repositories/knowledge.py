@@ -16,6 +16,7 @@ from merlin.db.models import (
     ItemTopic,
     KnowledgeItem,
     Topic,
+    YouTubeComment,
     YouTubeMetadata,
 )
 
@@ -371,6 +372,48 @@ class YouTubeMetadataRepository:
     @staticmethod
     def get_by_video_id(session: Session, video_id: str) -> YouTubeMetadata | None:
         return session.query(YouTubeMetadata).filter_by(video_id=video_id).first()
+
+
+class YouTubeCommentRepository:
+    """A video's top comments. Fetches replace the whole set, so the stored
+    order is always one fetch's ranking."""
+
+    @staticmethod
+    def list_for_item(session: Session, knowledge_item_id: str) -> list[YouTubeComment]:
+        return (
+            session.query(YouTubeComment)
+            .filter_by(knowledge_item_id=knowledge_item_id)
+            .order_by(YouTubeComment.rank)
+            .all()
+        )
+
+    @staticmethod
+    def replace(session: Session, knowledge_item_id: str, comments: list[dict]) -> None:
+        """Swap in a freshly fetched set (ranked in the given order) and stamp
+        `youtube_metadata.comments_fetched_at`. An empty list records "fetched,
+        none". The caller commits."""
+        session.query(YouTubeComment).filter_by(
+            knowledge_item_id=knowledge_item_id
+        ).delete(synchronize_session=False)
+        session.flush()  # free the (item, rank) slots before re-inserting
+        for rank, c in enumerate(comments):
+            session.add(
+                YouTubeComment(
+                    knowledge_item_id=knowledge_item_id,
+                    rank=rank,
+                    comment_id=c.get("comment_id"),
+                    author=c.get("author"),
+                    text=c["text"],
+                    like_count=c.get("like_count") or 0,
+                    is_pinned=bool(c.get("is_pinned")),
+                    is_uploader=bool(c.get("is_uploader")),
+                    posted_at=c.get("posted_at"),
+                )
+            )
+        meta = session.get(YouTubeMetadata, knowledge_item_id)
+        if meta is not None:
+            meta.comments_fetched_at = datetime.now(UTC)
+        session.flush()
 
 
 class EmbeddingRepository:

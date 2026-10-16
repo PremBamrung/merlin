@@ -80,7 +80,7 @@ Now produce the summary for the actual video below. Write the body in {lang}. Us
 Video titled "{title}" from the channel "{channel}"
 {description_block}
 Subtitles: {subtitles}
-
+{comments_block}
 # Answer (begin directly with "## Overview"; use the English headers "## Overview" and "## Main Key Points"; number the key points; do not number the headers themselves): """
 
         TEMPLATE_LONG = """Given the subtitles of a Youtube video, create a comprehensive, in-depth summary that includes:
@@ -177,12 +177,13 @@ Now produce the summary for the actual video below. Write the body in {lang}. Us
 Video titled "{title}" from the channel "{channel}"
 {description_block}
 Subtitles: {subtitles}
-
+{comments_block}
 # Answer (begin directly with "## Overview"; use English markdown headers ("## Overview", "## Main Topics", "## Key Points", ...) for the sections, with the Key Points as a numbered list; do not number the headers themselves): """
 
         # Raw template strings; formatted with str.format(**vars) at call time.
         # The placeholders ({subtitles}, {lang}, {title}, {channel},
-        # {description_block}) are the only braces in these templates.
+        # {description_block}, {comments_block}) are the only braces in these
+        # templates.
         self.templates = {
             "short": TEMPLATE_SHORT,
             "long": TEMPLATE_LONG,
@@ -213,6 +214,47 @@ Subtitles: {subtitles}
             f"ground truth):\n{text}\n"
         )
 
+    # Viewer comments are context, not content: a few hundred chars each and a
+    # small total keep them from crowding out the transcript.
+    _COMMENT_CHAR_CAP = 500
+    _COMMENTS_TOTAL_CHAR_CAP = 6000
+
+    def _build_comments_block(self, comments: list[dict] | None) -> str:
+        """Render the top viewer comments + the instruction to add a closing
+        "## What Viewers Say" section; empty string when there are none (the
+        summary then has no such section)."""
+        lines: list[str] = []
+        total = 0
+        for c in comments or []:
+            text = " ".join((c.get("text") or "").split())
+            if not text:
+                continue
+            if len(text) > self._COMMENT_CHAR_CAP:
+                text = text[: self._COMMENT_CHAR_CAP] + "…"
+            tags = []
+            if c.get("is_uploader"):
+                tags.append("creator")
+            if c.get("is_pinned"):
+                tags.append("pinned")
+            tag = f" [{', '.join(tags)}]" if tags else ""
+            line = f"- ({c.get('like_count') or 0} likes{tag}) {text}"
+            if total + len(line) > self._COMMENTS_TOTAL_CHAR_CAP:
+                break
+            lines.append(line)
+            total += len(line)
+        if not lines:
+            return ""
+        return (
+            "\nTop viewer comments (most-liked first):\n"
+            + "\n".join(lines)
+            + '\n\nAfter all other sections, end with a "## What Viewers Say" '
+            "section (header in English, body in the summary language): 2-4 "
+            "bullets on the main reactions - agreement, pushback, corrections, "
+            "or useful additions viewers raise. Attribute them to viewers, treat "
+            "them as opinions rather than facts, ignore jokes and spam, and "
+            "never let them change what the summary says the video claims.\n"
+        )
+
     @property
     def model(self):
         if self._model is None:
@@ -232,6 +274,10 @@ Subtitles: {subtitles}
         if summary_length == "short":
             if "## Main Key Points" in summary_text:
                 key_points_section = summary_text.split("## Main Key Points")[1]
+                # Stop at the next section (e.g. "## What Viewers Say").
+                key_points_section = re.split(r"\n## ", key_points_section, maxsplit=1)[
+                    0
+                ]
                 key_point_lines = [
                     line.strip()
                     for line in key_points_section.split("\n")
@@ -334,6 +380,7 @@ Subtitles: {subtitles}
         lang: str = "english",
         summary_length: str = "short",
         description: str | None = None,
+        comments: list[dict] | None = None,
     ) -> tuple[str, dict, dict]:
         """Generate a summary of the video content.
 
@@ -348,6 +395,7 @@ Subtitles: {subtitles}
             lang: Target language for the summary
             summary_length: "short" or "long"
             description: Optional video description for grounding context
+            comments: Optional top viewer comments; adds "What Viewers Say"
         """
         from pydantic_ai import Agent
 
@@ -370,6 +418,7 @@ Subtitles: {subtitles}
             title=title,
             channel=channel,
             description_block=self._build_description_block(description),
+            comments_block=self._build_comments_block(comments),
         )
 
         self.last_usage = None

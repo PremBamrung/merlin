@@ -91,6 +91,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/items/{item_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Comments */
+        get: operations["list_comments_api_items__item_id__comments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/items/{item_id}/comments/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Comments */
+        post: operations["refresh_comments_api_items__item_id__comments_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/items/{item_id}/read": {
         parameters: {
             query?: never;
@@ -910,6 +944,49 @@ export interface components {
         ClearFailedResponse: {
             /** Cleared */
             cleared: number;
+        };
+        /**
+         * Comment
+         * @description One top-level YouTube comment.
+         */
+        Comment: {
+            /** Comment Id */
+            comment_id?: string | null;
+            /** Author */
+            author?: string | null;
+            /** Text */
+            text: string;
+            /**
+             * Like Count
+             * @default 0
+             */
+            like_count: number;
+            /**
+             * Is Pinned
+             * @default false
+             */
+            is_pinned: boolean;
+            /**
+             * Is Uploader
+             * @default false
+             */
+            is_uploader: boolean;
+            /** Posted At */
+            posted_at?: string | null;
+        };
+        /**
+         * CommentsResponse
+         * @description An item's stored top comments, best first (pinned, then most-liked).
+         */
+        CommentsResponse: {
+            /** Item Id */
+            item_id: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Fetched At */
+            fetched_at?: string | null;
+            /** Comments */
+            comments?: components["schemas"]["Comment"][];
         };
         /** CountResponse */
         CountResponse: {
@@ -1926,6 +2003,68 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_comments_api_items__item_id__comments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_comments_api_items__item_id__comments_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentsResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

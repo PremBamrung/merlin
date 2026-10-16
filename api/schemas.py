@@ -257,6 +257,27 @@ class Item(ListItem):
     ingest_usage: IngestUsage | None = None
 
 
+class Comment(BaseModel):
+    """One top-level YouTube comment."""
+
+    comment_id: str | None = None
+    author: str | None = None
+    text: str
+    like_count: int = 0
+    is_pinned: bool = False
+    is_uploader: bool = False  # posted by the video's creator
+    posted_at: str | None = None  # approximate (YouTube says "2 years ago")
+
+
+class CommentsResponse(BaseModel):
+    """An item's stored top comments, best first (pinned, then most-liked)."""
+
+    item_id: str
+    enabled: bool  # False when YOUTUBE_COMMENTS_LIMIT=0
+    fetched_at: str | None = None  # null = never fetched
+    comments: list[Comment] = Field(default_factory=list)
+
+
 class ItemListResponse(BaseModel):
     items: list[ListItem]
     total: int

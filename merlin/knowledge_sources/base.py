@@ -75,6 +75,11 @@ class IngestResult:
     # Plugin-specific fields stored in the per-source metadata table
     source_metadata: dict[str, Any] = field(default_factory=dict)
 
+    # Top audience comments (dicts: author, text, like_count, is_pinned, …),
+    # best ranked first. None = not fetched (leave any stored set alone);
+    # [] = fetched, none.
+    comments: Optional[list[dict[str, Any]]] = None
+
 
 class KnowledgeSourcePlugin(ABC):
     """

@@ -69,6 +69,15 @@ export const deleteItem = (id: string) => client.delete<void>(`/api/items/${id}`
 export const clearSummary = (id: string) =>
   client.post<void>(`/api/items/${id}/clear-summary`);
 
+// --- Top YouTube comments ---------------------------------------------------
+export type Comment = components["schemas"]["Comment"];
+export type Comments = components["schemas"]["CommentsResponse"];
+
+export const getComments = (id: string) => client.get<Comments>(`/api/items/${id}/comments`);
+/** Re-fetch from YouTube (synchronous, a few seconds) and replace the stored set. */
+export const refreshComments = (id: string) =>
+  client.post<Comments>(`/api/items/${id}/comments/refresh`);
+
 // --- Feed: read / saved state ---------------------------------------------
 export const markRead = (id: string) => client.post<ListItem>(`/api/items/${id}/read`);
 export const markUnread = (id: string) =>

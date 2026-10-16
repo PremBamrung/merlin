@@ -155,6 +155,14 @@ class Settings(BaseSettings):
     # with transcript fetches and yt-dlp audio downloads (helps when YouTube
     # blocks this server). Empty = no cookies.
     youtube_cookies_file: str = ""
+    # Top-level YouTube comments kept per video (YouTube's "Top" order, then
+    # re-sorted by likes). Fetched best-effort at ingest; they ground a "What
+    # Viewers Say" summary section, the Reader's Comments tab and chat. 0 = off.
+    youtube_comments_limit: int = 20
+    # Minimum seconds between comment fetches across all ingest workers (a
+    # fetch is several watch-page calls), so a batch of ingests never bursts.
+    # Separate from the subtitle interval; the IP-block cooldown is shared.
+    youtube_comments_min_interval: float = 5.0
 
 
 settings = Settings()

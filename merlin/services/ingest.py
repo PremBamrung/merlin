@@ -18,11 +18,14 @@ from merlin.db.engine import SessionFactory
 from merlin.db.models import KnowledgeItem
 from merlin.db.repositories.knowledge import (
     KnowledgeItemRepository,
+    YouTubeCommentRepository,
     YouTubeMetadataRepository,
 )
 from merlin.db.repositories.tasks import BackgroundTaskRepository
+from merlin.knowledge_sources.plugins.youtube.comments import try_fetch_top_comments
 from merlin.knowledge_sources.plugins.youtube.extractors import VideoExtractor
 from merlin.knowledge_sources.registry import registry
+from merlin.services.comments import comment_dict
 
 # Supported summary lengths. "medium" was retired; legacy items may still have
 # it stored, so normalise any unsupported value back to "short".
@@ -45,6 +48,8 @@ def _missing_youtube_fields(meta) -> list[str]:
     if meta is None:
         return ["description"]
     checks = {"description": meta.description}
+    if settings.youtube_comments_limit > 0:
+        checks["comments"] = meta.comments_fetched_at
     return [k for k, v in checks.items() if v in (None, "")]
 
 
@@ -94,6 +99,8 @@ def persist_result(task_id: str, result) -> None:
             session.flush()
 
         YouTubeMetadataRepository.upsert(session, item.id, result.source_metadata)
+        if result.comments is not None:
+            YouTubeCommentRepository.replace(session, item.id, result.comments)
 
         BackgroundTaskRepository.set_completed(
             session, task_id, {"knowledge_item_id": item.id}, knowledge_item_id=item.id
@@ -276,6 +283,10 @@ def resummarize(
             detected = (meta.detected_language if meta else "") or ""
             video_id = meta.video_id if meta else None
             description = (meta.description if meta else None) or ""
+            comments = [
+                comment_dict(c)
+                for c in YouTubeCommentRepository.list_for_item(session, item_id)
+            ]
             missing = _missing_youtube_fields(meta)
             length = _normalize_summary_length(summary_length or item.summary_length)
             # Title is known up front here — surface it on the task row right away.
@@ -289,7 +300,7 @@ def resummarize(
         # no subtitle/audio re-download — and fill just the gaps. Degrade
         # gracefully: a failed fetch never blocks the re-summarise.
         healed: dict[str, str] = {}
-        if missing and video_id:
+        if "description" in missing and video_id:
             report(25, "Fetching missing video details…")
             try:
                 url = f"https://www.youtube.com/watch?v={video_id}"
@@ -305,6 +316,14 @@ def resummarize(
                 if value:
                     healed[field] = value
             description = healed.get("description") or description
+        # Comments are fetched once per item (stamped even when there are
+        # none), so this only runs for items that predate them.
+        fetched_comments = None
+        if "comments" in missing and video_id:
+            report(32, "Fetching top comments…")
+            fetched_comments = try_fetch_top_comments(video_id)
+            if fetched_comments is not None:
+                comments = fetched_comments
 
         report(40, "Generating summary…")
         plugin = registry.get("youtube")
@@ -324,6 +343,7 @@ def resummarize(
             user_languages=langs,
             summary_length=length,
             description=description,
+            comments=comments,
         )
         summ_usage = getattr(plugin.summarizer, "last_usage", None) or {}
         summary_lang = plugin.pick_summary_language(detected, langs)
@@ -346,6 +366,8 @@ def resummarize(
                 # Persist any fields filled by the self-heal fetch above.
                 for field, value in healed.items():
                     setattr(item.youtube_metadata, field, value)
+            if fetched_comments is not None:
+                YouTubeCommentRepository.replace(session, item_id, fetched_comments)
             BackgroundTaskRepository.set_completed(
                 session,
                 task_id,

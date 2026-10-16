@@ -21,7 +21,7 @@ from merlin.rag.model import (
     thinking_supported,
 )
 from merlin.rag.prompts import ITEM_CHAT_SYSTEM_PROMPT, format_item_context
-from merlin.services import library
+from merlin.services import comments, library
 
 # The browser's per-message timestamp part (web/src/hooks/useAgentChat.ts).
 MESSAGE_TIME_PART = "data-message-time"
@@ -122,11 +122,13 @@ def model_settings_from_filters(filters: dict | None) -> dict | None:
 def item_instructions(item_id: str) -> str:
     """Per-run instructions for single-item (Reader) chat.
 
-    Stuffs the item's metadata + summary + full transcript into the system
-    instructions, exactly as the previous sync path did. Raises ValueError if
-    the item doesn't exist (the route maps this to a 400).
+    Stuffs the item's metadata + summary + top comments + full transcript into
+    the system instructions. Raises ValueError if the item doesn't exist (the
+    route maps this to a 400).
     """
     item = library.get_item(item_id)
     if item is None:
         raise ValueError("Item not found.")
+    stored = comments.list_comments(item_id)
+    item["top_comments"] = stored["comments"] if stored else []
     return ITEM_CHAT_SYSTEM_PROMPT.format(context=format_item_context(item))

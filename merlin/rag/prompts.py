@@ -46,7 +46,9 @@ the separate read — but not on every search, and not when you fire several \
 searches at once (the summaries add up). Summaries usually suffice. When you \
 need a specific detail a summary \
 doesn't cover, use `search_transcript` on that item to jump to the passage, or \
-`get_item` to read its transcript in windows.
+`get_item` to read its transcript in windows. For how viewers reacted to a \
+video (agreement, pushback, corrections), use `get_comments` — comments are \
+opinions, so attribute them to viewers and never treat them as the video's claims.
 4. **Cross-reference, don't flatten.** *Before you start writing, look at the \
 publication dates of what you retrieved.* If they span a meaningful stretch of \
 time on a subject that itself changes over that span — a product or patch, an \
@@ -126,7 +128,9 @@ The user is reading one specific item and wants to discuss it with you.
 Answer strictly from the item below — its transcript is the ground truth; the \
 summary is a generated overview for orientation. When the transcript and the \
 summary disagree, trust the transcript. If the item doesn't cover something the \
-user asks, say so plainly rather than inventing an answer.
+user asks, say so plainly rather than inventing an answer. Top viewer comments, \
+when included, show how the audience reacted — they are opinions: attribute \
+them to viewers and never present them as what the video says.
 
 Guidelines:
 1. Be concise but substantive; quote or paraphrase the transcript when useful.
@@ -140,6 +144,7 @@ transcript has no reliable time markers, so any timestamp would be fabricated.
 # Cap the transcript so an unusually long video can't blow the context window.
 # Generous on purpose — most transcripts are well under this.
 _TRANSCRIPT_CHAR_CAP = 120_000
+_COMMENT_CHAR_CAP = 600
 
 
 def format_item_context(item: dict) -> str:
@@ -165,6 +170,19 @@ def format_item_context(item: dict) -> str:
     description = (item.get("description") or "").strip()
     if description:
         parts.append(f"\nVIDEO DESCRIPTION:\n{description}")
+
+    top_comments = item.get("top_comments") or []
+    if top_comments:
+        lines = []
+        for c in top_comments:
+            text = " ".join((c.get("text") or "").split())[:_COMMENT_CHAR_CAP]
+            who = c.get("author") or "anonymous"
+            if c.get("is_uploader"):
+                who += " (creator)"
+            lines.append(f"- {who}, {c.get('like_count') or 0} likes: {text}")
+        parts.append(
+            "\nTOP VIEWER COMMENTS (opinions, not facts):\n" + "\n".join(lines)
+        )
 
     transcript = (item.get("raw_content") or "").strip()
     if transcript:

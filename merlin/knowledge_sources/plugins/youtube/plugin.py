@@ -17,6 +17,7 @@ from merlin.knowledge_sources.base import (
     KnowledgeSourcePlugin,
 )
 from merlin.knowledge_sources.plugins.youtube.audio_transcriber import AudioTranscriber
+from merlin.knowledge_sources.plugins.youtube.comments import try_fetch_top_comments
 from merlin.knowledge_sources.plugins.youtube.extractors import (
     SubtitleExtractor,
     SubtitlesUnavailable,
@@ -185,6 +186,11 @@ class YouTubePlugin(KnowledgeSourcePlugin):
         video_info["video_id"] = video_id
         request.set_title(video_info.get("title", ""))
 
+        comments = None
+        if settings.youtube_comments_limit > 0:
+            request.report(18, "Fetching top comments…")
+            comments = try_fetch_top_comments(video_id)
+
         request.report(25, "Extracting subtitles…")
         # Title + the start of the description: which language the video is
         # presented in, used to tell the original audio from an AI dub.
@@ -256,6 +262,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             lang=summary_lang,
             summary_length=summary_length,
             description=video_info.get("description", ""),
+            comments=comments,
         )
         # Token counts + provider-reported cost from the call just made.
         summ_usage = self.summarizer.last_usage or {}
@@ -320,6 +327,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
                 "thumbnail_url": thumbnail_url,
                 "description": video_info.get("description", ""),
             },
+            comments=comments,
         )
 
     def resummarize(
@@ -331,13 +339,15 @@ class YouTubePlugin(KnowledgeSourcePlugin):
         user_languages: list[str],
         summary_length: str,
         description: str | None = None,
+        comments: list[dict] | None = None,
     ) -> tuple[str, dict, dict]:
         """Re-summarise an already-ingested video from its stored transcript.
 
         No subtitle/audio re-download — the transcript is already persisted, so
         this only re-runs the summariser (e.g. to change the summary length or
         language). `description` is the (possibly self-healed) video description
-        the caller wants to ground the summary with. Returns
+        the caller wants to ground the summary with; `comments` the stored top
+        comments (adds the "What Viewers Say" section). Returns
         (summary, sections, timestamps).
         """
         summary_lang = self.pick_summary_language(
@@ -350,6 +360,7 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             lang=summary_lang,
             summary_length=summary_length,
             description=description,
+            comments=comments,
         )
 
     # ------------------------------------------------------------------
