@@ -531,12 +531,24 @@ function streamingVerb(name: string): string {
   }
 }
 
-/** One reasoning step shown inside an expanded `WorkTrace`. */
+/** One reasoning step shown inside an expanded `WorkTrace`. Rendered as
+ * markdown: thought summaries arrive with `**Heading**` lines that read as raw
+ * asterisks in plain text. The overrides keep it small, muted and tight. */
 function ReasoningInline({ text }: { text: string }) {
   return (
-    <div className="flex gap-2 text-[12.5px] italic leading-relaxed text-fg-muted">
+    <div className="flex gap-2 text-fg-muted">
       <Brain className="mt-0.5 size-3.5 shrink-0 text-fg-subtle" />
-      <span className="whitespace-pre-wrap">{text}</span>
+      <Markdown
+        className={cn(
+          "min-w-0 text-[12.5px] leading-relaxed italic text-fg-muted",
+          "[&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5",
+          "[&_strong]:font-semibold [&_strong]:not-italic [&_strong]:text-fg-muted",
+          "[&_code]:text-[11.5px] [&_code]:not-italic",
+          "[&>:first-child]:mt-0 [&>:last-child]:mb-0",
+        )}
+      >
+        {text}
+      </Markdown>
     </div>
   );
 }
