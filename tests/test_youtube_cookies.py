@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
+import pytest
 import yt_dlp
 
 from merlin.config import settings
@@ -44,6 +45,14 @@ def test_transcript_client_carries_cookies(monkeypatch, tmp_path):
     assert session.cookies.get("SID", domain=".youtube.com") == "abc123"
 
 
+@pytest.fixture(autouse=True)
+def _no_retry_delay(monkeypatch):
+    """download_audio retries a 403 once after a pause — skip the wait here."""
+    from merlin.knowledge_sources.plugins.youtube import audio_transcriber
+
+    monkeypatch.setattr(audio_transcriber, "_DOWNLOAD_RETRY_DELAY_SECONDS", 0)
+
+
 class _Fake403YDL:
     """Stands in for yt_dlp.YoutubeDL: records options, then 403s."""
 
@@ -74,9 +83,7 @@ def test_download_403_explains_itself_and_uses_a_cookie_copy(monkeypatch, tmp_pa
     out = tmp_path / "out"
     out.mkdir()
     with patch.object(yt_dlp, "YoutubeDL", _Fake403YDL):
-        ok, msg = AudioTranscriber.download_audio(
-            "https://youtu.be/x", str(out)
-        )
+        ok, msg = AudioTranscriber.download_audio("https://youtu.be/x", str(out))
     assert ok is False
     assert "refused the audio download (HTTP 403)" in msg
     assert yt_dlp.version.__version__ in msg
@@ -91,9 +98,7 @@ def test_download_403_explains_itself_and_uses_a_cookie_copy(monkeypatch, tmp_pa
 def test_download_403_without_cookies_suggests_them(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "youtube_cookies_file", "")
     with patch.object(yt_dlp, "YoutubeDL", _Fake403YDL):
-        ok, msg = AudioTranscriber.download_audio(
-            "https://youtu.be/x", str(tmp_path)
-        )
+        ok, msg = AudioTranscriber.download_audio("https://youtu.be/x", str(tmp_path))
     assert ok is False
     assert "cookiefile" not in _Fake403YDL.seen
     assert "Setting YOUTUBE_COOKIES_FILE may help." in msg

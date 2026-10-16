@@ -168,7 +168,7 @@ def test_transcribe_video_uses_canonical_url_and_a_private_dir_it_removes():
         open(path, "wb").close()
         return path
 
-    def transcribe(path):
+    def transcribe(path, report=None):
         seen["transcribed"] = path
         assert os.path.exists(path)
         assert not os.path.exists(os.path.join(seen["dir"], "source.webm"))
@@ -289,3 +289,120 @@ def test_download_audio_single_pass_small_format(tmp_path):
     assert opts["format"].startswith("bestaudio[abr<=70]")
     assert opts["outtmpl"] == os.path.join(tmp_path, "source.%(ext)s")
     assert "postprocessors" not in opts  # re-encoding is ours, not yt-dlp's
+
+
+class _FlakyYDL:
+    """yt-dlp stand-in: the first `fail` extract_info calls 403, then succeed."""
+
+    fail = 1
+    calls = 0
+    out_dir = ""
+
+    def __init__(self, opts):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def extract_info(self, url, download=False):
+        import yt_dlp
+
+        type(self).calls += 1
+        if type(self).calls <= type(self).fail:
+            raise yt_dlp.utils.DownloadError(
+                "ERROR: unable to download video data: HTTP Error 403: Forbidden"
+            )
+        path = os.path.join(type(self).out_dir, "source.webm")
+        open(path, "wb").close()
+        return {"requested_downloads": [{"filepath": path}], "format_id": "249"}
+
+
+def _flaky(tmp_path, fail):
+    return type(
+        "Flaky", (_FlakyYDL,), {"fail": fail, "calls": 0, "out_dir": str(tmp_path)}
+    )
+
+
+def test_download_audio_retries_a_403_once(tmp_path, monkeypatch):
+    import yt_dlp
+
+    from merlin.knowledge_sources.plugins.youtube import audio_transcriber as mod
+
+    monkeypatch.setattr(mod, "_DOWNLOAD_RETRY_DELAY_SECONDS", 0)
+    ydl = _flaky(tmp_path, fail=1)
+    with patch.object(yt_dlp, "YoutubeDL", ydl):
+        ok, path = AudioTranscriber.download_audio("https://youtu.be/x", str(tmp_path))
+
+    assert ok and path == os.path.join(tmp_path, "source.webm")
+    assert ydl.calls == 2
+
+
+def test_download_audio_gives_up_after_a_second_403(tmp_path, monkeypatch):
+    import yt_dlp
+
+    from merlin.knowledge_sources.plugins.youtube import audio_transcriber as mod
+
+    monkeypatch.setattr(mod, "_DOWNLOAD_RETRY_DELAY_SECONDS", 0)
+    ydl = _flaky(tmp_path, fail=2)
+    with patch.object(yt_dlp, "YoutubeDL", ydl):
+        ok, msg = AudioTranscriber.download_audio("https://youtu.be/x", str(tmp_path))
+
+    assert not ok and "HTTP 403" in msg
+    assert ydl.calls == 2
+
+
+def test_download_audio_does_not_retry_other_errors(tmp_path):
+    import yt_dlp
+
+    class Broken(_FlakyYDL):
+        calls = 0
+
+        def extract_info(self, url, download=False):
+            type(self).calls += 1
+            raise yt_dlp.utils.DownloadError("ERROR: Video unavailable")
+
+    with patch.object(yt_dlp, "YoutubeDL", Broken):
+        ok, msg = AudioTranscriber.download_audio("https://youtu.be/x", str(tmp_path))
+
+    assert not ok and "Video unavailable" in msg
+    assert Broken.calls == 1
+
+
+def test_transcribe_video_reports_each_step():
+    reports = []
+
+    def download(url, out_dir):
+        path = os.path.join(out_dir, "source.webm")
+        open(path, "wb").close()
+        return True, path
+
+    def encode(src, out_dir):
+        path = os.path.join(out_dir, "speech.ogg")
+        open(path, "wb").close()
+        return path
+
+    def post(path):
+        return True, {"segments": [{"start": 0, "end": 1, "text": "hi"}]}, None
+
+    with (
+        patch.object(AudioTranscriber, "download_audio", side_effect=download),
+        patch.object(AudioTranscriber, "_to_speech_audio", side_effect=encode),
+        patch.object(AudioTranscriber, "_post_audio", side_effect=post),
+        patch(
+            "merlin.knowledge_sources.plugins.youtube.audio_transcriber.GROQ_API_KEY",
+            "k",
+        ),
+    ):
+        ok, *_ = AudioTranscriber.transcribe_video(
+            "a", report=lambda p, m: reports.append((p, m))
+        )
+
+    assert ok
+    assert reports == [
+        (36, "Downloading audio…"),
+        (40, "Re-encoding audio…"),
+        (42, "Transcribing audio…"),
+    ]

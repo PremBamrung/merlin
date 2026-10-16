@@ -6,7 +6,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-from typing import Dict, List, Optional
+import time
+from typing import Callable, Dict, List, Optional
 
 import groq
 import yt_dlp
@@ -29,6 +30,16 @@ _CHUNK_CONCURRENCY = 3
 # (139) instead of the ~130 kbps "bestaudio" — 2-3x less to download. It's
 # re-encoded below anyway, so the higher-bitrate tracks buy nothing.
 _AUDIO_FORMAT = "bestaudio[abr<=70]/bestaudio/best"
+# YouTube intermittently 403s a media download that works moments later
+# (a fresh extract gets fresh stream URLs), so a 403 is retried once after this.
+_DOWNLOAD_RETRY_DELAY_SECONDS = 5.0
+
+# Optional progress callback: (percent, message) — IngestRequest.report.
+Report = Callable[[int, str], None]
+
+
+def _noop_report(percent: int, message: str) -> None:
+    pass
 
 
 @cache
@@ -67,10 +78,7 @@ class AudioTranscriber:
         logger.info(f"Starting audio download for: {video_url}")
 
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(video_url, download=True)
-                downloads = info.get("requested_downloads") or [{}]
-                file_path = downloads[0].get("filepath") or ydl.prepare_filename(info)
+            info, file_path = AudioTranscriber._download_with_retry(video_url, ydl_opts)
 
             if not file_path or not os.path.exists(file_path):
                 error_msg = f"Downloaded file not found: {file_path}"
@@ -105,6 +113,31 @@ class AudioTranscriber:
         finally:
             if cookie_copy:
                 Path(cookie_copy).unlink(missing_ok=True)
+
+    @staticmethod
+    def _download_with_retry(video_url: str, ydl_opts: dict) -> tuple[dict, str]:
+        """One yt-dlp download; an HTTP 403 is retried once after a short pause.
+
+        Raises the last DownloadError when the retry fails too.
+        """
+        for attempt in (1, 2):
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(video_url, download=True)
+                    downloads = info.get("requested_downloads") or [{}]
+                    file_path = downloads[0].get("filepath") or ydl.prepare_filename(
+                        info
+                    )
+                return info, file_path
+            except yt_dlp.utils.DownloadError as e:
+                if attempt == 2 or "403" not in str(e):
+                    raise
+                logger.warning(
+                    f"YouTube refused the audio download (HTTP 403) — retrying in "
+                    f"{_DOWNLOAD_RETRY_DELAY_SECONDS:.0f}s: {video_url}"
+                )
+                time.sleep(_DOWNLOAD_RETRY_DELAY_SECONDS)
+        raise AssertionError("unreachable")
 
     @staticmethod
     def _to_speech_audio(source_path: str, out_dir: str) -> str:
@@ -230,6 +263,7 @@ class AudioTranscriber:
     @staticmethod
     def _transcribe_chunked(
         audio_file_path: str,
+        report: Report = _noop_report,
     ) -> tuple[bool, Optional[List[Dict]], Optional[str], Optional[str]]:
         """Split an oversized audio file, transcribe the chunks, and stitch.
 
@@ -252,6 +286,7 @@ class AudioTranscriber:
                 )
 
             logger.info(f"Transcribing {len(chunk_paths)} audio chunks")
+            report(42, f"Transcribing audio in {len(chunk_paths)} chunks…")
             with ThreadPoolExecutor(max_workers=_CHUNK_CONCURRENCY) as pool:
                 results = list(pool.map(AudioTranscriber._post_audio, chunk_paths))
 
@@ -295,6 +330,7 @@ class AudioTranscriber:
     @staticmethod
     def transcribe_audio(
         audio_file_path: str,
+        report: Report = _noop_report,
     ) -> tuple[bool, Optional[List[Dict]], Optional[str], Optional[str]]:
         """Transcribes audio file using Groq Whisper API with verbose_json format.
 
@@ -307,6 +343,7 @@ class AudioTranscriber:
 
         Args:
             audio_file_path (str): Path to the audio file to transcribe.
+            report: optional (percent, message) progress callback.
 
         Returns:
             tuple[bool, Optional[List[Dict]], Optional[str], Optional[str]]:
@@ -334,8 +371,9 @@ class AudioTranscriber:
                 f"Audio is {size_bytes / 1_048_576:.1f} MB (> "
                 f"{settings.groq_max_upload_mb} MB) — using chunked transcription"
             )
-            return AudioTranscriber._transcribe_chunked(audio_file_path)
+            return AudioTranscriber._transcribe_chunked(audio_file_path, report)
 
+        report(42, "Transcribing audio…")
         try:
             ok, result, error_msg = AudioTranscriber._post_audio(audio_file_path)
             if not ok:
@@ -361,6 +399,7 @@ class AudioTranscriber:
     @staticmethod
     def transcribe_video(
         video_id: str,
+        report: Optional[Report] = None,
     ) -> tuple[bool, Optional[List[Dict]], Optional[str], Optional[str]]:
         """Downloads a video's audio and transcribes it.
 
@@ -370,6 +409,8 @@ class AudioTranscriber:
         Args:
             video_id (str): The YouTube video id. The canonical watch URL is
                 built from it, dropping tracking/position params (`&pp=`, `&t=`).
+            report: optional (percent, message) progress callback — the
+                download / re-encode / transcribe steps report at 36–42%.
 
         Returns:
             tuple[bool, Optional[List[Dict]], Optional[str], Optional[str]]:
@@ -377,15 +418,18 @@ class AudioTranscriber:
                 subtitles_list format: [{"start": float, "duration": float, "text": str}]
                 language: Whisper-detected language (raw, e.g. "english"/"fr"), or None.
         """
+        report = report or _noop_report
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         work_dir = tempfile.mkdtemp(prefix=f"yt_audio_{video_id}_")
         logger.info(f"Starting video transcription for: {video_url}")
 
         try:
+            report(36, "Downloading audio…")
             success, result = AudioTranscriber.download_audio(video_url, work_dir)
             if not success:
                 return False, None, result, None  # result contains error message
 
+            report(40, "Re-encoding audio…")
             try:
                 speech_path = AudioTranscriber._to_speech_audio(result, work_dir)
             except subprocess.CalledProcessError as e:
@@ -399,6 +443,6 @@ class AudioTranscriber:
                 f"({os.path.getsize(speech_path) / 1_048_576:.1f} MB)"
             )
 
-            return AudioTranscriber.transcribe_audio(speech_path)
+            return AudioTranscriber.transcribe_audio(speech_path, report)
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)

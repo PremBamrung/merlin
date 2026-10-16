@@ -19,9 +19,33 @@ from merlin.knowledge_sources.base import (
 from merlin.knowledge_sources.plugins.youtube.audio_transcriber import AudioTranscriber
 from merlin.knowledge_sources.plugins.youtube.extractors import (
     SubtitleExtractor,
+    SubtitlesUnavailable,
     VideoExtractor,
 )
 from merlin.knowledge_sources.plugins.youtube.summarizer import VideoSummarizer
+
+
+def _fallback_reason(e: SubtitlesUnavailable) -> str:
+    """Why we're transcribing audio — the start of the progress message."""
+    if e.kind == "cooldown":
+        return f"YouTube is blocking subtitles (paused, {e.detail})"
+    if e.kind == "blocked":
+        return "YouTube blocked the subtitle request"
+    if e.kind == "none":
+        return "This video has no subtitles"
+    if e.detail:
+        return f"Couldn't fetch subtitles ({e.detail})"
+    return "Couldn't fetch subtitles"
+
+
+def _fallback_failure(e: SubtitlesUnavailable) -> str:
+    """Short why-no-subtitles — prefixes the fallback's steps and its error."""
+    if e.kind in ("cooldown", "blocked"):
+        return "Subtitles blocked by YouTube"
+    if e.kind == "none":
+        return "No subtitles on this video"
+    return "Couldn't fetch subtitles"
+
 
 # Language code → full name mapping (used for summary language selection)
 LANGUAGE_MAP = {
@@ -168,11 +192,15 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             f"{video_info.get('title', '')}\n"
             f"{(video_info.get('description') or '')[:500]}"
         )
-        subtitle_result = self._subtitle_extractor.extract_subtitles(
-            video_id,
-            user_languages + ["en", "fr", "de"],
-            hint_text=hint_text,
-        )
+        unavailable: SubtitlesUnavailable | None = None
+        try:
+            subtitle_result = self._subtitle_extractor.extract_subtitles(
+                video_id,
+                user_languages + ["en", "fr", "de"],
+                hint_text=hint_text,
+            )
+        except SubtitlesUnavailable as e:
+            subtitle_result, unavailable = None, e
 
         # Audio seconds billed by Groq — only set when the transcription
         # fallback runs (subtitles are free); drives the transcribe cost row.
@@ -184,17 +212,24 @@ class YouTubePlugin(KnowledgeSourcePlugin):
             transcript_source = subtitle_result.get("transcript_source")
             raw_text = self._subtitle_extractor.extract_text(subtitles)
         else:
-            request.report(
-                35, "No subtitles found — downloading audio for transcription…"
-            )
+            unavailable = unavailable or SubtitlesUnavailable("none")
+            reason = _fallback_reason(unavailable)
+            request.report(35, f"{reason} — transcribing the audio instead…")
             logger.warning(
-                f"No subtitles for {video_id}, falling back to audio transcription"
+                f"No subtitles for {video_id} ({unavailable}), falling back to "
+                f"audio transcription"
             )
+            # Keep the reason on screen through the fallback's own steps.
+            why = _fallback_failure(unavailable)
+
+            def fallback_report(percent: int, message: str) -> None:
+                request.report(percent, f"{why} · {message}")
+
             success, fallback_subtitles, error_msg, audio_language = (
-                AudioTranscriber.transcribe_video(video_id)
+                AudioTranscriber.transcribe_video(video_id, report=fallback_report)
             )
             if not success or not fallback_subtitles:
-                raise ValueError(f"Failed to get subtitles or transcript: {error_msg}")
+                raise ValueError(f"{why}, and the audio fallback failed: {error_msg}")
             subtitles = fallback_subtitles
             # Whisper auto-detects the spoken language — use it instead of
             # assuming English, so a French video summarises as French.

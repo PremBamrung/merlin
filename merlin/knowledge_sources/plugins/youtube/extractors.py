@@ -9,7 +9,13 @@ import pytube
 from pytube import Channel
 from pytube.innertube import InnerTube
 import requests
-from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api import (
+    IpBlocked,
+    NoTranscriptFound,
+    RequestBlocked,
+    TranscriptsDisabled,
+    YouTubeTranscriptApi,
+)
 
 from merlin.config import settings
 from merlin.core.logging import logger
@@ -51,6 +57,23 @@ _subtitle_rate_limiter = MinIntervalRateLimiter(
 )
 
 
+class SubtitlesUnavailable(Exception):
+    """Why `extract_subtitles` produced no transcript (→ audio fallback).
+
+    `kind` is one of:
+      - "cooldown": a recent IP block paused subtitle fetching; YouTube wasn't
+        contacted. `detail` says how long the pause has left.
+      - "blocked":  YouTube rate-limited / IP-blocked this request.
+      - "none":     the video has no usable subtitle track.
+      - "error":    anything else (network, parsing, …).
+    """
+
+    def __init__(self, kind: str, detail: str = ""):
+        super().__init__(f"{kind}: {detail}" if detail else kind)
+        self.kind = kind
+        self.detail = detail
+
+
 def _cooldown_skip_message() -> str:
     remaining = _subtitle_rate_limiter.cooldown_remaining()
     return (
@@ -59,9 +82,17 @@ def _cooldown_skip_message() -> str:
     )
 
 
-def _is_ip_block(error_msg: str) -> bool:
-    """Heuristically detect a YouTube rate-limit / IP-block error message."""
-    m = error_msg.lower()
+def _cooldown_unavailable() -> SubtitlesUnavailable:
+    logger.warning(_cooldown_skip_message())
+    remaining = _subtitle_rate_limiter.cooldown_remaining()
+    return SubtitlesUnavailable("cooldown", f"{max(1, round(remaining / 60))} min left")
+
+
+def _is_ip_block(error: Exception | str) -> bool:
+    """Detect a YouTube rate-limit / IP-block error (by type, else by message)."""
+    if isinstance(error, (IpBlocked, RequestBlocked)):
+        return True
+    m = str(error).lower()
     return (
         "429" in m
         or "too many requests" in m
@@ -69,6 +100,13 @@ def _is_ip_block(error_msg: str) -> bool:
         or "requestblocked" in m
         or "ipblocked" in m
     )
+
+
+def _short_error(e: Exception, limit: int = 120) -> str:
+    """First line of an exception, clipped — fit for a progress message."""
+    lines = str(e).strip().splitlines()
+    text = lines[0] if lines else type(e).__name__
+    return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 # A few very common function words per language — enough to tell which
@@ -269,8 +307,11 @@ class SubtitleExtractor:
         Returns:
             Dict with keys 'subtitles' (List[Dict]), 'language_code' (str, the
             spoken language), 'transcript_language' (code of the track fetched)
-            and 'transcript_source' ("manual" | "auto"), or None if extraction
-            fails.
+            and 'transcript_source' ("manual" | "auto").
+
+        Raises:
+            SubtitlesUnavailable: no transcript — `kind` says why (cooldown,
+                blocked, none, error); the caller falls back to audio.
         """
         start_time = datetime.now()
         logger.info(f"Extracting subtitles for video ID: {video_id}")
@@ -279,16 +320,14 @@ class SubtitleExtractor:
         # If a recent IP block tripped the cooldown, don't touch YouTube at all —
         # skip straight to audio transcription so the IP can recover.
         if _subtitle_rate_limiter.in_cooldown():
-            logger.warning(_cooldown_skip_message())
-            return None
+            raise _cooldown_unavailable()
 
         try:
             ytt_api = YouTubeTranscriptApi(http_client=transcript_http_client())
             _subtitle_rate_limiter.wait()
             # Another worker may have hit a block while we waited for our slot.
             if _subtitle_rate_limiter.in_cooldown():
-                logger.warning(_cooldown_skip_message())
-                return None
+                raise _cooldown_unavailable()
             transcript_list = ytt_api.list(video_id)
             transcript = None
             detected_language = None
@@ -350,7 +389,7 @@ class SubtitleExtractor:
 
             if transcript is None:
                 logger.error("No subtitles found (neither manual nor auto-generated)")
-                return None
+                raise SubtitlesUnavailable("none")
 
             # Fetch the chosen transcript in its original language. We never ask
             # YouTube to translate: the summariser reads the original-language
@@ -365,8 +404,7 @@ class SubtitleExtractor:
             # Listing can succeed while the caption fetch is blocked; if another
             # worker's fetch already tripped the cooldown, don't add one more.
             if _subtitle_rate_limiter.in_cooldown():
-                logger.warning(_cooldown_skip_message())
-                return None
+                raise _cooldown_unavailable()
             result = transcript.fetch()
             kind = "auto-generated" if transcript.is_generated else "manual"
             logger.info(
@@ -405,19 +443,24 @@ class SubtitleExtractor:
                 "transcript_language": transcript.language_code,
                 "transcript_source": "auto" if transcript.is_generated else "manual",
             }
+        except SubtitlesUnavailable:
+            raise
         except Exception as e:
             duration = (datetime.now() - start_time).total_seconds()
             logger.error(f"Failed to extract subtitles after {duration:.2f}s: {str(e)}")
             # On a hard rate-limit / IP block, pause subtitle fetching process-wide
             # so subsequent ingests fall back to audio instead of piling on.
-            if _is_ip_block(str(e)):
+            if _is_ip_block(e):
                 cooldown = _subtitle_rate_limiter.trip_cooldown()
                 if cooldown > 0:
                     logger.warning(
                         f"YouTube IP block detected — pausing subtitle fetching for "
                         f"{cooldown / 60:.0f} min; using audio transcription meanwhile"
                     )
-            return None
+                raise SubtitlesUnavailable("blocked") from e
+            if isinstance(e, (TranscriptsDisabled, NoTranscriptFound)):
+                raise SubtitlesUnavailable("none") from e
+            raise SubtitlesUnavailable("error", _short_error(e)) from e
 
     @staticmethod
     def extract_text(subtitles: List[Dict]) -> str:

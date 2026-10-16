@@ -10,7 +10,10 @@ from unittest.mock import patch
 
 import pytest
 
-from merlin.knowledge_sources.plugins.youtube.extractors import SubtitleExtractor
+from merlin.knowledge_sources.plugins.youtube.extractors import (
+    SubtitleExtractor,
+    SubtitlesUnavailable,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -132,11 +135,12 @@ def test_falls_back_to_first_available_when_no_generated():
     assert result["language_code"] == "fr"
 
 
-def test_ip_block_on_fetch_returns_none_and_never_translates():
+def test_ip_block_on_fetch_raises_blocked_and_never_translates():
     # The chosen transcript's fetch() hits a YouTube IP block. We must NOT try
     # to translate (which would only pile more requests on the blocked IP) —
-    # extract_subtitles returns None (→ caller falls back to audio) and the
-    # cooldown is tripped so subsequent ingests skip subtitles.
+    # extract_subtitles raises SubtitlesUnavailable("blocked") (→ caller falls
+    # back to audio, saying why) and the cooldown is tripped so subsequent
+    # ingests skip subtitles.
     from merlin.knowledge_sources.plugins.youtube.extractors import (
         _subtitle_rate_limiter,
     )
@@ -144,9 +148,10 @@ def test_ip_block_on_fetch_returns_none_and_never_translates():
     ip_block = Exception("YouTube is blocking requests from your IP (RequestBlocked)")
     blocked = _FakeTranscript("fr", is_generated=True, fetch_error=ip_block)
 
-    result = _extract([blocked], ["en", "fr"])
+    with pytest.raises(SubtitlesUnavailable) as exc:
+        _extract([blocked], ["en", "fr"])
 
-    assert result is None
+    assert exc.value.kind == "blocked"
     assert blocked.translate_called is False
     assert _subtitle_rate_limiter.in_cooldown()
     _subtitle_rate_limiter.clear_cooldown()
@@ -269,11 +274,123 @@ def test_cooldown_tripped_while_waiting_skips_the_fetch():
             ),
             patch.object(_subtitle_rate_limiter, "wait", side_effect=wait),
         ):
-            result = SubtitleExtractor.extract_subtitles("vid", ["en"])
+            with pytest.raises(SubtitlesUnavailable) as exc:
+                SubtitleExtractor.extract_subtitles("vid", ["en"])
     finally:
         cooled = _subtitle_rate_limiter.in_cooldown()
         _subtitle_rate_limiter.clear_cooldown()
 
-    assert result is None
+    assert exc.value.kind == "cooldown"
     assert fetched == []
     assert cooled
+
+
+def test_active_cooldown_raises_without_contacting_youtube():
+    from merlin.knowledge_sources.plugins.youtube.extractors import (
+        _subtitle_rate_limiter,
+    )
+
+    _subtitle_rate_limiter.clear_cooldown()
+    _subtitle_rate_limiter.trip_cooldown()
+    try:
+        with patch(
+            "merlin.knowledge_sources.plugins.youtube.extractors.YouTubeTranscriptApi"
+        ) as api:
+            with pytest.raises(SubtitlesUnavailable) as exc:
+                SubtitleExtractor.extract_subtitles("vid", ["en"])
+    finally:
+        _subtitle_rate_limiter.clear_cooldown()
+
+    assert exc.value.kind == "cooldown"
+    assert exc.value.detail.endswith("min left")
+    api.assert_not_called()
+
+
+def test_no_transcript_at_all_raises_none():
+    with pytest.raises(SubtitlesUnavailable) as exc:
+        _extract([], ["en"])
+    assert exc.value.kind == "none"
+
+
+def test_typed_ip_block_from_list_raises_blocked():
+    # The library's own IpBlocked (no "429"/"blocking" wording needed).
+    from youtube_transcript_api import IpBlocked
+
+    from merlin.knowledge_sources.plugins.youtube.extractors import (
+        _subtitle_rate_limiter,
+    )
+
+    _subtitle_rate_limiter.clear_cooldown()
+
+    def boom(self, vid):
+        raise IpBlocked(vid)
+
+    fake_api = type("Api", (), {"list": boom})()
+    try:
+        with (
+            patch(
+                "merlin.knowledge_sources.plugins.youtube.extractors.YouTubeTranscriptApi",
+                return_value=fake_api,
+            ),
+            patch.object(_subtitle_rate_limiter, "wait"),
+        ):
+            with pytest.raises(SubtitlesUnavailable) as exc:
+                SubtitleExtractor.extract_subtitles("vid", ["en"])
+        cooled = _subtitle_rate_limiter.in_cooldown()
+    finally:
+        _subtitle_rate_limiter.clear_cooldown()
+
+    assert exc.value.kind == "blocked"
+    assert cooled
+
+
+def test_transcripts_disabled_raises_none_without_cooldown():
+    from youtube_transcript_api import TranscriptsDisabled
+
+    from merlin.knowledge_sources.plugins.youtube.extractors import (
+        _subtitle_rate_limiter,
+    )
+
+    _subtitle_rate_limiter.clear_cooldown()
+
+    def boom(self, vid):
+        raise TranscriptsDisabled(vid)
+
+    fake_api = type("Api", (), {"list": boom})()
+    with (
+        patch(
+            "merlin.knowledge_sources.plugins.youtube.extractors.YouTubeTranscriptApi",
+            return_value=fake_api,
+        ),
+        patch.object(_subtitle_rate_limiter, "wait"),
+    ):
+        with pytest.raises(SubtitlesUnavailable) as exc:
+            SubtitleExtractor.extract_subtitles("vid", ["en"])
+
+    assert exc.value.kind == "none"
+    assert not _subtitle_rate_limiter.in_cooldown()
+
+
+def test_other_error_raises_error_with_short_detail():
+    from merlin.knowledge_sources.plugins.youtube.extractors import (
+        _subtitle_rate_limiter,
+    )
+
+    _subtitle_rate_limiter.clear_cooldown()
+
+    def boom(self, vid):
+        raise ConnectionError("connection reset by peer\nlong traceback text")
+
+    fake_api = type("Api", (), {"list": boom})()
+    with (
+        patch(
+            "merlin.knowledge_sources.plugins.youtube.extractors.YouTubeTranscriptApi",
+            return_value=fake_api,
+        ),
+        patch.object(_subtitle_rate_limiter, "wait"),
+    ):
+        with pytest.raises(SubtitlesUnavailable) as exc:
+            SubtitleExtractor.extract_subtitles("vid", ["en"])
+
+    assert exc.value.kind == "error"
+    assert exc.value.detail == "connection reset by peer"
