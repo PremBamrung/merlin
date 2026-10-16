@@ -5,10 +5,24 @@ Returns plain dicts (not ORM objects), so the UI never touches a live session
 or a detached instance. Serialization is done while the session is open.
 """
 
+from datetime import datetime
 import json
+import re
 
 from merlin.db.engine import SessionFactory
 from merlin.db.repositories.knowledge import KnowledgeItemRepository
+
+
+def normalize_tags(tags: list[str]) -> list[str]:
+    """Lowercase, strip and dedupe tags, keeping first-seen order — the one
+    stored form, so ``OLED`` and ``oled`` can't become separate tags."""
+    out: list[str] = []
+    for tag in tags:
+        if isinstance(tag, str):
+            t = tag.strip().lower()
+            if t and t not in out:
+                out.append(t)
+    return out
 
 
 def _topics_from_relationship(item) -> list[dict]:
@@ -90,6 +104,8 @@ def list_items(
     sort: str = "newest",
     search_transcripts: bool = False,
     channel: str | None = None,
+    published_after: datetime | None = None,
+    published_before: datetime | None = None,
 ) -> dict:
     from merlin.db.repositories.topics import TopicRepository
 
@@ -99,7 +115,7 @@ def list_items(
             source_type=source_type,
             status=status,
             search=search,
-            tags=tags,
+            tags=normalize_tags(tags) if tags else None,
             topics=topics,
             read=read,
             saved=saved,
@@ -108,6 +124,8 @@ def list_items(
             sort=sort,
             search_transcripts=search_transcripts,
             channel=channel,
+            published_after=published_after,
+            published_before=published_before,
         )
         # Batch-load topic assignments for the page (avoids N+1 per card).
         assignments = TopicRepository.assignments_for_items(
@@ -166,7 +184,7 @@ def update_item(
 ) -> dict | None:
     updates = {}
     if tags is not None:
-        updates["tags"] = json.dumps(tags)
+        updates["tags"] = json.dumps(normalize_tags(tags))
     if title is not None:
         updates["title"] = title
     if not updates:
@@ -178,6 +196,63 @@ def update_item(
         result = serialize_item(item)
         session.commit()
         return result
+
+
+_TERM_RE = re.compile(r"\w{3,}", re.UNICODE)
+
+
+def search_transcript(
+    item_id: str, query: str, max_hits: int = 4, window: int = 1200
+) -> dict | None:
+    """The transcript passages of one item that best match ``query``.
+
+    Plain term matching (no index): every occurrence of a query term (3+ chars,
+    case-insensitive) anchors a candidate window centred on it; a window scores
+    by how many *distinct* terms it contains, then by total hits. The top
+    ``max_hits`` non-overlapping windows come back in transcript order, each
+    with its char offset (usable as ``get_item``'s transcript offset).
+
+    Returns None when the item doesn't exist, else
+    ``{"title", "source_type", "length", "hits": [{"offset", "text"}]}``.
+    """
+    item = get_item(item_id)
+    if item is None:
+        return None
+    transcript = (item.get("raw_content") or "").strip()
+    out = {
+        "title": item.get("title") or "Untitled",
+        "source_type": item.get("source_type") or "",
+        "length": len(transcript),
+    }
+    terms = list(dict.fromkeys(t.lower() for t in _TERM_RE.findall(query or "")))
+    if not transcript or not terms:
+        return {**out, "hits": []}
+
+    lower = transcript.lower()
+    positions = sorted(
+        m.start() for t in terms for m in re.finditer(re.escape(t), lower)
+    )
+    half = window // 2
+    scored = []
+    for pos in positions:
+        start = max(0, min(pos - half, len(transcript) - window))
+        text = lower[start : start + window]
+        distinct = sum(1 for t in terms if t in text)
+        total = sum(text.count(t) for t in terms)
+        scored.append((distinct, total, start))
+    scored.sort(key=lambda s: (-s[0], -s[1], s[2]))
+
+    picked: list[int] = []
+    for _, _, start in scored:
+        if all(abs(start - p) >= window for p in picked):
+            picked.append(start)
+            if len(picked) >= max_hits:
+                break
+    hits = [
+        {"offset": start, "text": transcript[start : start + window]}
+        for start in sorted(picked)
+    ]
+    return {**out, "hits": hits}
 
 
 def delete_item(item_id: str) -> bool:

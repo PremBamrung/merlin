@@ -23,7 +23,7 @@ The vector and rerank arms are **inert without a provider**: when the embedder i
 skipped, so `retrieve()` returns exactly the historical FTS5 ranking.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import math
 import re
@@ -67,6 +67,7 @@ class RetrievedChunk:
     excerpt: str  # relevant excerpt (snippet) from the matched column
     score: float = 1.0
     published_at: str | None = None  # YYYY-MM-DD, when known
+    tags: list[str] = field(default_factory=list)
 
 
 def _ymd(value) -> str | None:
@@ -75,6 +76,39 @@ def _ymd(value) -> str | None:
         return None
     s = value.isoformat() if hasattr(value, "isoformat") else str(value)
     return s[:10]
+
+
+def _parse_tags(raw: str | None) -> list[str]:
+    """The item's JSON-text tags as a list ([] when absent/malformed)."""
+    try:
+        tags = json.loads(raw) if raw else []
+    except (ValueError, TypeError):
+        return []
+    return [t for t in tags if isinstance(t, str)] if isinstance(tags, list) else []
+
+
+def _date_clause(after: str | None, before: str | None, params: dict) -> str:
+    """SQL bounding ``ki.published_at`` to [after, before] (inclusive, by
+    calendar day; YYYY-MM-DD strings). Undated items fall out when either bound
+    is set. Adds the bound values to ``params``."""
+    clause = ""
+    if after:
+        clause += " AND date(ki.published_at) >= :after"
+        params["after"] = after
+    if before:
+        clause += " AND date(ki.published_at) <= :before"
+        params["before"] = before
+    return clause
+
+
+def _outside_dates(published: str | None, after: str | None, before: str | None):
+    """True when a YYYY-MM-DD ``published`` date falls outside [after, before]
+    — the vector arm's post-hoc counterpart of `_date_clause`."""
+    if not after and not before:
+        return False
+    if not published:
+        return True
+    return bool((after and published < after) or (before and published > before))
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -115,8 +149,13 @@ class HybridRetriever:
         source_types: list[str] | None = None,
         tag_filters: list[str] | None = None,
         top_k: int = 5,
+        *,
+        after: str | None = None,
+        before: str | None = None,
     ) -> list[RetrievedChunk]:
-        hits = self.search(session, query, source_types, tag_filters, top_k)
+        hits = self.search(
+            session, query, source_types, tag_filters, top_k, after=after, before=before
+        )
         return [chunk for chunk, _ in hits]
 
     def search(
@@ -126,15 +165,23 @@ class HybridRetriever:
         source_types: list[str] | None = None,
         tag_filters: list[str] | None = None,
         top_k: int = 5,
+        *,
+        after: str | None = None,
+        before: str | None = None,
     ) -> list[tuple[RetrievedChunk, str]]:
         """`retrieve()`, plus which arm found each hit: ``"fts"`` (keyword),
         ``"vector"`` (meaning) or ``"both"`` — for search UIs that say why a
-        result matched."""
+        result matched. ``after``/``before`` (YYYY-MM-DD, inclusive) bound the
+        publication date in both arms."""
         top_k = max(1, top_k)
         # Each arm contributes a pool of candidates; fuse, rerank, then trim.
         pool = max(top_k, _RERANK_POOL)
-        fts_hits = self._fts(session, query, source_types, tag_filters, pool)
-        vec_hits = self._vector(session, query, source_types, tag_filters, pool)
+        fts_hits = self._fts(
+            session, query, source_types, tag_filters, pool, after, before
+        )
+        vec_hits = self._vector(
+            session, query, source_types, tag_filters, pool, after, before
+        )
         lexical = {c.knowledge_item_id for c in fts_hits}
         semantic = {c.knowledge_item_id for c in vec_hits}
         fused = self._rrf(fts_hits, vec_hits, top_k=_RERANK_POOL)
@@ -155,6 +202,8 @@ class HybridRetriever:
         source_types: list[str] | None,
         tag_filters: list[str] | None,
         limit: int,
+        after: str | None = None,
+        before: str | None = None,
     ) -> list[RetrievedChunk]:
         fts_query = self._build_fts_query(query)
         if not fts_query:
@@ -177,6 +226,7 @@ class HybridRetriever:
             source_clause = f"AND ki.source_type IN ({placeholders})"
             for i, st in enumerate(source_types):
                 params[f"st{i}"] = st
+        date_clause = _date_clause(after, before, params)
 
         # colnum -1 → snippet() auto-picks the first column with a match, so a
         # transcript hit yields a transcript excerpt, a title hit a title one.
@@ -190,7 +240,7 @@ class HybridRetriever:
             JOIN knowledge_fts fts ON ki.rowid = fts.rowid
             WHERE knowledge_fts MATCH :q
               AND ki.status = 'completed'
-              {source_clause}
+              {source_clause}{date_clause}
             ORDER BY score
             LIMIT :limit
             """
@@ -229,6 +279,7 @@ class HybridRetriever:
                     excerpt=excerpt,
                     score=round(-float(score), 4),
                     published_at=_ymd(published_at),
+                    tags=_parse_tags(tags),
                 )
             )
             if len(chunks) >= limit:
@@ -244,6 +295,8 @@ class HybridRetriever:
         source_types: list[str] | None,
         tag_filters: list[str] | None,
         limit: int,
+        after: str | None = None,
+        before: str | None = None,
     ) -> list[RetrievedChunk]:
         embedder = get_embedder()
         if not embedder.enabled:
@@ -268,6 +321,9 @@ class HybridRetriever:
         for c in candidates:
             if _tags_excluded(c.get("tags"), tag_filters):
                 continue
+            published = _ymd(c.get("published_at"))
+            if _outside_dates(published, after, before):
+                continue
             try:
                 vec = json.loads(c["embedding"]) if c["embedding"] else None
             except (ValueError, TypeError):
@@ -288,7 +344,8 @@ class HybridRetriever:
                         author=c.get("author"),
                         excerpt=excerpt,
                         score=round(sim, 4),
-                        published_at=_ymd(c.get("published_at")),
+                        published_at=published,
+                        tags=_parse_tags(c.get("tags")),
                     ),
                 )
             )
@@ -360,9 +417,12 @@ class HybridRetriever:
         session: Session,
         query: str,
         source_types: list[str] | None = None,
+        *,
+        after: str | None = None,
+        before: str | None = None,
     ) -> int:
         """Total items matching `query` (+ optional source_type) — a coverage
-        signal for the caller. Mirrors the FTS MATCH/source filter only; the
+        signal for the caller. Mirrors the FTS MATCH/source/date filters only; the
         vector arm and tag filtering (post-hoc, JSON column) are intentionally
         not reflected here.
         """
@@ -376,6 +436,7 @@ class HybridRetriever:
             source_clause = f"AND ki.source_type IN ({placeholders})"
             for i, st in enumerate(source_types):
                 params[f"st{i}"] = st
+        date_clause = _date_clause(after, before, params)
         sql = text(
             f"""
             SELECT count(*)
@@ -383,7 +444,7 @@ class HybridRetriever:
             JOIN knowledge_fts fts ON ki.rowid = fts.rowid
             WHERE knowledge_fts MATCH :q
               AND ki.status = 'completed'
-              {source_clause}
+              {source_clause}{date_clause}
             """
         )
         return int(session.execute(sql, params).scalar() or 0)

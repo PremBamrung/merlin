@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import difflib
 import re
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -126,6 +126,8 @@ class KnowledgeItemRepository:
         sort: str = "newest",
         search_transcripts: bool = False,
         channel: str | None = None,
+        published_after: datetime | None = None,
+        published_before: datetime | None = None,
     ) -> tuple[list[KnowledgeItem], int]:
         """Return (items, total_count) with optional filters.
 
@@ -137,7 +139,10 @@ class KnowledgeItemRepository:
         sort: newest | oldest | longest | title | relevance
         search_transcripts: when True, search also matches full transcript text
         (raw_content); otherwise search is scoped to title/summary/tags.
-        channel: exact YouTube channel name (the Library panel's channel rows).
+        channel: YouTube channel name, matched case-insensitively (the Library
+        panel passes exact names; the chat agent may not get the case right).
+        published_after / published_before: inclusive bounds on published_at;
+        items with no publication date are excluded when either is set.
 
         The topic/tag/status filters are applied to the base query *before* the
         search branch, so they hold on every downstream path — the plain sort,
@@ -152,9 +157,13 @@ class KnowledgeItemRepository:
         if channel:
             in_channel = select(YouTubeMetadata.knowledge_item_id).where(
                 YouTubeMetadata.knowledge_item_id == KnowledgeItem.id,
-                YouTubeMetadata.channel == channel,
+                func.lower(YouTubeMetadata.channel) == channel.lower(),
             )
             q = q.filter(in_channel.exists())
+        if published_after is not None:
+            q = q.filter(KnowledgeItem.published_at >= published_after)
+        if published_before is not None:
+            q = q.filter(KnowledgeItem.published_at <= published_before)
         if read is not None:
             q = q.filter(
                 KnowledgeItem.read_at.isnot(None)

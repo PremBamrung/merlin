@@ -182,13 +182,9 @@ def classify_item(
 
 
 def _clean_tags(tags: list[str]) -> list[str]:
-    seen: list[str] = []
-    for t in tags:
-        if isinstance(t, str):
-            t = t.strip()
-            if t and t.lower() not in {s.lower() for s in seen}:
-                seen.append(t)
-    return seen[:_MAX_TAGS_OUT]
+    from merlin.services.library import normalize_tags
+
+    return normalize_tags(tags)[:_MAX_TAGS_OUT]
 
 
 def classify_and_persist(item_id: str) -> None:

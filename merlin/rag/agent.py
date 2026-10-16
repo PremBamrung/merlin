@@ -15,7 +15,7 @@ agentic-chat regret: dumping big rows into history every turn.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, time
 
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.tools import ToolDefinition
@@ -25,7 +25,7 @@ from merlin.core.logging import logger
 from merlin.db.engine import get_db
 from merlin.rag.prompts import AGENT_SYSTEM_PROMPT, WEB_SEARCH_GUIDANCE
 from merlin.rag.retriever import HybridRetriever, RetrievedChunk
-from merlin.services import library
+from merlin.services import library, topics
 
 _retriever = HybridRetriever()
 
@@ -34,6 +34,13 @@ _MAX_SEARCH_LIMIT = 15
 _MAX_BROWSE_LIMIT = 25
 _TRANSCRIPT_EXCERPT_CHARS = 3000
 _MAX_TAGS = 60
+_MAX_CHANNELS = 40
+_MAX_GET_ITEMS = 6
+_GET_ITEMS_SUMMARY_CHARS = 2500
+# A date-sorted search reorders this many relevance hits (the rerank pool size).
+_SORT_POOL = 20
+_SEARCH_SORTS = ("relevance", "newest", "oldest")
+_BROWSE_SORTS = ("newest", "oldest", "relevance")
 _WEB_ANSWER_CHARS = 4000
 _MAX_WEB_SOURCES = 8
 _WEB_SEARCH_TIMEOUT = 60.0
@@ -163,6 +170,9 @@ def search_library(
     query: str,
     source_types: list[str] | None = None,
     tags: list[str] | None = None,
+    sort: str = "relevance",
+    after: str | None = None,
+    before: str | None = None,
     limit: int = 8,
 ) -> str:
     """Search the knowledge base and return the most relevant items.
@@ -171,32 +181,54 @@ def search_library(
     (meaning-based) matching, so a natural phrase works as well as bare
     keywords — phrase the `query` the way you'd describe what you're looking
     for, and don't strip it down to lone keywords. `source_types` and `tags`
-    narrow the search; omit them to use the chat's active filters. Each result
-    shows the item id, title, source, publication date, and a matching excerpt;
-    a header reports the total match count when more exist than shown.
+    narrow the search; omit them to use the chat's active filters. `after` /
+    `before` (YYYY-MM-DD, inclusive) bound the publication date. `sort` is
+    "relevance" (default), or "newest" / "oldest" to order the most relevant
+    hits by publication date — use it for "latest on X"; for *everything*
+    matching a keyword in date order, use `browse_library(search=...)`. Each
+    result shows the item id, title, author, publication date, tags and a
+    matching excerpt; a header reports the total match count when more exist
+    than shown. Don't put creator names in `query` to find their videos — use
+    `browse_library(channel=...)`.
     """
     if _over_budget(ctx):
         return _BUDGET_REFUSAL
     try:
+        if sort not in _SEARCH_SORTS:
+            return f"Invalid sort {sort!r}; use one of: {', '.join(_SEARCH_SORTS)}."
+        after_d, before_d = _parse_date(after), _parse_date(before)
         limit = max(1, min(limit, _MAX_SEARCH_LIMIT))
         eff_source_types = source_types or ctx.deps.source_types
-        eff_tags = tags or ctx.deps.tags
+        eff_tags = library.normalize_tags(tags or ctx.deps.tags or []) or None
+        bounds = {"after": after_d, "before": before_d}
+        # A date sort reorders a full relevance pool, so the newest *relevant*
+        # items surface even when they ranked below the top `limit`.
+        top_k = limit if sort == "relevance" else max(limit, _SORT_POOL)
         with get_db() as db:
             chunks = _retriever.retrieve(
                 db,
                 query=query,
                 source_types=eff_source_types,
                 tag_filters=eff_tags,
-                top_k=limit,
+                top_k=top_k,
+                **bounds,
             )
             # Exact total is meaningful only without post-hoc tag filtering
             # (count() reflects MATCH + source_type, not the JSON tag filter).
-            total = None if eff_tags else _retriever.count(db, query, eff_source_types)
+            total = (
+                None
+                if eff_tags
+                else _retriever.count(db, query, eff_source_types, **bounds)
+            )
         if not chunks:
             return f"No items in the library matched the search {query!r}."
+        if sort != "relevance":
+            chunks = _sort_by_date(chunks, newest=sort == "newest")[:limit]
         for c in chunks:
             ctx.deps.cite(c)
         return _format_chunks(chunks, total)
+    except ValueError as exc:
+        return str(exc)
     except Exception as exc:  # never crash the run
         return f"search_library failed: {exc}"
 
@@ -207,10 +239,11 @@ def get_item(
 ) -> str:
     """Read one item in depth: its summary plus an excerpt of its transcript.
 
-    Use after `search_library`/`browse_library` when a specific item is clearly
-    relevant and you need more than the search snippet. The transcript is shown
-    in windows; if it ends with a "chars remain" note, call this again with
-    `transcript_offset` set to the value it suggests to read the next window.
+    Use when you need detail beyond the summary. To read several items'
+    summaries, use `get_items` in one call instead. The transcript is shown in
+    windows; if it ends with a "chars remain" note, call this again with
+    `transcript_offset` set to the value it suggests to read the next window —
+    or use `search_transcript` to jump straight to the relevant passage.
     """
     if _over_budget(ctx):
         return _BUDGET_REFUSAL
@@ -225,34 +258,128 @@ def get_item(
 
 
 @agent.tool
-def browse_library(
-    ctx: RunContext[ChatDeps],
-    source_type: str | None = None,
-    tag: str | None = None,
-    sort: str = "newest",
-    limit: int = 15,
-) -> str:
-    """List items by filter (not keyword search) — for "what do I have about X",
-    counting, or enumeration. Returns id + title + source + tags, newest first
-    by default (`sort` may be "newest" or "oldest"). Also reports the total
-    count matching the filter.
+def get_items(ctx: RunContext[ChatDeps], item_ids: list[str]) -> str:
+    """Read the summaries of several items at once (up to 6 per call).
+
+    The default way to read what you found: pass every relevant id from your
+    searches in ONE call rather than calling `get_item` repeatedly. Returns each
+    item's metadata, tags and summary — no transcript (use `get_item` or
+    `search_transcript` for transcript detail on a specific item).
     """
     if _over_budget(ctx):
         return _BUDGET_REFUSAL
     try:
+        ids = list(dict.fromkeys(i for i in item_ids if i))
+        if not ids:
+            return "No item ids given."
+        dropped = ids[_MAX_GET_ITEMS:]
+        parts = []
+        for item_id in ids[:_MAX_GET_ITEMS]:
+            item = library.get_item(item_id)
+            if item is None:
+                parts.append(f"id: {item_id}\n(no item found with this id)")
+                continue
+            ctx.deps.cite_item(item)
+            parts.append(_format_item_summary(item))
+        out = "\n\n---\n\n".join(parts)
+        if dropped:
+            out += (
+                f"\n\n[{len(dropped)} more id(s) not read — at most "
+                f"{_MAX_GET_ITEMS} per call: {', '.join(dropped)}]"
+            )
+        return out
+    except Exception as exc:
+        return f"get_items failed: {exc}"
+
+
+@agent.tool
+def search_transcript(ctx: RunContext[ChatDeps], item_id: str, query: str) -> str:
+    """Find the passages of ONE item's transcript that discuss `query`.
+
+    Use when an item's summary doesn't cover a specific point you need —
+    instead of paging through the transcript window by window. Returns the
+    best-matching passages with their transcript offsets; call
+    `get_item(item_id, transcript_offset=...)` to read on from one.
+    """
+    if _over_budget(ctx):
+        return _BUDGET_REFUSAL
+    try:
+        result = library.search_transcript(item_id, query)
+        if result is None:
+            return f"No item found with id {item_id!r}."
+        if not result["length"]:
+            return f"{result['title']!r} has no transcript to search."
+        if not result["hits"]:
+            return f"No passage in {result['title']!r}'s transcript mentions {query!r}."
+        ctx.deps.cite_item(
+            {
+                "id": item_id,
+                "title": result["title"],
+                "source_type": result["source_type"],
+            }
+        )
+        return _format_transcript_hits(item_id, result)
+    except Exception as exc:
+        return f"search_transcript failed: {exc}"
+
+
+@agent.tool
+def browse_library(
+    ctx: RunContext[ChatDeps],
+    source_type: str | None = None,
+    tag: str | None = None,
+    channel: str | None = None,
+    topic: str | None = None,
+    search: str | None = None,
+    sort: str = "newest",
+    after: str | None = None,
+    before: str | None = None,
+    limit: int = 15,
+) -> str:
+    """List items by filter (not semantic search) — for "what do I have about
+    X", "everything by <creator>", counting, or enumeration.
+
+    Filters combine: `channel` (a creator/channel name — see `list_channels`),
+    `topic` (a topic slug — see `list_topics`), `tag`, `source_type`, `search`
+    (keyword match on title/summary/tags), and `after` / `before` (YYYY-MM-DD,
+    inclusive, on publication date). `sort` is "newest" (default) or "oldest"
+    by date *added to the library*, or "relevance" when `search` is set.
+    Returns id + title + channel + date + tags, plus the total count matching.
+    """
+    if _over_budget(ctx):
+        return _BUDGET_REFUSAL
+    try:
+        if sort not in _BROWSE_SORTS:
+            return f"Invalid sort {sort!r}; use one of: {', '.join(_BROWSE_SORTS)}."
+        after_d, before_d = _parse_date(after), _parse_date(before)
         limit = max(1, min(limit, _MAX_BROWSE_LIMIT))
         result = library.list_items(
             source_type=source_type or None,
             tags=[tag] if tag else (ctx.deps.tags or None),
+            channel=channel or None,
+            topics=[topic] if topic else None,
+            search=search or None,
             status="completed",
             sort=sort,
             per_page=limit,
+            published_after=(
+                datetime.combine(date.fromisoformat(after_d), time.min)
+                if after_d
+                else None
+            ),
+            published_before=(
+                datetime.combine(date.fromisoformat(before_d), time.max)
+                if before_d
+                else None
+            ),
         )
         items = result.get("items", [])
         total = result.get("total", len(items))
         if not items:
             return "No items match that filter."
         return _format_browse(items, total)
+    except ValueError as exc:
+        return str(exc)
     except Exception as exc:
         return f"browse_library failed: {exc}"
 
@@ -283,6 +410,42 @@ def list_source_types(ctx: RunContext[ChatDeps]) -> str:
         return ", ".join(f"{t['name']} ({t['count']})" for t in types)
     except Exception as exc:
         return f"list_source_types failed: {exc}"
+
+
+@agent.tool
+def list_topics(ctx: RunContext[ChatDeps]) -> str:
+    """List the library's curated topics (its subject areas) with item counts.
+
+    Topics are broader and cleaner than tags — the best entry point for "catch
+    me up on <subject>". Pass a topic's slug to `browse_library(topic=...)`.
+    """
+    if _over_budget(ctx):
+        return _BUDGET_REFUSAL
+    try:
+        found = topics.list_topics()
+        if not found:
+            return "The library has no topics yet."
+        return "\n".join(f"{t['slug']}: {t['label']} ({t['count']})" for t in found)
+    except Exception as exc:
+        return f"list_topics failed: {exc}"
+
+
+@agent.tool
+def list_channels(ctx: RunContext[ChatDeps]) -> str:
+    """List the creators/channels in the library, most items first.
+
+    Pass a name to `browse_library(channel=...)` to list exactly that creator's
+    items (far more precise than putting their name in a search query).
+    """
+    if _over_budget(ctx):
+        return _BUDGET_REFUSAL
+    try:
+        channels = library.top_channels(limit=_MAX_CHANNELS)
+        if not channels:
+            return "The library has no channels yet."
+        return ", ".join(f"{c['name']} ({c['count']})" for c in channels)
+    except Exception as exc:
+        return f"list_channels failed: {exc}"
 
 
 # --------------------------------------------------------------------------- #
@@ -401,6 +564,27 @@ def _resolve_redirect(url: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
+def _parse_date(value: str | None) -> str | None:
+    """Validate a YYYY-MM-DD tool argument; None passes through. Raises a
+    ValueError whose message is returned to the model as the tool result."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value.strip()).isoformat()
+    except ValueError:
+        raise ValueError(f"Invalid date {value!r}; use YYYY-MM-DD.") from None
+
+
+def _sort_by_date(chunks: list[RetrievedChunk], newest: bool) -> list[RetrievedChunk]:
+    """Order by publication date (newest or oldest first), undated last."""
+    dated = sorted(
+        (c for c in chunks if c.published_at),
+        key=lambda c: c.published_at,
+        reverse=newest,
+    )
+    return dated + [c for c in chunks if not c.published_at]
+
+
 def _format_chunks(chunks: list[RetrievedChunk], total: int | None = None) -> str:
     parts = []
     for c in chunks:
@@ -410,6 +594,8 @@ def _format_chunks(chunks: list[RetrievedChunk], total: int | None = None) -> st
         head += f" ({c.source_type})"
         if c.published_at:
             head += f" · {c.published_at}"
+        if c.tags:
+            head += f"\ntags: {', '.join(c.tags)}"
         parts.append(f"{head}\n{c.excerpt}")
     body = "\n\n".join(parts)
     # Coverage signal: only when there's more than what's shown.
@@ -418,7 +604,8 @@ def _format_chunks(chunks: list[RetrievedChunk], total: int | None = None) -> st
     return body
 
 
-def _format_item(item: dict, offset: int = 0) -> str:
+def _meta_lines(item: dict) -> list[str]:
+    """The metadata header shared by `get_item` and `get_items`."""
     lines = [
         f"id: {item.get('id')}",
         f"title: {item.get('title') or 'Untitled'}",
@@ -434,6 +621,11 @@ def _format_item(item: dict, offset: int = 0) -> str:
         lines.append(f"views: {item['views']:,}")
     if item.get("tags"):
         lines.append(f"tags: {', '.join(item['tags'])}")
+    return lines
+
+
+def _format_item(item: dict, offset: int = 0) -> str:
+    lines = _meta_lines(item)
     if item.get("summary"):
         lines.append(f"\nSUMMARY:\n{item['summary']}")
     transcript = (item.get("raw_content") or "").strip()
@@ -452,12 +644,48 @@ def _format_item(item: dict, offset: int = 0) -> str:
     return "\n".join(lines)
 
 
+def _format_item_summary(item: dict) -> str:
+    """One `get_items` entry: metadata + (capped) summary, never the transcript."""
+    lines = _meta_lines(item)
+    summary = (item.get("summary") or "").strip()
+    if len(summary) > _GET_ITEMS_SUMMARY_CHARS:
+        summary = (
+            summary[:_GET_ITEMS_SUMMARY_CHARS]
+            + "…[summary truncated — get_item for the full summary]"
+        )
+    lines.append(f"SUMMARY:\n{summary}" if summary else "(no summary)")
+    transcript_len = len((item.get("raw_content") or "").strip())
+    if transcript_len:
+        lines.append(
+            f"[transcript: {transcript_len:,} chars — read with get_item or "
+            "search_transcript]"
+        )
+    return "\n".join(lines)
+
+
+def _format_transcript_hits(item_id: str, result: dict) -> str:
+    hits = result["hits"]
+    parts = [
+        f"{len(hits)} passage(s) from {result['title']!r} "
+        f"(transcript: {result['length']:,} chars):"
+    ]
+    for h in hits:
+        parts.append(f"@offset {h['offset']:,}:\n…{h['text']}…")
+    parts.append(
+        f"[read on from a passage with get_item({item_id!r}, "
+        "transcript_offset=<offset>)]"
+    )
+    return "\n\n".join(parts)
+
+
 def _format_browse(items: list[dict], total: int) -> str:
     header = f"{total} item(s) match; showing {len(items)}:"
     rows = []
     for it in items:
         tags = ", ".join(it.get("tags") or [])
         row = f"[{it.get('id')}] {it.get('title') or 'Untitled'} ({it.get('source_type')})"  # noqa: E501
+        if it.get("channel") or it.get("author"):
+            row += f" — {it.get('channel') or it.get('author')}"
         if it.get("published_at"):
             row += f" · {it['published_at'][:10]}"
         if tags:

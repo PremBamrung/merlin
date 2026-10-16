@@ -37,7 +37,7 @@ def test_match_reports_the_arm_that_found_each_hit(client, make_item, monkeypatc
         title="Competitive advantage", source_id="m2", summary="durable"
     )
 
-    def fake_vector(self, session, query, source_types, tag_filters, limit):
+    def fake_vector(self, session, query, source_types, tag_filters, limit, *_):
         return [
             RetrievedChunk(
                 knowledge_item_id=i,

@@ -196,9 +196,7 @@ def test_full_agent_run_with_scripted_model(make_item):
         )
         if used:
             return ModelResponse(parts=[TextPart("Here is what your library says.")])
-        return ModelResponse(
-            parts=[ToolCallPart("search_library", {"query": "moat"})]
-        )
+        return ModelResponse(parts=[ToolCallPart("search_library", {"query": "moat"})])
 
     deps = ChatDeps()
 
@@ -208,3 +206,156 @@ def test_full_agent_run_with_scripted_model(make_item):
     result = asyncio.run(run())
     assert "library" in result.output.lower()
     assert len(deps.cited) >= 1
+
+
+# --------------------------------------------------------------------------- #
+# Discovery filters, batched reads, date sort/bounds, transcript search.
+# --------------------------------------------------------------------------- #
+
+
+class _Ctx:
+    """Minimal RunContext stand-in: the tools only touch ctx.deps."""
+
+    def __init__(self):
+        from merlin.rag.agent import ChatDeps
+
+        self.deps = ChatDeps()
+
+
+def _dt(s: str):
+    from datetime import datetime
+
+    return datetime.fromisoformat(s)
+
+
+def test_browse_library_channel_is_case_insensitive(make_item):
+    from merlin.rag.agent import browse_library
+
+    make_item(title="Hoffmann V60", channel="James Hoffmann")
+    make_item(title="Hedrick espresso", channel="Lance Hedrick")
+
+    out = browse_library(_Ctx(), channel="james hoffmann")  # type: ignore[arg-type]
+    assert "1 item(s) match" in out
+    assert "Hoffmann V60" in out and "James Hoffmann" in out
+    assert "Hedrick" not in out
+
+
+def test_browse_library_topic_search_and_dates(make_item):
+    from merlin.rag.agent import browse_library
+    from merlin.services import topics as topics_service
+
+    old = make_item(title="Old grinder video", published_at=_dt("2024-01-10"))
+    new = make_item(title="New grinder video", published_at=_dt("2026-05-02"))
+    make_item(title="Unrelated cooking", published_at=_dt("2026-05-03"))
+    coffee = topics_service.create_topic("Coffee")
+    for iid in (old, new):
+        topics_service.set_item_topics(iid, [coffee["id"]], coffee["id"])
+
+    out = browse_library(_Ctx(), topic=coffee["slug"])  # type: ignore[arg-type]
+    assert "2 item(s) match" in out and "cooking" not in out
+
+    out = browse_library(_Ctx(), search="grinder", after="2025-01-01")  # type: ignore[arg-type]
+    assert "1 item(s) match" in out and "New grinder video" in out
+
+    # `before` is inclusive of the whole day.
+    out = browse_library(_Ctx(), search="grinder", before="2024-01-10")  # type: ignore[arg-type]
+    assert "Old grinder video" in out and "New grinder" not in out
+
+    assert "Invalid date" in browse_library(_Ctx(), after="last year")  # type: ignore[arg-type]
+    assert "Invalid sort" in browse_library(_Ctx(), sort="best")  # type: ignore[arg-type]
+
+
+def test_list_channels_and_topics(make_item):
+    from merlin.rag.agent import list_channels, list_topics
+    from merlin.services import topics as topics_service
+
+    assert "no topics" in list_topics(_Ctx())  # type: ignore[arg-type]
+    make_item(title="A", channel="James Hoffmann")
+    make_item(title="B", channel="James Hoffmann")
+    make_item(title="C", channel="Lance Hedrick")
+    t = topics_service.create_topic("Coffee")
+
+    channels = list_channels(_Ctx())  # type: ignore[arg-type]
+    assert channels.startswith("James Hoffmann (2)")
+    assert "Lance Hedrick (1)" in channels
+    assert f"{t['slug']}: Coffee (0)" in list_topics(_Ctx())  # type: ignore[arg-type]
+
+
+def test_get_items_reads_summaries_only(make_item):
+    from merlin.rag.agent import _GET_ITEMS_SUMMARY_CHARS, _MAX_GET_ITEMS, get_items
+
+    a = make_item(title="Alpha", summary="Alpha summary.", raw_content="SECRET " * 50)
+    b = make_item(title="Beta", summary="x" * (_GET_ITEMS_SUMMARY_CHARS + 500))
+    ctx = _Ctx()
+
+    out = get_items(ctx, [a, b, "missing-id", a])  # type: ignore[arg-type]
+    assert "Alpha summary." in out and "title: Beta" in out
+    assert "SECRET" not in out  # never the transcript
+    assert "[transcript: 349 chars" in out
+    assert "summary truncated" in out
+    assert "missing-id" in out and "no item found" in out
+    assert set(ctx.deps.cited) == {a, b}
+
+    ids = [make_item(title=f"N{i}") for i in range(_MAX_GET_ITEMS + 2)]
+    out = get_items(_Ctx(), ids)  # type: ignore[arg-type]
+    assert "2 more id(s) not read" in out
+
+
+def test_search_library_shows_tags_and_sorts_by_date(make_item):
+    from merlin.rag.agent import search_library
+
+    tags = ["espresso"]
+    make_item(title="Espresso basics", tags=tags, published_at=_dt("2023-03-01"))
+    make_item(title="Espresso advanced", tags=tags, published_at=_dt("2026-02-01"))
+    make_item(title="Espresso undated", tags=tags)
+
+    out = search_library(_Ctx(), query="espresso", sort="newest")  # type: ignore[arg-type]
+    assert "tags: espresso" in out
+    assert out.index("advanced") < out.index("basics") < out.index("undated")
+
+    out = search_library(_Ctx(), query="espresso", sort="oldest")  # type: ignore[arg-type]
+    assert out.index("basics") < out.index("advanced") < out.index("undated")
+
+    out = search_library(_Ctx(), query="espresso", after="2025-01-01")  # type: ignore[arg-type]
+    assert "advanced" in out and "basics" not in out and "undated" not in out
+
+    assert "Invalid sort" in search_library(_Ctx(), query="x", sort="top")  # type: ignore[arg-type]
+    assert "Invalid date" in search_library(_Ctx(), query="x", before="soon")  # type: ignore[arg-type]
+
+
+def test_search_library_tag_filter_ignores_case(make_item):
+    from merlin.rag.agent import search_library
+
+    make_item(title="Panel review", tags=["oled"])
+    out = search_library(_Ctx(), query="panel review", tags=["OLED"])  # type: ignore[arg-type]
+    assert "Panel review" in out
+
+
+def test_search_transcript_finds_passages(make_item):
+    from merlin.rag.agent import get_item, search_transcript
+
+    filler = "lorem ipsum dolor sit amet " * 200  # ~5,400 chars
+    transcript = (
+        filler
+        + "the grinder burr alignment matters most here. "
+        + filler
+        + "burr geometry and grinder retention again. "
+        + filler
+    )
+    iid = make_item(title="Grinder deep dive", raw_content=transcript)
+    ctx = _Ctx()
+
+    out = search_transcript(ctx, iid, "grinder burr")  # type: ignore[arg-type]
+    assert "2 passage(s)" in out
+    assert "burr alignment" in out and "burr geometry" in out
+    assert iid in ctx.deps.cited
+
+    # Offsets are usable with get_item's transcript paging.
+    offset = int(out.split("@offset ")[1].split(":")[0].replace(",", ""))
+    page = get_item(_Ctx(), iid, transcript_offset=offset)  # type: ignore[arg-type]
+    assert "burr alignment" in page
+
+    assert "No passage" in search_transcript(_Ctx(), iid, "espresso")  # type: ignore[arg-type]
+    assert "No item found" in search_transcript(_Ctx(), "nope", "x")  # type: ignore[arg-type]
+    empty = make_item(title="Empty", raw_content="")
+    assert "no transcript" in search_transcript(_Ctx(), empty, "x")  # type: ignore[arg-type]
