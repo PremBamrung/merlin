@@ -502,8 +502,12 @@
     .chat-col.has-side .chat-dock-inner {
       padding-right: calc(var(--side-w) + 38px);
     }
-    .chat-col.has-side .msg-ai.with-side {
+    /* Every answer in the thread keeps the side column — empty when it has no
+       sources — so all prose shares the bubbles' and composer's right edge. */
+    .chat-col.has-side .msg-ai:not(.compact) {
       grid-template-columns: 30px minmax(0, 1fr) var(--side-w);
+    }
+    .chat-col.has-side .msg-ai.with-side {
       grid-template-rows: auto 1fr;
     }
     .chat-col.has-side .msg-ai.with-side > .ai-side {
