@@ -3,7 +3,7 @@ import { CheckCircle2, AlertTriangle, Ban, X, Loader2 } from "lucide-react";
 import { useTaskProgress } from "@/hooks/useTaskProgress";
 import { useCancelTask } from "@/hooks/useIngest";
 import { StatusDot } from "@/components/common/StatusDot";
-import { ingestLabel } from "@/lib/format";
+import { ingestLabel, youtubeId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -13,8 +13,17 @@ import { cn } from "@/lib/utils";
  *
  * While the task is still running it carries an X button to cancel that one
  * ingest (cooperative: the worker stops at its next progress checkpoint).
+ *
+ * `variant="flush"` drops the row's own box and leads with the video's
+ * thumbnail, for lists that already sit inside a card (the home page).
  */
-export function TaskRow({ taskId }: { taskId: string }) {
+export function TaskRow({
+  taskId,
+  variant = "card",
+}: {
+  taskId: string;
+  variant?: "card" | "flush";
+}) {
   const { task, status, done, failed, cancelled } = useTaskProgress(taskId);
   const cancel = useCancelTask();
   const percent = Math.max(0, Math.min(100, Math.round(task?.progress ?? 0)));
@@ -30,9 +39,11 @@ export function TaskRow({ taskId }: { taskId: string }) {
         ? "Cancelling…"
         : (task?.message ?? (status === "queued" ? "Queued…" : "Starting…"));
   const itemId = task?.knowledge_item_id;
+  const flush = variant === "flush";
+  const videoId = youtubeId(task?.source_input);
 
-  return (
-    <div className="rounded-[10px] border border-border bg-surface px-4 py-3">
+  const body = (
+    <>
       <div className="flex items-center gap-2.5">
         {done ? (
           <CheckCircle2 className="size-4 shrink-0 text-success" strokeWidth={1.5} />
@@ -91,6 +102,25 @@ export function TaskRow({ taskId }: { taskId: string }) {
           />
         </div>
       )}
+    </>
+  );
+
+  if (!flush) {
+    return <div className="rounded-[10px] border border-border bg-surface px-4 py-3">{body}</div>;
+  }
+  return (
+    <div className="flex items-center gap-3 py-2.5">
+      <span className="relative aspect-video w-14 shrink-0 overflow-hidden rounded-[6px] bg-surface-2 sm:w-[72px]">
+        {videoId && (
+          <img
+            src={`https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`}
+            alt=""
+            loading="lazy"
+            className="size-full object-cover"
+          />
+        )}
+      </span>
+      <div className="min-w-0 flex-1">{body}</div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useTaskStream } from "@/hooks/useTaskProgress";
+import { useRehydrateTasks, useTaskStream } from "@/hooks/useTaskProgress";
 import { useActiveTasks } from "@/store/tasks";
 
 function TaskStream({ taskId }: { taskId: string }) {
@@ -9,9 +9,11 @@ function TaskStream({ taskId }: { taskId: string }) {
 /**
  * Headless: streams every ingest submitted this session, one connection each.
  * Mounted once in the app shell so progress keeps flowing — and the ring around the mark
- * keeps turning — on every route, wherever you navigate mid-ingest.
+ * keeps turning — on every route, wherever you navigate mid-ingest. On load it
+ * also re-attaches to ingests a previous page left running.
  */
 export function TaskStreams() {
+  useRehydrateTasks();
   const activeIds = useActiveTasks((s) => s.activeIds);
   return activeIds.map((id) => <TaskStream key={id} taskId={id} />);
 }

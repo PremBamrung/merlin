@@ -6,6 +6,15 @@ export function youtubeUrl(sourceId: string, seconds?: number | null): string {
   return seconds ? `${base}&t=${Math.floor(seconds)}s` : base;
 }
 
+/** The video id in a YouTube watch / youtu.be / shorts / embed URL, or null. */
+export function youtubeId(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const m = url.match(
+    /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/i,
+  );
+  return m ? m[1] : null;
+}
+
 /** "HH:MM:SS" / "MM:SS" / "90" → total seconds, or null. */
 export function tsToSeconds(stamp: string | number | null | undefined): number | null {
   if (stamp === null || stamp === undefined || stamp === "") return null;

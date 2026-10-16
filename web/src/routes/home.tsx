@@ -1,12 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ChevronRight, Library, MessageSquare, Plus, Sparkles } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronRight,
+  Library,
+  MessageSquare,
+  Plus,
+  Sparkles,
+} from "lucide-react";
 import { Mark } from "@/components/brand/Mark";
 import { Composer } from "@/components/chat/Composer";
 import { Button } from "@/components/ui/button";
 import { ThreadList } from "@/components/chat/ThreadList";
+import { TaskRow } from "@/components/ingest/TaskRow";
+import { MoreToggle } from "@/components/layout/IngestingStrip";
 import { PanelSlot } from "@/components/layout/panel";
 import { useChatThreads } from "@/hooks/useChatThreads";
+import { useInbox } from "@/hooks/useDigest";
+import { useIngestRows } from "@/hooks/useIngestRows";
 import { useHome } from "@/hooks/useHome";
 import { useLibraryCount } from "@/hooks/useMeta";
 import { useUi } from "@/store/ui";
@@ -46,6 +57,9 @@ export default function HomeRoute() {
   const [filters, setFilters] = useState<ChatFilters>({});
   const composerRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => composerRef.current?.focus(), []);
+
+  const showCards =
+    !firstRun && !!home && (!!home.continue_thread || home.strip.length > 0);
 
   const ask = (q: string) => {
     const text = q.trim();
@@ -97,7 +111,7 @@ export default function HomeRoute() {
         {!firstRun && <Suggestions home={home} onPick={ask} />}
         {firstRun && <GettingStarted />}
 
-        {!firstRun && home && (home.continue_thread || home.strip.length > 0) && (
+        {showCards && (
           <div className="mt-7 grid grid-cols-1 gap-3.5 md:mt-10 md:grid-cols-[minmax(0,1fr)_minmax(0,1.75fr)]">
             {home.continue_thread && <ContinueCard thread={home.continue_thread} />}
             {home.strip.length > 0 && (
@@ -111,6 +125,10 @@ export default function HomeRoute() {
             )}
           </div>
         )}
+
+        {/* Below the cards, never above: it comes and goes with each ingest,
+            and down here that moves nothing you were looking at. */}
+        <IngestCard className={showCards || firstRun ? "mt-3.5" : "mt-7 md:mt-10"} />
       </div>
     </div>
   );
@@ -298,6 +316,64 @@ function ContinueCard({ thread }: { thread: NonNullable<HomeDigest["continue_thr
           ` · ${thread.source_count} ${thread.source_count === 1 ? "source" : "sources"}`}
       </p>
     </Link>
+  );
+}
+
+/**
+ * What's ingesting right now — the rows you'd otherwise have to go to the
+ * Library to watch, right where the link was pasted — plus a one-line pointer
+ * at failed ingests (triage itself stays in the Library's Needs attention).
+ * Renders nothing when there's neither.
+ */
+function IngestCard({ className }: { className?: string }) {
+  const rows = useIngestRows();
+  const failed = useInbox().data?.counts.failed ?? 0;
+  if (rows.total === 0 && failed === 0) return null;
+
+  return (
+    <div className={cn(cardClass, className)}>
+      {rows.total > 0 && (
+        <>
+          <Eyebrow
+            right={
+              <Link
+                to="/library"
+                className="inline-flex items-center gap-0.5 text-ui-link hover:underline hover:underline-offset-[3px]"
+              >
+                Library <ChevronRight className="size-3.5" />
+              </Link>
+            }
+          >
+            <span className="size-1.5 animate-pulse rounded-full bg-signal" />
+            Ingesting · <span className="text-signal">{rows.total}</span>
+          </Eyebrow>
+          <div className="-mt-1 divide-y divide-border">
+            {rows.shown.map((id) => (
+              <TaskRow key={id} taskId={id} variant="flush" />
+            ))}
+          </div>
+          <MoreToggle {...rows} className="mt-1.5" />
+        </>
+      )}
+      {failed > 0 && (
+        <Link
+          to="/library"
+          className={cn(
+            "flex items-center gap-2 text-[13px] leading-5 transition-colors hover:text-fg",
+            rows.total > 0 && "mt-2.5 border-t border-border pt-3",
+          )}
+        >
+          <AlertTriangle className="size-3.5 shrink-0 text-fail" strokeWidth={1.75} />
+          <span className="min-w-0 flex-1">
+            <b className="font-medium text-fail">
+              {thousands(failed)} failed {failed === 1 ? "ingest" : "ingests"}
+            </b>{" "}
+            · Review in Library
+          </span>
+          <ChevronRight className="size-3.5 shrink-0" />
+        </Link>
+      )}
+    </div>
   );
 }
 

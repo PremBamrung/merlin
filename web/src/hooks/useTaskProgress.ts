@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { taskStream, type TaskFrame } from "@/lib/api/client";
-import type { Task } from "@/lib/api/endpoints";
+import { getTasks, type Task } from "@/lib/api/endpoints";
 import { keys } from "@/lib/queryKeys";
 import { useActiveTasks } from "@/store/tasks";
 import { toast } from "@/components/ui/toaster";
@@ -53,6 +53,8 @@ export function useTaskStream(taskId: string): void {
         toast("Ingestion cancelled");
       } else {
         toast.error("Ingest failed", { description: frame.task.error ?? undefined });
+        // Feeds Needs attention (Library) and the failed count on home.
+        qc.invalidateQueries({ queryKey: keys.inbox() });
       }
       // Give the UI a beat to show the terminal state, then stop tracking.
       // Cancelled rows clear faster — there's nothing to read on them.
@@ -119,4 +121,43 @@ export function useIngestActivity(): { running: number; percent: number } {
     0,
   );
   return { running: ids.length, percent: total / ids.length };
+}
+
+/** Ingest-family tasks (ingest/re-fetch, re-summarize) — topic jobs track themselves. */
+function isIngestTask(taskType: string): boolean {
+  return taskType.startsWith("ingest_") || taskType.startsWith("resummarize_");
+}
+
+/**
+ * Re-attach to ingests still in flight on the server, once per app load.
+ *
+ * The task store is in-memory, so a reload (or a second tab) used to forget
+ * every running ingest — no rows, no ring — although the server kept working.
+ * Seeding the store from `GET /api/tasks` puts them back; `TaskStreams` then
+ * opens their streams as for any freshly submitted task. Orphans from a server
+ * restart never come back here: startup settles them as failed.
+ */
+export function useRehydrateTasks(): void {
+  const add = useActiveTasks((s) => s.add);
+  const setFrame = useActiveTasks((s) => s.setFrame);
+
+  useEffect(() => {
+    let stale = false;
+    getTasks(50)
+      .then((tasks) => {
+        if (stale) return;
+        // Oldest first: `add` prepends, so the store ends up newest-first.
+        for (const t of [...tasks].reverse()) {
+          if (TERMINAL.has(t.status) || !isIngestTask(t.task_type)) continue;
+          setFrame(t.id, { task: t, status: t.status });
+          add(t.id);
+        }
+      })
+      .catch(() => {
+        /* best effort — a fresh submit still tracks as usual */
+      });
+    return () => {
+      stale = true;
+    };
+  }, [add, setFrame]);
 }

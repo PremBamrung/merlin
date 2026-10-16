@@ -5,16 +5,18 @@ import type { Task } from "@/lib/api/endpoints";
 export type TaskFrameState = { task: Task | null; status: string };
 
 /**
- * Tracks task IDs submitted during this session, plus the latest SSE frame for
+ * Tracks in-flight task IDs (submitted this session, or re-attached on load from
+ * the server), plus the latest SSE frame for
  * each. Terminal tasks are dropped once acknowledged.
  *
  * The frames live here rather than inside the component that renders them
- * because **three** surfaces show the same progress — the ingest ring around
- * the ring around the mark, the Library's Ingesting strip, and the Reader's
- * re-summarize row — and a task must only ever be streamed once (each stream is
- * an open connection, and browsers cap those per origin).
- * `TaskStreams` in hooks/useTaskProgress.tsx is the single writer; everything
- * else reads.
+ * because **four** surfaces show the same progress — the ring around the mark,
+ * the Library's Ingesting strip, the home page's Ingesting card, and the
+ * Reader's re-summarize row — and a task must only ever be streamed once (each
+ * stream is an open connection, and browsers cap those per origin).
+ * `TaskStreams` (components/layout/TaskStreams.tsx) is the single writer —
+ * including re-attaching to in-flight ingests after a reload; everything else
+ * reads.
  */
 type TaskStore = {
   activeIds: string[];

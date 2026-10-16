@@ -22,9 +22,10 @@ export function useIngestYouTube() {
   const qc = useQueryClient();
   const addTask = useActiveTasks((s) => s.add);
   const openResummarizePrompt = useUi((s) => s.openResummarizePrompt);
-  // "Add source" is global but the progress rows live on the Library, so an
-  // ingest started from Insights would have nowhere to be watched. The toast
-  // carries the way back — no extra chrome on the routes that don't need it.
+  // "Add source" is global but the progress rows live on the Library and the
+  // home page, so an ingest started from Insights would have nowhere to be
+  // watched. The toast carries the way back — no extra chrome on the routes
+  // that don't need it.
   const navigate = useNavigate();
   const { pathname } = useLocation();
   return useMutation({
@@ -46,7 +47,7 @@ export function useIngestYouTube() {
       toast.success("Queued ingest", {
         description: `Tracking task ${res.task_id.slice(0, 8)}…`,
         action:
-          pathname === "/library"
+          pathname === "/library" || pathname === "/"
             ? undefined
             : { label: "View", onClick: () => navigate("/library") },
       });
