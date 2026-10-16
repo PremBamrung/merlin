@@ -318,7 +318,7 @@ async def chat(request: Request, background_tasks: BackgroundTasks) -> Response:
     # what it has (see merlin.rag.agent), so a long search ends with a graceful
     # answer. `request_limit` sits a few steps above the budget: a hard backstop
     # that also gives the model room to produce that final answer.
-    deps = chat_service.deps_from_filters(filters)
+    deps = chat_service.deps_from_request(body)
     response = await VercelAIAdapter.dispatch_request(
         request,
         agent=chat_service.agent,

@@ -14,6 +14,10 @@ import {
   Loader2,
   Check,
   Pencil,
+  Files,
+  TextSearch,
+  Users,
+  LayoutGrid,
 } from "lucide-react";
 import type { UIMessage } from "ai";
 import { Button } from "@/components/ui/button";
@@ -41,7 +45,11 @@ const FOLLOWUPS = ["Why?", "Counterpoints?", "Give me an example", "Summarize ke
 const TOOL_ICONS: Record<string, typeof Wrench> = {
   search_library: Search,
   get_item: FileText,
+  get_items: Files,
+  search_transcript: TextSearch,
   browse_library: List,
+  list_channels: Users,
+  list_topics: LayoutGrid,
   list_tags: Tags,
   list_source_types: Layers,
   web_search: Globe,
@@ -486,6 +494,14 @@ function WorkTrace({
   );
 }
 
+const BROWSE_TOOLS = [
+  "browse_library",
+  "list_channels",
+  "list_topics",
+  "list_tags",
+  "list_source_types",
+];
+
 /** The one-line label for a `WorkTrace`: what the agent did, in plain words. */
 function workSummary(streaming: boolean, toolParts: AnyPart[]): string {
   if (streaming) {
@@ -499,14 +515,28 @@ function workSummary(streaming: boolean, toolParts: AnyPart[]): string {
   const count = (names: string[]) =>
     toolParts.filter((p) => names.includes(toolName(p))).length;
   const searches = count(["search_library"]);
-  const reads = count(["get_item"]);
-  const browses = count(["browse_library", "list_tags", "list_source_types"]);
+  const readCalls = count(["get_item", "get_items"]);
+  const transcripts = count(["search_transcript"]);
+  const browses = count(BROWSE_TOOLS);
   const webs = count(["web_search"]);
-  const other = toolParts.length - searches - reads - browses - webs;
+  const other = toolParts.length - searches - readCalls - transcripts - browses - webs;
+  // A batched `get_items` call reads several sources — count the distinct ids.
+  const read = new Set<string>();
+  for (const p of toolParts) {
+    const args = p.input as { item_id?: unknown; item_ids?: unknown } | undefined;
+    if (toolName(p) === "get_item" && typeof args?.item_id === "string") read.add(args.item_id);
+    if (toolName(p) === "get_items" && Array.isArray(args?.item_ids)) {
+      for (const id of args.item_ids) if (typeof id === "string") read.add(id);
+    }
+  }
+  const reads = read.size || readCalls;
   const bits: string[] = [];
   if (searches) bits.push(searches > 1 ? `Searched library ×${searches}` : "Searched library");
   if (browses) bits.push("browsed library");
   if (reads) bits.push(`read ${reads} source${reads === 1 ? "" : "s"}`);
+  if (transcripts) {
+    bits.push(transcripts > 1 ? `searched transcripts ×${transcripts}` : "searched a transcript");
+  }
   if (webs) bits.push(webs > 1 ? `searched the web ×${webs}` : "searched the web");
   if (other) bits.push(`${other} other step${other === 1 ? "" : "s"}`);
   if (!bits.length) return "Thought it through";
@@ -519,8 +549,13 @@ function streamingVerb(name: string): string {
     case "search_library":
       return "Searching your library";
     case "get_item":
+    case "get_items":
       return "Reading sources";
+    case "search_transcript":
+      return "Searching a transcript";
     case "browse_library":
+    case "list_channels":
+    case "list_topics":
     case "list_tags":
     case "list_source_types":
       return "Browsing your library";

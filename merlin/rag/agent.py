@@ -14,10 +14,12 @@ agentic-chat regret: dumping big rows into history every turn.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import date, datetime, time
+from dataclasses import dataclass, field, replace
+from datetime import date, datetime, time, tzinfo
 
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.capabilities import ProcessHistory
+from pydantic_ai.messages import ModelMessage, ModelRequest, UserPromptPart
 from pydantic_ai.tools import ToolDefinition
 
 from merlin.config import settings
@@ -35,7 +37,7 @@ _MAX_BROWSE_LIMIT = 25
 _TRANSCRIPT_EXCERPT_CHARS = 3000
 _MAX_TAGS = 60
 _MAX_CHANNELS = 40
-_MAX_GET_ITEMS = 6
+_MAX_GET_ITEMS = 8
 _GET_ITEMS_SUMMARY_CHARS = 2500
 # A date-sorted search reorders this many relevance hits (the rerank pool size).
 _SORT_POOL = 20
@@ -57,10 +59,16 @@ class ChatDeps:
     `source_types` / `tags` are the chat-level FilterBar selections; they act as
     defaults a tool call may override. `cited` accumulates every item a tool
     surfaced this run, keyed by item id, for the consolidated "Sources" list.
+
+    `tz` is the user's timezone (None → the server's) and `user_times` the send
+    time of each user message in the conversation, oldest first (None where a
+    message predates time stamping) — see `_stamp_user_messages`.
     """
 
     source_types: list[str] | None = None
     tags: list[str] | None = None
+    tz: tzinfo | None = None
+    user_times: list[datetime | None] = field(default_factory=list)
     cited: dict[str, dict] = field(default_factory=dict)
 
     def cite(self, chunk: RetrievedChunk) -> None:
@@ -87,7 +95,69 @@ class ChatDeps:
             }
 
 
-agent = Agent(deps_type=ChatDeps, system_prompt=AGENT_SYSTEM_PROMPT)
+# --------------------------------------------------------------------------- #
+# Message times. The browser stamps each message with its send time, but the
+# adapter drops those `data-*` parts, so the model can't tell a thread resumed
+# days later from one minutes old. Each user prompt is prefixed with its send
+# time instead — in the history, not the instructions: an old message's stamp
+# never changes, so the provider's prompt cache keeps the conversation prefix,
+# whereas a clock in the instructions would invalidate everything every turn.
+# --------------------------------------------------------------------------- #
+
+_STAMP_PREFIX = "[sent "
+
+
+def format_sent_stamp(sent: datetime, tz: tzinfo | None) -> str:
+    """`[sent Thu 2026-10-15 21:40 EDT]` — the send time in the user's zone."""
+    local = sent.astimezone(tz)
+    return f"{_STAMP_PREFIX}{local:%a %Y-%m-%d %H:%M} {local:%Z}]".replace(" ]", "]")
+
+
+def _stamp_user_messages(
+    ctx: RunContext[ChatDeps], messages: list[ModelMessage]
+) -> list[ModelMessage]:
+    """Prefix each user prompt with its send time (`ChatDeps.user_times`).
+
+    Prompts and times are aligned from the end, so the current message always
+    gets the current time even if older ones are missing. Idempotent: the
+    processed history replaces the run's history, so this runs again over
+    already-stamped prompts on every later step of the tool loop.
+    """
+    times = list(ctx.deps.user_times)
+    if not times:
+        return messages
+    slots = [
+        (mi, pi)
+        for mi, msg in enumerate(messages)
+        if isinstance(msg, ModelRequest)
+        for pi, part in enumerate(msg.parts)
+        if isinstance(part, UserPromptPart)
+    ]
+    out = list(messages)
+    for (mi, pi), sent in zip(reversed(slots), reversed(times), strict=False):
+        if sent is None:
+            continue
+        part = out[mi].parts[pi]
+        content = part.content
+        first = content if isinstance(content, str) else (content[:1] or [""])[0]
+        if isinstance(first, str) and first.startswith(_STAMP_PREFIX):
+            continue
+        stamp = format_sent_stamp(sent, ctx.deps.tz)
+        if isinstance(content, str):
+            new_content = f"{stamp}\n{content}"
+        else:
+            new_content = [stamp, *content]
+        parts = list(out[mi].parts)
+        parts[pi] = replace(part, content=new_content)
+        out[mi] = replace(out[mi], parts=parts)
+    return out
+
+
+agent = Agent(
+    deps_type=ChatDeps,
+    system_prompt=AGENT_SYSTEM_PROMPT,
+    capabilities=[ProcessHistory(_stamp_user_messages)],
+)
 
 # The Reader's single-item chat: no tools (the transcript is supplied directly
 # as per-run instructions by the service), so the model just answers from that
@@ -135,20 +205,28 @@ def _over_budget(ctx: RunContext[ChatDeps]) -> bool:
 
 
 @agent.instructions
-def current_date() -> str:
+def current_date(ctx: RunContext[ChatDeps]) -> str:
     """Give the model today's date for recency / relative-time reasoning.
 
     Lives in `@agent.instructions` (not the static system prompt) so it is
     recomputed once per run and never persisted into message history — each turn
     gets the current date, with no stale copies accumulating across a long
-    conversation. Attached only to the library-wide `agent`; the Reader's
-    `item_agent` answers from one fixed item and has no use for "now".
+    conversation. Date only, in the user's timezone: it changes once a day, so
+    it costs the prompt cache one miss per day; the time of day rides on the
+    message stamps instead (see `_stamp_user_messages`). Attached only to the
+    library-wide `agent`; the Reader's `item_agent` answers from one fixed item
+    and has no use for "now".
     """
+    today = datetime.now(ctx.deps.tz).date().isoformat()
     return (
-        f"Today's date is {date.today().isoformat()}. Use it for recency and "
+        f"Today's date is {today}. Use it for recency and "
         'relative-time reasoning (e.g. "most recent in the library", "the last '
         'month", "N days after release"). Each item\'s own publication date '
-        "appears in tool results."
+        "appears in tool results. User messages start with a `[sent …]` stamp — "
+        "when the user sent it, in their local time; the latest one is now. "
+        "Mind the gaps between them: a conversation resumed days later means "
+        '"now", "latest" and "since" have moved on. Never write such a stamp '
+        "yourself."
     )
 
 
@@ -174,6 +252,7 @@ def search_library(
     after: str | None = None,
     before: str | None = None,
     limit: int = 8,
+    include_summaries: bool = False,
 ) -> str:
     """Search the knowledge base and return the most relevant items.
 
@@ -189,7 +268,10 @@ def search_library(
     result shows the item id, title, author, publication date, tags and a
     matching excerpt; a header reports the total match count when more exist
     than shown. Don't put creator names in `query` to find their videos — use
-    `browse_library(channel=...)`.
+    `browse_library(channel=...)`. `include_summaries=True` also returns each
+    hit's summary (at most 8 hits) — use it on a broad question where you would
+    read the top hits anyway, to skip the follow-up `get_items` call; leave it
+    off for narrow lookups and when firing several searches at once.
     """
     if _over_budget(ctx):
         return _BUDGET_REFUSAL
@@ -224,8 +306,12 @@ def search_library(
             return f"No items in the library matched the search {query!r}."
         if sort != "relevance":
             chunks = _sort_by_date(chunks, newest=sort == "newest")[:limit]
+        if include_summaries:
+            chunks = chunks[:_MAX_GET_ITEMS]
         for c in chunks:
             ctx.deps.cite(c)
+        if include_summaries:
+            return _format_chunks_with_summaries(chunks, total)
         return _format_chunks(chunks, total)
     except ValueError as exc:
         return str(exc)
@@ -259,7 +345,7 @@ def get_item(
 
 @agent.tool
 def get_items(ctx: RunContext[ChatDeps], item_ids: list[str]) -> str:
-    """Read the summaries of several items at once (up to 6 per call).
+    """Read the summaries of several items at once (up to 8 per call).
 
     The default way to read what you found: pass every relevant id from your
     searches in ONE call rather than calling `get_item` repeatedly. Returns each
@@ -599,6 +685,22 @@ def _format_chunks(chunks: list[RetrievedChunk], total: int | None = None) -> st
         parts.append(f"{head}\n{c.excerpt}")
     body = "\n\n".join(parts)
     # Coverage signal: only when there's more than what's shown.
+    if total is not None and total > len(chunks):
+        return f"{total} matches; showing top {len(chunks)}:\n\n{body}"
+    return body
+
+
+def _format_chunks_with_summaries(
+    chunks: list[RetrievedChunk], total: int | None = None
+) -> str:
+    """`search_library(include_summaries=True)`: each hit as a `get_items` entry
+    plus the passage that matched."""
+    parts = []
+    for c in chunks:
+        item = library.get_item(c.knowledge_item_id)
+        entry = _format_item_summary(item) if item else f"id: {c.knowledge_item_id}"
+        parts.append(f"{entry}\nMATCH: {c.excerpt}")
+    body = "\n\n---\n\n".join(parts)
     if total is not None and total > len(chunks):
         return f"{total} matches; showing top {len(chunks)}:\n\n{body}"
     return body

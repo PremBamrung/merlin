@@ -18,9 +18,16 @@ export type ChatFilters = {
 };
 
 /** The request body for a send: the caller's filters plus the stored thinking
- * level, read at send time so a picker change applies to the next message. */
-function requestBody(filters?: ChatFilters) {
-  return { filters: { ...filters, thinking: useUi.getState().thinking } };
+ * level, read at send time so a picker change applies to the next message.
+ * `tz` and `sent_at` let the agent see when each message was written: `sent_at`
+ * is the same epoch ms the user message is stamped with at end-of-turn, so the
+ * model sees an identical stamp on later turns (prompt-cache stable). */
+function requestBody(filters: ChatFilters | undefined, sentAt: number) {
+  return {
+    filters: { ...filters, thinking: useUi.getState().thinking },
+    tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    sent_at: sentAt,
+  };
 }
 
 /** A consolidated citation, emitted by the server as a citation data-part.
@@ -97,8 +104,10 @@ export const WORK_TIMING_PART = "data-work-timing";
  * persisted as a data-part — so a message's time survives reload with no schema
  * change (the DB column can't be used: each save wipes and re-inserts rows). The
  * adapter skips `data-*` parts when replaying history, so this round-trips
- * harmlessly on continuation turns. The user message is stamped with the turn's
- * send time, the assistant message with the finish time.
+ * harmlessly on continuation turns — the chat route reads the user messages'
+ * stamps itself and prefixes each prompt with its send time for the agent. The
+ * user message is stamped with the turn's send time, the assistant message
+ * with the finish time.
  */
 export const MESSAGE_TIME_PART = "data-message-time";
 
@@ -338,16 +347,18 @@ export function useAgentChat(opts?: UseAgentChatOptions) {
   const send = useCallback((text: string, filters?: ChatFilters) => {
     const q = text.trim();
     if (!q || isStreamingRef.current) return;
-    turnStartRef.current = Date.now();
+    const now = Date.now();
+    turnStartRef.current = now;
     workMsRef.current = null;
-    void sdkRef.current.sendMessage({ text: q }, { body: requestBody(filters) });
+    void sdkRef.current.sendMessage({ text: q }, { body: requestBody(filters, now) });
   }, []);
 
   const regenerateWith = useCallback((filters?: ChatFilters) => {
     if (isStreamingRef.current) return;
-    turnStartRef.current = Date.now();
+    const now = Date.now();
+    turnStartRef.current = now;
     workMsRef.current = null;
-    void sdkRef.current.regenerate({ body: requestBody(filters) });
+    void sdkRef.current.regenerate({ body: requestBody(filters, now) });
   }, []);
 
   /**
@@ -366,9 +377,10 @@ export function useAgentChat(opts?: UseAgentChatOptions) {
       // setMessages and sendMessage both act on the same Chat instance, so the
       // truncation is in place before the new turn is appended.
       sdkRef.current.setMessages(msgs.slice(0, idx));
-      turnStartRef.current = Date.now();
+      const now = Date.now();
+      turnStartRef.current = now;
       workMsRef.current = null;
-      void sdkRef.current.sendMessage({ text: q }, { body: requestBody(filters) });
+      void sdkRef.current.sendMessage({ text: q }, { body: requestBody(filters, now) });
     },
     [],
   );

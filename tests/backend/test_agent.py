@@ -359,3 +359,159 @@ def test_search_transcript_finds_passages(make_item):
     assert "No item found" in search_transcript(_Ctx(), "nope", "x")  # type: ignore[arg-type]
     empty = make_item(title="Empty", raw_content="")
     assert "no transcript" in search_transcript(_Ctx(), empty, "x")  # type: ignore[arg-type]
+
+
+def test_search_library_include_summaries(make_item):
+    from merlin.rag.agent import search_library
+
+    make_item(title="Moat economics", summary="Moats keep competitors out.")
+    ctx = _Ctx()
+
+    plain = search_library(ctx, query="moat")  # type: ignore[arg-type]
+    assert "Moats keep competitors out." not in plain
+
+    out = search_library(ctx, query="moat", include_summaries=True)  # type: ignore[arg-type]
+    assert "SUMMARY:\nMoats keep competitors out." in out
+    assert "MATCH:" in out and "title: Moat economics" in out
+    assert len(ctx.deps.cited) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Message times — each user prompt carries its send time; today's date follows
+# the user's timezone.
+# --------------------------------------------------------------------------- #
+
+
+def _ui_user(text: str, ms: int | None = None) -> dict:
+    parts: list[dict] = [{"type": "text", "text": text}]
+    if ms is not None:
+        parts.append({"type": "data-message-time", "data": {"ms": ms}})
+    return {"id": text, "role": "user", "parts": parts}
+
+
+def test_user_message_times_prefers_stamps_then_sent_at():
+    from datetime import UTC, datetime
+
+    from merlin.services.chat import user_message_times
+
+    t1 = int(datetime(2026, 10, 12, 0, 28, tzinfo=UTC).timestamp() * 1000)
+    t3 = int(datetime(2026, 10, 15, 1, 40, tzinfo=UTC).timestamp() * 1000)
+    messages = [
+        _ui_user("first", t1),
+        {"id": "a", "role": "assistant", "parts": []},
+        _ui_user("never stamped"),
+        _ui_user("now"),
+    ]
+    times = user_message_times(messages, t3)
+    assert times[0] == datetime(2026, 10, 12, 0, 28, tzinfo=UTC)
+    assert times[1] is None  # old, unstamped message — left alone
+    assert times[2] == datetime(2026, 10, 15, 1, 40, tzinfo=UTC)
+
+    # A regenerate re-sends an already-stamped last message: its stamp wins.
+    assert user_message_times([_ui_user("q", t1)], t3)[0].day == 12
+    # No sent_at (old client) → the server clock, never None for the latest.
+    assert user_message_times([_ui_user("q")], None)[0] is not None
+    assert user_message_times([_ui_user("q")], "junk")[0] is not None
+
+
+def test_deps_from_request_parses_tz_and_filters():
+    from merlin.services.chat import deps_from_request
+
+    deps = deps_from_request(
+        {
+            "filters": {"tags": ["coffee"]},
+            "tz": "America/Toronto",
+            "sent_at": 1_760_000_000_000,
+            "messages": [_ui_user("hi")],
+        }
+    )
+    assert deps.tags == ["coffee"]
+    assert str(deps.tz) == "America/Toronto"
+    assert len(deps.user_times) == 1
+
+    assert deps_from_request({"tz": "Not/AZone"}).tz is None
+    assert deps_from_request({"tz": 42}).tz is None
+    assert deps_from_request(None).user_times == []
+
+
+def test_agent_stamps_each_user_prompt_once(make_item):
+    """Every model request sees each user prompt prefixed with its send time in
+    the user's zone — exactly once, even across tool-loop steps — and an old
+    unstamped message stays as it was."""
+    from datetime import UTC, datetime
+    from zoneinfo import ZoneInfo
+
+    from pydantic_ai.messages import (
+        ModelRequest,
+        ModelResponse,
+        TextPart,
+        ToolCallPart,
+        UserPromptPart,
+    )
+    from pydantic_ai.models.function import FunctionModel
+
+    from merlin.rag.agent import ChatDeps, agent
+
+    make_item(title="Moat video", summary="moat discussion")
+    seen: list[list[str]] = []
+
+    def model_fn(messages, info):
+        seen.append(
+            [
+                p.content
+                for m in messages
+                if isinstance(m, ModelRequest)
+                for p in m.parts
+                if isinstance(p, UserPromptPart)
+            ]
+        )
+        if len(seen) == 1:
+            return ModelResponse(
+                parts=[ToolCallPart("search_library", {"query": "moat"})]
+            )
+        return ModelResponse(parts=[TextPart("done")])
+
+    history = [
+        ModelRequest(parts=[UserPromptPart("ancient question")]),
+        ModelResponse(parts=[TextPart("ancient answer")]),
+        ModelRequest(parts=[UserPromptPart("older question")]),
+        ModelResponse(parts=[TextPart("older answer")]),
+    ]
+    deps = ChatDeps(
+        tz=ZoneInfo("America/Toronto"),
+        user_times=[
+            None,
+            datetime(2026, 10, 12, 0, 28, tzinfo=UTC),
+            datetime(2026, 10, 15, 1, 40, tzinfo=UTC),
+        ],
+    )
+
+    async def run():
+        return await agent.run(
+            "what about now?",
+            message_history=history,
+            model=FunctionModel(model_fn),
+            deps=deps,
+        )
+
+    asyncio.run(run())
+    assert len(seen) == 2  # search step + answer step
+    for prompts in seen:
+        assert prompts == [
+            "ancient question",
+            "[sent Sun 2026-10-11 20:28 EDT]\nolder question",
+            "[sent Wed 2026-10-14 21:40 EDT]\nwhat about now?",
+        ]
+
+
+def test_current_date_follows_user_timezone():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from merlin.rag.agent import ChatDeps, current_date
+
+    class Ctx:
+        deps = ChatDeps(tz=ZoneInfo("Pacific/Kiritimati"))  # UTC+14
+
+    expected = datetime.now(ZoneInfo("Pacific/Kiritimati")).date().isoformat()
+    assert f"Today's date is {expected}." in current_date(Ctx())  # type: ignore[arg-type]

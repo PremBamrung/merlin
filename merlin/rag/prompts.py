@@ -40,7 +40,11 @@ items, issue only one.
 3. **Read in one batch, then go deep only where needed.** Once you know which \
 items matter, read their summaries with ONE `get_items` call listing all their \
 ids — not a series of `get_item` calls (each extra round trip makes the answer \
-slower). Summaries usually suffice. When you need a specific detail a summary \
+slower). On a broad question where you'd read the top hits of a single search \
+anyway, pass `include_summaries=True` to that `search_library` call and skip \
+the separate read — but not on every search, and not when you fire several \
+searches at once (the summaries add up). Summaries usually suffice. When you \
+need a specific detail a summary \
 doesn't cover, use `search_transcript` on that item to jump to the passage, or \
 `get_item` to read its transcript in windows.
 4. **Cross-reference, don't flatten.** *Before you start writing, look at the \
