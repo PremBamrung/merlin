@@ -27,6 +27,16 @@ from .errors import error_body
 TASK_STREAM_POLL_INTERVAL = 0.7  # seconds between get_task() polls
 TASK_STREAM_MAX_SECONDS = 600  # close the stream after this long regardless
 
+# Sent on every poll that has nothing new. An SSE comment — clients ignore it.
+# It exists for the server: this generator runs in Starlette's thread pool, and
+# a `next()` that only sleeps and re-polls never returns, so a task that sits
+# unchanged (queued behind the workers, or a long LLM call) held a pool thread
+# for the full TASK_STREAM_MAX_SECONDS — even after the browser had gone (a
+# reload re-opens a stream per in-flight ingest). Forty of those and every sync
+# endpoint hangs. Yielding hands the thread back each poll and lets Starlette
+# notice the disconnect and stop iterating.
+HEARTBEAT = ": keep-alive\n\n"
+
 
 def format_sse(obj: dict) -> str:
     """Serialise one event object to an SSE `data:` frame."""
@@ -72,6 +82,8 @@ def task_progress_events(task_id: str) -> Iterator[str]:
         if sig != last_sig:
             yield format_sse({"type": "progress", "task": task})
             last_sig = sig
+        else:
+            yield HEARTBEAT
 
         if time.monotonic() > deadline:
             return

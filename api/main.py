@@ -68,6 +68,20 @@ def _start_embedding_self_heal() -> None:
     threading.Thread(target=_run, name="embedding-self-heal", daemon=True).start()
 
 
+def _settle_interrupted_tasks() -> None:
+    """Fail the tasks a previous process died holding (the queue is in-memory).
+
+    Never fatal: on a DB that isn't migrated yet this just logs and moves on.
+    """
+    try:
+        from merlin.services.ingest import fail_interrupted_tasks
+
+        if n := fail_interrupted_tasks():
+            logger.info("Settled %d task(s) interrupted by the last restart", n)
+    except Exception:
+        logger.warning("Settling interrupted tasks failed", exc_info=True)
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Merlin API",
@@ -77,6 +91,10 @@ def create_app() -> FastAPI:
 
     # Register knowledge-source plugins once at startup (idempotent).
     register_plugins()
+
+    # Nothing is running yet in this process, so any unfinished task row is an
+    # orphan from the last one — settle it before the SPA re-attaches to it.
+    _settle_interrupted_tasks()
 
     # Backfill any missing item vectors in the background (no-op without a
     # provider; never blocks boot). New items embed at ingest; this heals the

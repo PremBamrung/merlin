@@ -505,6 +505,35 @@ def cancel_task(task_id: str) -> bool:
     return task_queue.cancel(task_id)
 
 
+INTERRUPTED_ERROR = "Interrupted — server restarted"
+
+
+def is_ingest_task(task_type: str | None) -> bool:
+    """Ingest-family tasks (ingest/re-fetch, re-summarise) — not topic jobs."""
+    return (task_type or "").startswith(("ingest_", "resummarize_"))
+
+
+def fail_interrupted_tasks() -> int:
+    """Settle tasks a previous process left queued/processing. Run at startup.
+
+    The queue is in-process, so a restart drops every job it held while their
+    rows stay unfinished forever — and the SPA, which re-attaches to unfinished
+    ingests after a reload, would resurrect them as rows that never move.
+    Ingests are marked failed (they land in Needs attention, where Retry
+    re-runs them); anything else (topic jobs) is marked cancelled. Returns the
+    number of tasks settled.
+    """
+    with SessionFactory() as session:
+        tasks = BackgroundTaskRepository.list_unfinished(session)
+        for task in tasks:
+            if is_ingest_task(task.task_type):
+                BackgroundTaskRepository.set_failed(session, task.id, INTERRUPTED_ERROR)
+            else:
+                BackgroundTaskRepository.set_cancelled(session, task.id)
+        session.commit()
+    return len(tasks)
+
+
 def _parse_json(value, default):
     if not value:
         return default

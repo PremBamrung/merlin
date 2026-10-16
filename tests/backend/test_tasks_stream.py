@@ -114,3 +114,20 @@ def test_stream_unknown_task_emits_error(client, monkeypatch):
             },
         }
     ]
+
+
+def test_idle_polls_send_heartbeats(client, monkeypatch):
+    # A task that never changes must still yield on every poll — otherwise the
+    # generator holds a thread-pool thread until the stream's time cap, even
+    # after the client has gone.
+    monkeypatch.setattr("api.sse.TASK_STREAM_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr("api.sse.TASK_STREAM_MAX_SECONDS", 0.1)
+    monkeypatch.setattr(
+        "merlin.services.ingest.get_task",
+        lambda task_id: _task(status="queued", progress=0),
+    )
+
+    text = client.get("/api/tasks/t1/stream").text
+    assert text.count(": keep-alive\n\n") >= 2
+    # Comments aren't frames: still exactly one progress frame for the one state.
+    assert [f["type"] for f in _frames(text)] == ["progress"]

@@ -110,6 +110,16 @@ class BackgroundTaskRepository:
         )
 
     @staticmethod
+    def list_unfinished(session: Session) -> list[BackgroundTask]:
+        """Every task still queued or processing, oldest first."""
+        return (
+            session.query(BackgroundTask)
+            .filter(BackgroundTask.status.in_(("queued", "processing")))
+            .order_by(BackgroundTask.created_at)
+            .all()
+        )
+
+    @staticmethod
     def count_by_status(session: Session, *statuses: str) -> int:
         """Count tasks whose status is in `statuses`."""
         return (
