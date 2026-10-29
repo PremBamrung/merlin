@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Captions,
@@ -13,9 +14,9 @@ import {
   Check,
   Pencil,
   Play,
-  MessageSquare,
   Star,
   Plus,
+  Sparkles,
   X,
 } from "lucide-react";
 import {
@@ -75,6 +76,7 @@ import { DetailsList } from "@/components/reader/DetailsList";
 import { normalizeSummary } from "@/lib/summary";
 import { vtThumb, vtTitle } from "@/lib/viewTransition";
 import { cn } from "@/lib/utils";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { LibraryPanel } from "@/components/library/LibraryPanel";
 
 const LENGTHS = ["short", "long"] as const;
@@ -125,6 +127,38 @@ function Reader({
   const [lenOpen, setLenOpen] = useState(false);
   const [tab, setTab] = useState<ReaderTab>("summary");
 
+  // Ask = the item chat. One flag drives both layouts: from `lg` it swaps the
+  // context rail from Details to the chat; below it, it opens a bottom sheet.
+  // The chat mounts on first open (keeps the AI SDK chunk lazy) and then stays
+  // mounted — hidden, not unmounted — so toggling never loses the thread.
+  const wide = useMediaQuery("(min-width: 1024px)");
+  const [askOpen, setAskOpen] = useState(false);
+  const [askMounted, setAskMounted] = useState(false);
+  const askRef = useRef<HTMLDivElement>(null);
+  const openAsk = (open: boolean) => {
+    if (open) setAskMounted(true);
+    setAskOpen(open);
+  };
+
+  // Re-opening should land in the composer (ItemChat only focuses on mount).
+  useEffect(() => {
+    if (askOpen) askRef.current?.querySelector("textarea")?.focus({ preventScroll: true });
+  }, [askOpen]);
+
+  // The sheet is modal on narrow screens: lock page scroll, Esc closes.
+  const sheetOpen = askOpen && !wide;
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setAskOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [sheetOpen]);
+
   const { prev, next } = useAdjacentItems(item.id);
   const prefetch = usePrefetchItem();
 
@@ -136,7 +170,8 @@ function Reader({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prev?.id, next?.id]);
 
-  // ←/→ walk to the adjacent library item (suppressed while typing).
+  // ←/→ walk to the adjacent library item, A toggles Ask (as on the Feed).
+  // Suppressed while typing.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -144,7 +179,11 @@ function Reader({
       if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable))
         return;
       if (new URLSearchParams(window.location.search).has("item")) return;
-      if (e.key === "ArrowLeft" && prev) {
+      if (e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        setAskMounted(true);
+        setAskOpen((o) => !o);
+      } else if (e.key === "ArrowLeft" && prev) {
         e.preventDefault();
         navigate(`/library/${prev.id}`);
       } else if (e.key === "ArrowRight" && next) {
@@ -160,6 +199,7 @@ function Reader({
   const isYouTube = item.source_type === "youtube";
   const watchUrl = isYouTube ? youtubeUrl(item.source_id) : null;
   const thumb = thumbnailUrl(item);
+  const canAsk = !!(item.raw_content || item.summary);
 
   const sections = (item.sections ?? {}) as Record<string, unknown>;
   const timestamps = (item.timestamps ?? {}) as Record<string, unknown>;
@@ -194,6 +234,66 @@ function Reader({
 
   const doRefetch = () =>
     refetch.mutate({}, { onSuccess: ({ task_id }) => setResumTask(task_id) });
+
+  const askPane = (
+    <>
+      {!wide && (
+        <div
+          aria-hidden
+          onClick={() => setAskOpen(false)}
+          className={cn(
+            "fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-200",
+            askOpen ? "opacity-100" : "pointer-events-none opacity-0",
+          )}
+        />
+      )}
+      <div
+        ref={askRef}
+        role={wide ? undefined : "dialog"}
+        aria-modal={wide ? undefined : true}
+        aria-label="Ask about this item"
+        inert={!askOpen}
+        className={cn(
+          wide
+            ? cn("h-[calc(100dvh-11rem)]", !askOpen && "hidden")
+            : cn(
+                "fixed inset-x-0 bottom-0 z-50 flex h-[85dvh] flex-col rounded-t-[16px] border-t border-border-strong bg-surface pb-[env(safe-area-inset-bottom)] shadow-2xl shadow-black/50",
+                "transition-[transform,visibility] duration-300 ease-out",
+                askOpen ? "translate-y-0" : "invisible translate-y-full",
+              ),
+        )}
+      >
+        {!wide && (
+          <div className="flex items-center justify-between gap-3 border-b border-border px-4 pb-2.5 pt-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="size-3.5 text-ui-icon" />
+              <p className="text-[14px] font-semibold">Ask about this item</p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setAskOpen(false)}
+              aria-label="Close"
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+        )}
+        <Suspense
+          fallback={
+            <div className="h-full rounded-[10px] border border-border bg-surface" />
+          }
+        >
+          {/* key={item.id} → ephemeral: navigating items resets the chat. */}
+          <ItemChat
+            key={item.id}
+            itemId={item.id}
+            className={wide ? "h-full" : "h-auto min-h-0 flex-1 rounded-none border-0"}
+          />
+        </Suspense>
+      </div>
+    </>
+  );
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
@@ -237,6 +337,17 @@ function Reader({
         </div>
 
         <div className="flex items-center gap-2">
+          {canAsk && (
+            <Button
+              variant={askOpen ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => openAsk(!askOpen)}
+              aria-pressed={askOpen}
+              title="Ask about this item (A)"
+            >
+              <Sparkles className="size-4" /> Ask
+            </Button>
+          )}
           {watchUrl && (
             <Button variant="outline" size="sm" asChild>
               <a href={watchUrl} target="_blank" rel="noreferrer">
@@ -300,8 +411,19 @@ function Reader({
 
       {/* Body: header + tabs form the reading column; a context rail holds the
           thumbnail/details/topics. On mobile the rail sits between the header
-          and the summary (order-2) so the video is seen before reading. */}
-      <div className="grid grid-cols-1 gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          and the summary (order-2) so the video is seen before reading.
+          `grid-rows-[auto_1fr]` is load-bearing: the rail spans both rows, and
+          when it's taller than header + tab content (a short Comments tab, or
+          the viewport-tall chat) the spare height must go to row 2 — with
+          implicit rows it was split between both, shoving the tabs down. */}
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-x-10 gap-y-6 lg:grid-rows-[auto_1fr]",
+          askOpen && wide
+            ? "lg:grid-cols-[minmax(0,1fr)_420px]"
+            : "lg:grid-cols-[minmax(0,1fr)_340px]",
+        )}
+      >
         {/* Header — title, meta, tags, progress/failed state */}
         <div className="order-1 min-w-0 lg:order-none lg:col-start-1 lg:row-start-1">
           {editingTitle ? (
@@ -376,7 +498,7 @@ function Reader({
           )}
         </div>
 
-        {/* Tabs — summary (with chat) + transcript + top comments */}
+        {/* Tabs — summary + transcript + top comments */}
         <div className="order-3 min-w-0 lg:order-none lg:col-start-1 lg:row-start-2">
           <Tabs
             value={tab === "comments" && !isYouTube ? "summary" : tab}
@@ -398,42 +520,14 @@ function Reader({
               )}
             </div>
 
-            {/* Summary + chat. Stacked on narrow; side-by-side at 2xl so the
-                chat fills the otherwise-empty reading column on wide displays. */}
-            <TabsContent
-              value="summary"
-              className="grid grid-cols-1 gap-8 pt-6 2xl:grid-cols-[minmax(0,75ch)_minmax(360px,1fr)] 2xl:items-start 2xl:gap-10"
-            >
-              <div className="min-w-0 max-w-[75ch]">
-                {item.summary ? (
-                  <Markdown>{normalizeSummary(item.summary)}</Markdown>
-                ) : (
-                  <p className="text-[14px] text-fg-muted">
-                    No summary yet.{" "}
-                    {!isFailed && "Use Re-summarize to generate one."}
-                  </p>
-                )}
-              </div>
-
-              {(item.raw_content || item.summary) && (
-                <div className="min-w-0 max-w-[70ch] 2xl:max-w-none">
-                  <div className="mb-3 flex items-center gap-2">
-                    <MessageSquare className="size-3.5 text-fg-subtle" />
-                    <p className="eyebrow">Ask about this item</p>
-                  </div>
-                  {/* key={item.id} → ephemeral: navigating items resets the chat. */}
-                  <Suspense
-                    fallback={
-                      <div className="h-[clamp(420px,60vh,720px)] rounded-[10px] border border-border bg-surface" />
-                    }
-                  >
-                    <ItemChat
-                      key={item.id}
-                      itemId={item.id}
-                      className="2xl:sticky 2xl:top-20 2xl:h-[calc(100vh-9rem)]"
-                    />
-                  </Suspense>
-                </div>
+            <TabsContent value="summary" className="max-w-[75ch] pt-6">
+              {item.summary ? (
+                <Markdown>{normalizeSummary(item.summary)}</Markdown>
+              ) : (
+                <p className="text-[14px] text-fg-muted">
+                  No summary yet.{" "}
+                  {!isFailed && "Use Re-summarize to generate one."}
+                </p>
               )}
             </TabsContent>
 
@@ -458,76 +552,103 @@ function Reader({
 
         {/* Context rail — thumbnail, details, topics. order-2 puts it above the
             summary on mobile; on desktop it's the right column spanning both rows. */}
-        <aside className="order-2 space-y-6 lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:sticky lg:top-20 lg:self-start">
-          {thumb && (
-            <a
-              href={watchUrl ?? thumb}
-              target="_blank"
-              rel="noreferrer"
-              className="group relative block aspect-video overflow-hidden rounded-[10px] border border-border bg-surface-2"
+        <aside className="order-2 lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:sticky lg:top-20 lg:self-start">
+          {wide && canAsk && (
+            <Tabs
+              value={askOpen ? "ask" : "details"}
+              onValueChange={(v) => openAsk(v === "ask")}
+              className="mb-4"
             >
-              <img
-                src={thumb}
-                alt={item.title ?? ""}
-                // The other half of the card → Reader morph (see the grid card).
-                style={{ viewTransitionName: vtThumb(item.id) }}
-                className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-              />
-              {watchUrl && (
-                <span className="absolute inset-0 flex items-center justify-center bg-black/15 opacity-0 transition-opacity group-hover:opacity-100">
-                  <span className="flex size-12 items-center justify-center rounded-full bg-black/65 ring-1 ring-white/20">
-                    <Play className="size-5 translate-x-px fill-white text-white" />
-                  </span>
-                </span>
-              )}
-              {formatDuration(item.duration) && (
-                <span className="absolute bottom-2 right-2 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-white">
-                  {formatDuration(item.duration)}
-                </span>
-              )}
-            </a>
+              <TabsList className="flex w-full">
+                <TabsTrigger value="details" className="flex-1 justify-center">
+                  Details
+                </TabsTrigger>
+                <TabsTrigger value="ask" className="flex-1 justify-center">
+                  <Sparkles className="size-3.5" /> Ask
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           )}
 
-          <div>
-            <p className="eyebrow mb-3">Details</p>
-            <DetailsList item={item} />
+          <div className={cn("space-y-6", askOpen && wide && "hidden")}>
+            {thumb && (
+              <a
+                href={watchUrl ?? thumb}
+                target="_blank"
+                rel="noreferrer"
+                className="group relative block aspect-video overflow-hidden rounded-[10px] border border-border bg-surface-2"
+              >
+                <img
+                  src={thumb}
+                  alt={item.title ?? ""}
+                  // The other half of the card → Reader morph (see the grid card).
+                  style={{ viewTransitionName: vtThumb(item.id) }}
+                  className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                />
+                {watchUrl && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/15 opacity-0 transition-opacity group-hover:opacity-100">
+                    <span className="flex size-12 items-center justify-center rounded-full bg-black/65 ring-1 ring-white/20">
+                      <Play className="size-5 translate-x-px fill-white text-white" />
+                    </span>
+                  </span>
+                )}
+                {formatDuration(item.duration) && (
+                  <span className="absolute bottom-2 right-2 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-white">
+                    {formatDuration(item.duration)}
+                  </span>
+                )}
+              </a>
+            )}
+
+            <div>
+              <p className="eyebrow mb-3">Details</p>
+              <DetailsList item={item} />
+            </div>
+
+            {railEntries.length > 0 && (
+              <div>
+                <p className="eyebrow mb-3">On this page</p>
+                <ul className="space-y-1.5">
+                  {railEntries.map(([topic, stamp]) => {
+                    const secs = tsToSeconds(String(stamp));
+                    const href =
+                      isYouTube && secs !== null
+                        ? youtubeUrl(item.source_id, secs)
+                        : null;
+                    return (
+                      <li key={topic}>
+                        {href ? (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-baseline justify-between gap-2 rounded-md px-2 py-1 text-[13px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
+                          >
+                            <span className="truncate">{topic}</span>
+                            <span className="shrink-0 font-mono text-[11px] tabular-nums text-fg-subtle">
+                              {String(stamp)}
+                            </span>
+                          </a>
+                        ) : (
+                          <span className="block px-2 py-1 text-[13px] text-fg-muted">
+                            {topic}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
           </div>
 
-          {railEntries.length > 0 && (
-            <div>
-              <p className="eyebrow mb-3">On this page</p>
-              <ul className="space-y-1.5">
-                {railEntries.map(([topic, stamp]) => {
-                  const secs = tsToSeconds(String(stamp));
-                  const href =
-                    isYouTube && secs !== null
-                      ? youtubeUrl(item.source_id, secs)
-                      : null;
-                  return (
-                    <li key={topic}>
-                      {href ? (
-                        <a
-                          href={href}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-baseline justify-between gap-2 rounded-md px-2 py-1 text-[13px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
-                        >
-                          <span className="truncate">{topic}</span>
-                          <span className="shrink-0 font-mono text-[11px] tabular-nums text-fg-subtle">
-                            {String(stamp)}
-                          </span>
-                        </a>
-                      ) : (
-                        <span className="block px-2 py-1 text-[13px] text-fg-muted">
-                          {topic}
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
+          {/* The chat: the rail's Ask pane from `lg`, a bottom sheet below.
+              The sheet is portalled to <body> — `main.m-view` has a
+              view-transition-name, which makes it a stacking context, so a
+              fixed sheet inside it sits under the nav rail and bottom tabs.
+              Toggling only hides it, so the thread survives; crossing the
+              breakpoint remounts it. */}
+          {canAsk && askMounted && (wide ? askPane : createPortal(askPane, document.body))}
         </aside>
       </div>
 

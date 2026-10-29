@@ -82,31 +82,27 @@ export function ItemChat({
   return (
     <div
       className={cn(
-        "flex h-[clamp(420px,60vh,720px)] flex-col rounded-[10px] border border-border bg-surface",
+        "flex h-full flex-col rounded-[10px] border border-border bg-surface",
         className,
       )}
     >
       {/* Thread */}
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-4">
         {isIdle ? (
-          <div className="flex h-full flex-col items-center justify-center gap-5 text-center">
-            <div className="flex size-11 items-center justify-center rounded-full bg-ui-tint-bg text-ui-icon">
-              <Sparkles className="size-5" strokeWidth={1.5} />
-            </div>
-            <div className="space-y-1">
-              <p className="text-[15px] font-semibold">Chat with this item</p>
-              <p className="text-[13px] text-fg-muted">
-                Answers come from the full transcript of this item.
-              </p>
-            </div>
-            <div className="flex w-full max-w-sm flex-col gap-2">
+          // Quiet until used: a one-line hint and starter chips sitting just
+          // above the composer, not a hero that outweighs the content.
+          <div className="flex h-full flex-col justify-end gap-3">
+            <p className="text-[13px] text-fg-muted">
+              Answers come from the full transcript of this item.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
               {STARTERS.map((s) => (
                 <button
                   key={s}
                   onClick={() => runSend(s)}
-                  className="group flex items-center gap-2.5 rounded-[10px] border border-border bg-surface-2 px-3.5 py-2.5 text-left text-[13px] text-fg-muted transition-colors hover:border-border-strong hover:text-fg"
+                  className="group flex items-center gap-1.5 rounded-full border border-border bg-surface-2 px-3 py-1.5 text-left text-[12.5px] text-fg-muted transition-colors hover:border-border-strong hover:text-fg"
                 >
-                  <Sparkles className="size-3.5 shrink-0 text-fg-subtle group-hover:text-ui-icon" />
+                  <Sparkles className="size-3 shrink-0 text-fg-subtle group-hover:text-ui-icon" />
                   {s}
                 </button>
               ))}

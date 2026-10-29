@@ -60,8 +60,9 @@ export function useKeyboardShortcuts() {
           setPaletteOpen(true);
           break;
         case "a":
-          // On the Feed, A asks about the card (feed.tsx); add is ⌘K → Add.
-          if (window.location.pathname.startsWith("/feed")) break;
+          // On the Feed, A asks about the card (feed.tsx), and in the Reader
+          // it toggles the item chat (reader.tsx); add is ⌘K → Add.
+          if (/^\/(feed|library\/[^/]+)/.test(window.location.pathname)) break;
           e.preventDefault();
           openAdd();
           break;
