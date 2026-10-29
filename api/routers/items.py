@@ -134,6 +134,14 @@ def mark_unread(item_id: str):
     return item
 
 
+@router.post("/items/{item_id}/surface", response_model=ListItem)
+def surface_item(item_id: str):
+    item = library.surface(item_id)
+    if item is None:
+        raise not_found("Item not found.")
+    return item
+
+
 @router.post("/items/{item_id}/save", response_model=ListItem)
 def save_item(item_id: str):
     item = library.set_saved(item_id, True)

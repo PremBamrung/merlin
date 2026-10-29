@@ -283,6 +283,18 @@ def set_read(item_id: str, read: bool) -> dict | None:
         return result
 
 
+def surface(item_id: str) -> dict | None:
+    """Bring an item back to the top of the Library and into the Feed, keeping
+    its summary and its original ingest date. Returns the item dict, or None."""
+    with SessionFactory() as session:
+        item = KnowledgeItemRepository.surface(session, item_id)
+        if not item:
+            return None
+        result = serialize_item(item)
+        session.commit()
+        return result
+
+
 def set_saved(item_id: str, saved: bool) -> dict | None:
     """Star/un-star an item. Returns the updated item dict, or None."""
     with SessionFactory() as session:

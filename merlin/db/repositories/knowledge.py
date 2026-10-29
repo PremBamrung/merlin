@@ -306,6 +306,18 @@ class KnowledgeItemRepository:
         return item
 
     @staticmethod
+    def surface(session: Session, item_id: str) -> KnowledgeItem | None:
+        """Make an item fresh again: top of "Newest" (surfaced_at = now) and
+        back in the Feed (unread). Leaves ingested_at — the real added-on date —
+        alone. None if missing."""
+        item = session.get(KnowledgeItem, item_id)
+        if not item:
+            return None
+        item.surfaced_at = datetime.now(UTC)
+        item.read_at = None
+        return item
+
+    @staticmethod
     def set_saved(session: Session, item_id: str, saved: bool) -> KnowledgeItem | None:
         """Star (now) or un-star (clear saved_at) an item. None if missing."""
         item = session.get(KnowledgeItem, item_id)
