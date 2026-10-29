@@ -105,7 +105,9 @@ def test_refetch_updates_in_place_and_keeps_user_state(
     assert item["summary_language"] == "french"
     assert item["tags"] == ["dofus", "gaming"]
     assert item["saved_at"] is not None
-    assert item["read_at"] is not None
+    # Refreshed content is fresh again: back in the Feed, real ingest date kept.
+    assert item["read_at"] is None
+    assert item["surfaced_at"] > item["ingested_at"]
     assert item["ingest_usage"]["input_tokens"] == 5000
     assert item["ingest_usage"]["output_tokens"] == 800
 

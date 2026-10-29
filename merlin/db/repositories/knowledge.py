@@ -262,11 +262,11 @@ class KnowledgeItemRepository:
             return [by_id[i] for i in page_ids if i in by_id], total
 
         order_by = {
-            "newest": KnowledgeItem.ingested_at.desc(),
+            "newest": KnowledgeItem.surfaced_at.desc(),
             "oldest": KnowledgeItem.ingested_at.asc(),
             "longest": KnowledgeItem.word_count.desc().nulls_last(),
             "title": KnowledgeItem.title.asc(),
-        }.get(sort, KnowledgeItem.ingested_at.desc())
+        }.get(sort, KnowledgeItem.surfaced_at.desc())
 
         total = q.count()
         items = (

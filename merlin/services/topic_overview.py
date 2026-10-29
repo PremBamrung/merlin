@@ -58,7 +58,7 @@ def _rows(session, topic_id: str | None = None):
     )
     if topic_id:
         q = q.filter(ItemTopic.topic_id == topic_id)
-    return q.order_by(KnowledgeItem.ingested_at.desc()).all()
+    return q.order_by(KnowledgeItem.surfaced_at.desc()).all()
 
 
 def overview(since: datetime) -> dict:
@@ -77,7 +77,7 @@ def overview(since: datetime) -> dict:
         preview: dict[str, list] = defaultdict(list)
         for topic_id, item in _rows(session):
             count[topic_id] += 1
-            if item.read_at is None and item.ingested_at and item.ingested_at >= since:
+            if item.read_at is None and item.surfaced_at and item.surfaced_at >= since:
                 new[topic_id] += 1
             tags[topic_id].update(_tags(item.tags))
             if len(preview[topic_id]) < PREVIEW:
@@ -136,7 +136,7 @@ def detail(slug: str, since: datetime) -> dict | None:
             if channel:
                 channels[channel] += 1
             seconds += _seconds(m.duration if m else None)
-            if item.read_at is None and item.ingested_at and item.ingested_at >= since:
+            if item.read_at is None and item.surfaced_at and item.surfaced_at >= since:
                 new_count += 1
         return {
             "id": topic.id,

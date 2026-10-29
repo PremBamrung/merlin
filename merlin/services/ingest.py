@@ -86,10 +86,11 @@ def persist_result(task_id: str, result) -> None:
             # A re-ingest (refetch, or a retry with no stored transcript)
             # refreshes the content in place. The plugin emits tags=[] — keep
             # whatever tags the item already has rather than wiping them, and
-            # bump ingested_at like a re-summarise does.
+            # make it fresh like a re-summarise does (ingested_at stays put).
             if not result.tags:
                 item_data.pop("tags")
-            item_data["ingested_at"] = datetime.now(UTC)
+            item_data["surfaced_at"] = datetime.now(UTC)
+            item_data["read_at"] = None
             for k, v in item_data.items():
                 setattr(existing, k, v)
             item = existing
@@ -266,8 +267,10 @@ def resummarize(
     """Re-summarise an existing item from its stored transcript (no network).
 
     Reuses the saved `raw_content` + YouTube metadata and only re-runs the
-    summariser, then bumps `ingested_at` so the refreshed item surfaces at the
-    top of the "Newest" sort. Returns a task_id to poll, like `submit_youtube`.
+    summariser, then bumps `surfaced_at` and marks it unread so the refreshed
+    item comes back at the top of "Newest" and in the Feed (`ingested_at`, the
+    real added-on date, is left alone). Returns a task_id to poll, like
+    `submit_youtube`.
     """
 
     def work(task_id: str, report) -> None:
@@ -359,7 +362,8 @@ def resummarize(
             item.llm_model = summ_usage.get("model") or settings.ingest_model_name
             item.status = "completed"
             item.error_message = None
-            item.ingested_at = datetime.now(UTC)  # bump to top of "Newest"
+            item.surfaced_at = datetime.now(UTC)  # bump to top of "Newest"
+            item.read_at = None  # …and back into the Feed
             if item.youtube_metadata is not None:
                 item.youtube_metadata.timestamps = json.dumps(timestamps)
                 item.youtube_metadata.summary_language = summary_lang

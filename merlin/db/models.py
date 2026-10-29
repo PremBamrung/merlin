@@ -53,7 +53,10 @@ class KnowledgeItem(Base):
     title = Column(String(512))
     author = Column(String(255))  # channel name, article author, etc.
     published_at = Column(DateTime)
-    ingested_at = Column(DateTime, default=_now)
+    ingested_at = Column(DateTime, default=_now)  # when it was added; never moved
+    # Freshness: what "Newest" and "New since" sort on. Starts equal to
+    # ingested_at; a redo, refetch or "Bring to top" bumps it (migration 016).
+    surfaced_at = Column(DateTime, default=_now)
     updated_at = Column(DateTime, default=_now, onupdate=_now)
 
     # Content
@@ -106,6 +109,7 @@ class KnowledgeItem(Base):
         Index("ix_knowledge_source", "source_type", "source_id", unique=True),
         Index("ix_knowledge_status", "status"),
         Index("ix_knowledge_ingested", "ingested_at"),
+        Index("ix_knowledge_surfaced", "surfaced_at"),
         Index("ix_knowledge_read", "read_at"),
         Index("ix_knowledge_saved", "saved_at"),
     )

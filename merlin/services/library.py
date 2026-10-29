@@ -60,6 +60,7 @@ def serialize_item(
         "author": item.author,
         "published_at": item.published_at.isoformat() if item.published_at else None,
         "ingested_at": item.ingested_at.isoformat() if item.ingested_at else None,
+        "surfaced_at": item.surfaced_at.isoformat() if item.surfaced_at else None,
         "summary": item.summary,
         "summary_length": item.summary_length,
         "tags": _parse_json(item.tags, []),

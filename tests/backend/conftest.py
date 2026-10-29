@@ -125,6 +125,9 @@ def make_item():
             status=overrides.pop("status", "completed"),
             error_message=overrides.pop("error_message", None),
         )
+        # Like migration 016's backfill: an item starts surfaced when ingested.
+        if "ingested_at" in overrides:
+            overrides.setdefault("surfaced_at", overrides["ingested_at"])
         for key, value in overrides.items():
             setattr(item, key, value)
 

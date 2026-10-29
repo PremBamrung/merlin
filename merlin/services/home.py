@@ -3,8 +3,8 @@ Batch E): what arrived since the client's last visit, what's still waiting,
 the conversation to pick up, and the topic that moved most.
 
 `since` is held by the client (its last visit); there is no server-side
-marker. "New" means ingested at or after it — a re-summarise bumps
-`ingested_at` too, which is acceptable for a nudge.
+marker. "New" means surfaced at or after it — a fresh ingest, a re-summarise
+or "Bring to top" on a duplicate all bump `surfaced_at`.
 """
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ def digest(since: datetime) -> dict:
             KnowledgeItem.status == "completed"
         )
         unread_q = completed.filter(KnowledgeItem.read_at.is_(None))
-        new_q = completed.filter(KnowledgeItem.ingested_at >= since)
+        new_q = completed.filter(KnowledgeItem.surfaced_at >= since)
 
         unread_count = unread_q.count()
         new_since_count = new_q.count()
@@ -70,7 +70,7 @@ def digest(since: datetime) -> dict:
         # The strip shows what's new since the last visit; when nothing is, it
         # shows what's still unread, so home is never an empty shelf.
         strip_q = (new_q if new_since_count else unread_q).order_by(
-            KnowledgeItem.ingested_at.desc()
+            KnowledgeItem.surfaced_at.desc()
         )
         strip = [serialize_item(i, topics=[]) for i in strip_q.limit(STRIP_SIZE)]
 

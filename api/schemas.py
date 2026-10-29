@@ -208,6 +208,7 @@ class ListItem(BaseModel):
     author: str | None = None
     published_at: str | None = None
     ingested_at: str | None = None
+    surfaced_at: str | None = None
     summary: str | None = None
     summary_length: str | None = None
     tags: list[str] = Field(default_factory=list)
