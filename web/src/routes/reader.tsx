@@ -296,7 +296,10 @@ function Reader({
   );
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6">
+    // `lg:w-fit` + the grid's fixed 75ch reading column keep the rail right
+    // beside the text and centre the pair, so spare width goes to the outer
+    // margins instead of a dead gap between the text and the rail.
+    <div className="mx-auto max-w-[1600px] space-y-6 lg:w-fit">
       {/* Top bar: back + adjacent-item pager + actions.
           `flex-wrap` is load-bearing, not tidiness: at 390px this row wants
           367px in a 358px box, and without it the ⋯ menu is clipped off the
@@ -337,6 +340,7 @@ function Reader({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Opens the sheet; from lg the rail's Details | Ask toggle is it. */}
           {canAsk && (
             <Button
               variant={askOpen ? "secondary" : "outline"}
@@ -344,6 +348,7 @@ function Reader({
               onClick={() => openAsk(!askOpen)}
               aria-pressed={askOpen}
               title="Ask about this item (A)"
+              className="lg:hidden"
             >
               <Sparkles className="size-4" /> Ask
             </Button>
@@ -420,8 +425,8 @@ function Reader({
         className={cn(
           "grid grid-cols-1 gap-x-10 gap-y-6 lg:grid-rows-[auto_1fr]",
           askOpen && wide
-            ? "lg:grid-cols-[minmax(0,1fr)_420px]"
-            : "lg:grid-cols-[minmax(0,1fr)_340px]",
+            ? "lg:grid-cols-[minmax(0,75ch)_420px]"
+            : "lg:grid-cols-[minmax(0,75ch)_340px]",
         )}
       >
         {/* Header — title, meta, tags, progress/failed state */}
@@ -563,7 +568,11 @@ function Reader({
                 <TabsTrigger value="details" className="flex-1 justify-center">
                   Details
                 </TabsTrigger>
-                <TabsTrigger value="ask" className="flex-1 justify-center">
+                <TabsTrigger
+                  value="ask"
+                  title="Ask about this item (A)"
+                  className="flex-1 justify-center"
+                >
                   <Sparkles className="size-3.5" /> Ask
                 </TabsTrigger>
               </TabsList>
