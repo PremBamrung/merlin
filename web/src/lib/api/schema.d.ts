@@ -159,6 +159,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/items/{item_id}/surface": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Surface Item */
+        post: operations["surface_item_api_items__item_id__surface_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/items/{item_id}/save": {
         parameters: {
             query?: never;
@@ -1196,6 +1213,8 @@ export interface components {
             published_at?: string | null;
             /** Ingested At */
             ingested_at?: string | null;
+            /** Surfaced At */
+            surfaced_at?: string | null;
             /** Summary */
             summary?: string | null;
             /** Summary Length */
@@ -1302,6 +1321,8 @@ export interface components {
             published_at?: string | null;
             /** Ingested At */
             ingested_at?: string | null;
+            /** Surfaced At */
+            surfaced_at?: string | null;
             /** Summary */
             summary?: string | null;
             /** Summary Length */
@@ -1454,6 +1475,8 @@ export interface components {
             published_at?: string | null;
             /** Ingested At */
             ingested_at?: string | null;
+            /** Surfaced At */
+            surfaced_at?: string | null;
             /** Summary */
             summary?: string | null;
             /** Summary Length */
@@ -2109,6 +2132,37 @@ export interface operations {
         };
     };
     mark_unread_api_items__item_id__unread_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    surface_item_api_items__item_id__surface_post: {
         parameters: {
             query?: never;
             header?: never;

@@ -85,6 +85,9 @@ export const markUnread = (id: string) =>
 export const saveItem = (id: string) => client.post<ListItem>(`/api/items/${id}/save`);
 export const unsaveItem = (id: string) =>
   client.post<ListItem>(`/api/items/${id}/unsave`);
+/** Keep the summary but make the item fresh: top of "Newest", back in the Feed. */
+export const surfaceItem = (id: string) =>
+  client.post<ListItem>(`/api/items/${id}/surface`);
 
 export const getUnreadCount = () =>
   client.get<components["schemas"]["CountResponse"]>("/api/items/unread-count");
