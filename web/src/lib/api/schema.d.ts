@@ -665,6 +665,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat/{thread_id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resume Chat Stream
+         * @description The AI SDK's resume call (`useChat` reconnecting on mount): replay the
+         *     thread's running (or just-finished) turn from its first frame, then follow
+         *     it. 204 when there's nothing to resume — no turn, or the client already
+         *     holds `have` messages, which includes the answer.
+         */
+        get: operations["resume_chat_stream_api_chat__thread_id__stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/{thread_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Chat
+         * @description Cancel the thread's running turn. Returns once its partial answer is
+         *     saved, so a refetch right after sees it. 204 either way.
+         */
+        post: operations["stop_chat_api_chat__thread_id__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat/threads": {
         parameters: {
             query?: never;
@@ -956,6 +1000,11 @@ export interface components {
             message_count: number;
             /** Preview */
             preview?: string | null;
+            /**
+             * Active
+             * @default false
+             */
+            active: boolean;
         };
         /** ClearFailedResponse */
         ClearFailedResponse: {
@@ -1088,6 +1137,11 @@ export interface components {
             message_count: number;
             /** Preview */
             preview?: string | null;
+            /**
+             * Active
+             * @default false
+             */
+            active: boolean;
             /** Last Reply */
             last_reply?: string | null;
             /**
@@ -3096,6 +3150,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    resume_chat_stream_api_chat__thread_id__stream_get: {
+        parameters: {
+            query?: {
+                have?: number | null;
+            };
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_chat_api_chat__thread_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

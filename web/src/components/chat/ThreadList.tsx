@@ -256,6 +256,11 @@ function ThreadRow({
         aria-current={active ? "page" : undefined}
       >
         <span className="min-w-0 flex-1 truncate text-[14px]">{label}</span>
+        {thread.active && (
+          <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-signal" title="Answering…">
+            <span className="sr-only">Answering…</span>
+          </span>
+        )}
         {pinned && <Pin className="size-3 shrink-0 text-fg-subtle" />}
       </button>
       <DropdownMenu>

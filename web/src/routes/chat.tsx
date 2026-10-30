@@ -20,7 +20,7 @@ import {
 } from "@/hooks/useAgentChat";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import {
-  saveChatThread,
+  stopChatTurn,
   useChatThread,
   useChatThreads,
   type ChatThreadDetail,
@@ -59,8 +59,9 @@ const STARTERS = [
  * `?thread=<id>`; the conversation pane is keyed by it so switching threads
  * remounts a fresh `useChat` seeded from the thread's stored history.
  *
- * Persistence is client-driven: each finished turn PUTs the full message list
- * (parts verbatim, citations intact) — see useChatThreads + the chat router.
+ * The server runs and saves every turn (api/routers/chat.py → chat_turns), so
+ * an answer survives closing the tab; reopening the thread mid-answer resumes
+ * its stream. The browser only keeps its query cache in step.
  */
 export default function ChatRoute() {
   const [params, setParams] = useSearchParams();
@@ -219,16 +220,12 @@ function ChatConversation({
     setChatDraft(threadId, value);
   };
 
-  // Client-driven persistence — best-effort; a failed write must never disrupt
-  // the chat. Save the current message list, then refresh the sidebar (which
-  // surfaces the freshly-titled thread).
-  const persist = useCallback(
+  // Mirror the live list into this thread's cache entry: it's what seeds the
+  // pane on reopen (staleTime: Infinity), so without this, switching away and
+  // back reopens a stale snapshot (and would resume from the wrong count).
+  const cacheMessages = useCallback(
     (msgs: UIMessage[]) => {
       if (!msgs.length) return;
-      // Mirror the list into this thread's cache entry too: it's what seeds the
-      // pane on reopen (staleTime: Infinity), so without this, switching away
-      // and back reopens a stale snapshot — and the next save would overwrite
-      // the server copy with it.
       qc.setQueryData<ChatThreadDetail>(keys.chatThread(threadId), (prev) => ({
         id: threadId,
         title: prev?.title ?? null,
@@ -236,15 +233,38 @@ function ChatConversation({
         updated_at: prev?.updated_at ?? null,
         messages: msgs as unknown as StoredMessage[],
       }));
-      saveChatThread(threadId, msgs)
-        .then(() => qc.invalidateQueries({ queryKey: keys.chatThreads() }))
-        .catch(() => {});
     },
     [threadId, qc],
   );
 
+  // A finished turn: the live list matches what the server saved. One that
+  // was stopped, dropped or errored lacks what the server wrote after that
+  // point (its closing note), so the cache is marked stale instead, for the
+  // next open to refetch.
+  const onTurnEnd = useCallback(
+    (msgs: UIMessage[], complete: boolean) => {
+      if (complete) cacheMessages(msgs);
+      else
+        void qc.invalidateQueries({ queryKey: keys.chatThread(threadId), refetchType: "none" });
+      void qc.invalidateQueries({ queryKey: keys.chatThreads() });
+    },
+    [cacheMessages, qc, threadId],
+  );
+
   const { messages, status, isStreaming, error, send, regenerate, editAndResend, stop } =
-    useAgentChat({ id: threadId, initialMessages, onFinish: persist });
+    useAgentChat({ id: threadId, initialMessages, onFinish: onTurnEnd, resume: true });
+
+  // Stop cancels the answer on the server too (otherwise it would only stop
+  // *watching* it); the partial answer is saved there before this resolves.
+  const stopTurn = useCallback(() => {
+    stop();
+    stopChatTurn(threadId)
+      .catch(() => {})
+      .finally(() => {
+        void qc.invalidateQueries({ queryKey: keys.chatThread(threadId), refetchType: "none" });
+        void qc.invalidateQueries({ queryKey: keys.chatThreads() });
+      });
+  }, [stop, threadId, qc]);
   // History loaded with the thread doesn't animate; turns sent now do.
   const [loadedIds] = useState(() => new Set(initialMessages.map((m) => m.id)));
   // The server names a new thread after its first turn — the title types in.
@@ -296,18 +316,20 @@ function ChatConversation({
         composerRef.current?.focus();
       } else if (isStreaming) {
         e.preventDefault();
-        stop();
+        stopTurn();
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [isStreaming, stop]);
+  }, [isStreaming, stopTurn]);
 
-  // Persist as soon as a turn STARTS (status flips to "submitted"), not just at
-  // the end — so the thread + the user's message are saved immediately and the
-  // title is generated from that first message, surviving a slow/failed answer.
+  // When a turn starts, cache the question so reopening the thread mid-answer
+  // shows it (and resumes from the right count). Once the answer streams, the
+  // server has saved the question: refresh the sidebar to show the thread
+  // answering (and, soon, its generated title).
   useEffect(() => {
-    if (status === "submitted") persist(messages);
+    if (status === "submitted") cacheMessages(messages);
+    if (status === "streaming") void qc.invalidateQueries({ queryKey: keys.chatThreads() });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
@@ -438,7 +460,7 @@ function ChatConversation({
               value={input}
               onChange={onInputChange}
               onSubmit={submit}
-              onStop={stop}
+              onStop={stopTurn}
               streaming={isStreaming}
               placeholder={isIdle ? "Ask your library…" : "Reply to Merlin…"}
               filters={filters}

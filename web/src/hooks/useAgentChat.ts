@@ -112,6 +112,20 @@ export const WORK_TIMING_PART = "data-work-timing";
 export const MESSAGE_TIME_PART = "data-message-time";
 
 /**
+ * How a library turn ended early, when it did: the server adds this part to an
+ * answer that errored, hit its step limit, or was stopped, so a reopened thread
+ * shows why the answer is partial.
+ */
+export const ERROR_PART = "data-error";
+export type TurnError = { reason: "stopped" | "error"; message: string };
+
+/** A message's `data-error` part, if it ended early. */
+export function messageError(message: UIMessage): TurnError | null {
+  const parts = (message.parts ?? []) as { type: string; data?: TurnError }[];
+  return parts.find((p) => p.type === ERROR_PART)?.data ?? null;
+}
+
+/**
  * Inline citation markers (`[#<id>]`, or `[<id>]` — the `#` is optional because
  * models often drop it) the model writes after sentences. The backend parses
  * them to split used vs viewed sources; on the client we strip them from the
@@ -252,7 +266,14 @@ function withMessageTimes(
 
 // The endpoint is fixed; filters are attached per-send via the request body, so
 // one stateless transport instance is shared across every chat surface.
-const transport = new DefaultChatTransport({ api: "/api/chat" });
+// Resuming asks for the thread's running answer; `have` (messages already on
+// screen) lets the server reply 204 when the answer is already among them.
+const transport = new DefaultChatTransport({
+  api: "/api/chat",
+  prepareReconnectToStreamRequest: ({ api, id, body }) => ({
+    api: `${api}/${encodeURIComponent(id)}/stream?have=${Number(body?.have ?? 0)}`,
+  }),
+});
 
 export type UseAgentChatOptions = {
   /** Stable chat/thread id (continuable threads persist under this id). */
@@ -260,11 +281,16 @@ export type UseAgentChatOptions = {
   /** Messages to seed the conversation with when reopening a saved thread. */
   initialMessages?: UIMessage[];
   /**
-   * Called when an assistant turn finishes streaming, with the full message
-   * list — used to persist the thread. Not fired on abort/disconnect/error so a
-   * half-finished turn isn't saved.
+   * Called when an assistant turn's stream ends, with the full message list.
+   * `complete` is false when it was stopped, dropped or errored: the live list
+   * then lacks the parts the server wrote after that point.
    */
-  onFinish?: (messages: UIMessage[]) => void;
+  onFinish?: (messages: UIMessage[], complete: boolean) => void;
+  /**
+   * Pick up a turn still answering on the server when the conversation mounts
+   * (reopened or reloaded mid-answer). Threads only — the Reader chat has none.
+   */
+  resume?: boolean;
 };
 
 /**
@@ -293,24 +319,42 @@ export function useAgentChat(opts?: UseAgentChatOptions) {
     transport,
     id: opts?.id,
     messages: opts?.initialMessages,
-    // Always defined: even without a persistence callback (the ephemeral Reader
-    // chat) we still stamp message times so they render live. Aborted/errored
-    // turns are left untouched.
+    // Always defined: even without a callback (the ephemeral Reader chat) we
+    // still stamp message times so they render live. A thread's turn already
+    // streams its own timing parts from the server, so only the user's send
+    // time is added there. Aborted/errored turns are left untouched.
     onFinish: ({ messages, isAbort, isDisconnect, isError }) => {
-      if (isAbort || isDisconnect || isError) return;
+      if (isAbort || isDisconnect || isError) {
+        onFinish?.(messages, false);
+        return;
+      }
       const stamped = withMessageTimes(
         withWorkTiming(messages, workMsRef.current),
         turnStartRef.current,
         Date.now(),
       );
       setMessagesRef.current?.(stamped);
-      onFinish?.(stamped);
+      onFinish?.(stamped, true);
     },
   });
   const { messages, sendMessage, regenerate, status, setMessages } = chat;
   useEffect(() => {
     setMessagesRef.current = setMessages as (m: UIMessage[]) => void;
   }, [setMessages]);
+
+  // Resume once per mount (the ref also absorbs StrictMode's double effect).
+  // Not useChat's `resume` flag: it can't tell the server how many messages
+  // are already on screen. A thread with no messages has nothing running (a
+  // turn saves its question before answering), so a new chat skips the call.
+  const resumedRef = useRef(false);
+  const resumeStream = chat.resumeStream;
+  const seededCount = opts?.initialMessages?.length ?? 0;
+  const resume = !!opts?.resume;
+  useEffect(() => {
+    if (!resume || resumedRef.current || seededCount === 0) return;
+    resumedRef.current = true;
+    void resumeStream({ body: { have: seededCount } });
+  }, [resume, resumeStream, seededCount]);
 
   const isStreaming = status === "submitted" || status === "streaming";
 

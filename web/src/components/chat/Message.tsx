@@ -33,9 +33,11 @@ import {
   WORK_TIMING_PART,
   MESSAGE_TIME_PART,
   linkifyCitationMarkers,
+  messageError,
   messageUsage,
   stripCitationMarkers,
   type Citation,
+  type TurnError,
 } from "@/hooks/useAgentChat";
 import { msgTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -181,6 +183,8 @@ export const Message = memo(function Message({
     .flatMap((p) => p.data?.items ?? []);
   // Per-turn tokens / est. cost / context occupancy (lands at end-of-turn).
   const usage = messageUsage(message);
+  // A saved turn that ended early says why (the live one shows ChatError).
+  const ended = interrupted ? null : messageError(message);
 
   const isThisStreaming = isStreaming && isLast;
   const hasVisible = parts.some(
@@ -235,6 +239,15 @@ export const Message = memo(function Message({
           <span className="mt-1 inline-block rounded border border-dashed border-border-strong px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-fg-subtle">
             Stopped here
           </span>
+        )}
+
+        {ended && (
+          <EndedNote
+            ended={ended}
+            // Nothing to copy means no action row, so offer Retry here.
+            onRetry={isLast && !textContent ? onRegenerate : undefined}
+            disabled={isStreaming}
+          />
         )}
 
         {/* Joy — thinking: before anything streams in, the hat bobs. */}
@@ -316,6 +329,38 @@ export const Message = memo(function Message({
     </div>
   );
 });
+
+/** Why a saved answer is partial: stopped, out of steps, or broken off. */
+function EndedNote({
+  ended,
+  onRetry,
+  disabled,
+}: {
+  ended: TurnError;
+  onRetry?: () => void;
+  disabled: boolean;
+}) {
+  const isLimit = /request[_ ]?limit|usage limit|exceeded/i.test(ended.message);
+  const label =
+    ended.reason === "stopped" ? "Stopped here" : isLimit ? "Step limit reached" : "Interrupted";
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2">
+      <span className="inline-block rounded border border-dashed border-border-strong px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-fg-subtle">
+        {label}
+      </span>
+      {ended.reason === "error" && !isLimit && ended.message && (
+        <span className="min-w-0 break-words font-mono text-[11px] leading-4 text-fg-subtle">
+          {ended.message}
+        </span>
+      )}
+      {onRetry && (
+        <Button size="sm" variant="ghost" onClick={onRetry} disabled={disabled}>
+          <RotateCw className="size-3.5" /> Retry
+        </Button>
+      )}
+    </div>
+  );
+}
 
 function SourcesHead({ count }: { count: number }) {
   return (
@@ -457,8 +502,10 @@ function WorkTrace({
   }, [streaming]);
 
   const toolParts = parts.filter(isToolPart);
-  // Live timer wins; fall back to the persisted duration on a reloaded thread.
-  const seconds = elapsed != null ? elapsed : fallbackSeconds;
+  // The live timer while working; once settled, the recorded duration wins
+  // (the server's, streamed at the end of the turn) — a resumed turn's live
+  // timer only started when the page did.
+  const seconds = !streaming && fallbackSeconds != null ? fallbackSeconds : (elapsed ?? fallbackSeconds);
   const summary = workSummary(streaming, toolParts);
 
   return (

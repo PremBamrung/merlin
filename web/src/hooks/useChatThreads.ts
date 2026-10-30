@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { UIMessage } from "ai";
 import { ApiError, client } from "@/lib/api/client";
 import { keys } from "@/lib/queryKeys";
 
@@ -16,6 +15,8 @@ export type ChatThreadSummary = {
   updated_at: string | null;
   message_count: number;
   preview: string | null;
+  /** An answer is still running on the server. */
+  active: boolean;
 };
 
 export type StoredMessage = {
@@ -40,16 +41,10 @@ const listChatThreads = () =>
 const getChatThread = (id: string) =>
   client.get<ChatThreadDetail>(`/api/chat/threads/${id}`);
 
-/** Upsert a thread with the full message list (client-driven persistence). */
-export function saveChatThread(id: string, messages: UIMessage[]) {
-  const body = {
-    messages: messages.map((m) => ({ id: m.id, role: m.role, parts: m.parts })),
-  };
-  return client.put<{ id: string; title: string | null }>(
-    `/api/chat/threads/${id}`,
-    body,
-  );
-}
+/** Cancel the thread's running answer on the server. Resolves once the
+ * partial answer is saved. (The server saves every turn itself.) */
+export const stopChatTurn = (id: string) =>
+  client.post<void>(`/api/chat/${encodeURIComponent(id)}/stop`);
 
 const renameChatThread = (id: string, title: string) =>
   client.patch<{ id: string; title: string | null }>(
@@ -62,12 +57,15 @@ export const deleteChatThread = (id: string) =>
 
 // --- hooks ------------------------------------------------------------------ //
 
-/** The thread sidebar list, newest-first (server-ordered by updated_at). */
+/** The thread sidebar list, newest-first (server-ordered by updated_at).
+ * Polls while any thread is answering, so its dot clears when the answer
+ * lands even if nobody is watching that thread. */
 export function useChatThreads() {
   return useQuery({
     queryKey: keys.chatThreads(),
     queryFn: listChatThreads,
     staleTime: 10_000,
+    refetchInterval: (q) => (q.state.data?.some((t) => t.active) ? 3_000 : false),
   });
 }
 
