@@ -1,0 +1,18 @@
+{
+  "id": "msg-step_limit",
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "tool-search_library",
+      "toolCallId": "call-l1",
+      "state": "output-available",
+      "input": {
+        "query": "q"
+      },
+      "output": "[#a1b2c3d4] Result for q"
+    }
+  ]
+}

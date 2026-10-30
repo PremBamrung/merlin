@@ -1,0 +1,5 @@
+{"type":"start","messageId":"msg-plain"}
+{"type":"start-step"}
+{"type":"text-start","id":"24550a35-1233-4184-94cd-07226b0a3a01"}
+{"type":"text-delta","delta":"Hello","id":"24550a35-1233-4184-94cd-07226b0a3a01"}
+{"type":"text-delta","delta":" there","id":"24550a35-1233-4184-94cd-07226b0a3a01"}

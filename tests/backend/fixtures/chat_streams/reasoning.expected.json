@@ -1,0 +1,59 @@
+{
+  "id": "msg-reasoning",
+  "metadata": {
+    "pydantic_ai": {
+      "timestamp": "2026-10-30T17:06:43.473370Z"
+    }
+  },
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "reasoning",
+      "text": "Let me search.",
+      "state": "done"
+    },
+    {
+      "type": "tool-search_library",
+      "toolCallId": "call-r1",
+      "state": "output-available",
+      "input": {
+        "query": "x"
+      },
+      "output": "[#a1b2c3d4] Result for x"
+    },
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "reasoning",
+      "text": "Found it.",
+      "state": "done"
+    },
+    {
+      "type": "text",
+      "text": "The answer is x.",
+      "state": "done"
+    },
+    {
+      "type": "data-usage",
+      "data": {
+        "input_tokens": 10,
+        "cost_usd": null
+      }
+    },
+    {
+      "type": "data-citations",
+      "data": {
+        "items": [
+          {
+            "item_id": "a1b2c3d4",
+            "title": "Moats"
+          }
+        ]
+      }
+    }
+  ]
+}

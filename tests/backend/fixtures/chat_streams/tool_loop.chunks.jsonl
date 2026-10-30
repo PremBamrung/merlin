@@ -1,0 +1,28 @@
+{"type":"start","messageId":"msg-tool_loop"}
+{"type":"start-step"}
+{"type":"tool-input-start","toolCallId":"call-1","toolName":"search_library"}
+{"type":"tool-input-delta","toolCallId":"call-1","inputTextDelta":"{\"query\""}
+{"type":"tool-input-delta","toolCallId":"call-1","inputTextDelta":": \"moats\"}"}
+{"type":"tool-input-start","toolCallId":"call-2","toolName":"read_item"}
+{"type":"tool-input-delta","toolCallId":"call-2","inputTextDelta":"{\"item_id\": \"bad\"}"}
+{"type":"tool-input-available","toolCallId":"call-1","toolName":"search_library","input":{"query":"moats"}}
+{"type":"tool-input-available","toolCallId":"call-2","toolName":"read_item","input":{"item_id":"bad"}}
+{"type":"tool-output-available","toolCallId":"call-1","output":"[#a1b2c3d4] Result for moats"}
+{"type":"tool-output-error","toolCallId":"call-2","errorText":"No item with that id.\n\nFix the errors and try again."}
+{"type":"finish-step"}
+{"type":"start-step"}
+{"type":"tool-input-start","toolCallId":"call-3","toolName":"read_item"}
+{"type":"tool-input-delta","toolCallId":"call-3","inputTextDelta":"{\"item_id\": \"a1b2c3d4\"}"}
+{"type":"tool-input-available","toolCallId":"call-3","toolName":"read_item","input":{"item_id":"a1b2c3d4"}}
+{"type":"tool-output-available","toolCallId":"call-3","output":{"item_id":"a1b2c3d4","title":"Moats","summary":"Durable."}}
+{"type":"finish-step"}
+{"type":"start-step"}
+{"type":"text-start","id":"09bfbb4b-a4d4-4bc5-9e13-524529a9f4f0"}
+{"type":"text-delta","delta":"Moats are durable ","id":"09bfbb4b-a4d4-4bc5-9e13-524529a9f4f0"}
+{"type":"text-delta","delta":"[#a1b2c3d4].","id":"09bfbb4b-a4d4-4bc5-9e13-524529a9f4f0"}
+{"type":"text-end","id":"09bfbb4b-a4d4-4bc5-9e13-524529a9f4f0"}
+{"type":"data-usage","data":{"input_tokens":10,"cost_usd":null}}
+{"type":"data-citations","data":{"items":[{"item_id":"a1b2c3d4","title":"Moats"}]}}
+{"type":"message-metadata","messageMetadata":{"pydantic_ai":{"timestamp":"2026-10-30T17:06:43.469118Z"}}}
+{"type":"finish-step"}
+{"type":"finish"}

@@ -1,0 +1,9 @@
+{"type":"start","messageId":"msg-step_limit"}
+{"type":"start-step"}
+{"type":"tool-input-start","toolCallId":"call-l1","toolName":"search_library"}
+{"type":"tool-input-delta","toolCallId":"call-l1","inputTextDelta":"{\"query\": \"q\"}"}
+{"type":"tool-input-available","toolCallId":"call-l1","toolName":"search_library","input":{"query":"q"}}
+{"type":"tool-output-available","toolCallId":"call-l1","output":"[#a1b2c3d4] Result for q"}
+{"type":"error","errorText":"The next request would exceed the request_limit of 1"}
+{"type":"finish-step"}
+{"type":"finish","finishReason":"error"}

@@ -1,0 +1,24 @@
+{"type":"start","messageId":"msg-reasoning"}
+{"type":"start-step"}
+{"type":"reasoning-start","id":"e7f5ff20-6e3c-4d1a-81b0-2cd4f8ba7bcc"}
+{"type":"reasoning-delta","id":"e7f5ff20-6e3c-4d1a-81b0-2cd4f8ba7bcc","delta":"Let me "}
+{"type":"reasoning-delta","id":"e7f5ff20-6e3c-4d1a-81b0-2cd4f8ba7bcc","delta":"search."}
+{"type":"reasoning-end","id":"e7f5ff20-6e3c-4d1a-81b0-2cd4f8ba7bcc"}
+{"type":"tool-input-start","toolCallId":"call-r1","toolName":"search_library"}
+{"type":"tool-input-delta","toolCallId":"call-r1","inputTextDelta":"{\"query\": \"x\"}"}
+{"type":"tool-input-available","toolCallId":"call-r1","toolName":"search_library","input":{"query":"x"}}
+{"type":"tool-output-available","toolCallId":"call-r1","output":"[#a1b2c3d4] Result for x"}
+{"type":"finish-step"}
+{"type":"start-step"}
+{"type":"reasoning-start","id":"6e1dfa62-c5c1-4f3a-aa9f-78cf7b108f53"}
+{"type":"reasoning-delta","id":"6e1dfa62-c5c1-4f3a-aa9f-78cf7b108f53","delta":"Found it."}
+{"type":"reasoning-end","id":"6e1dfa62-c5c1-4f3a-aa9f-78cf7b108f53"}
+{"type":"text-start","id":"cdbf4c39-b1b5-436c-b318-cd22ec0f172c"}
+{"type":"text-delta","delta":"The answer ","id":"cdbf4c39-b1b5-436c-b318-cd22ec0f172c"}
+{"type":"text-delta","delta":"is x.","id":"cdbf4c39-b1b5-436c-b318-cd22ec0f172c"}
+{"type":"text-end","id":"cdbf4c39-b1b5-436c-b318-cd22ec0f172c"}
+{"type":"data-usage","data":{"input_tokens":10,"cost_usd":null}}
+{"type":"data-citations","data":{"items":[{"item_id":"a1b2c3d4","title":"Moats"}]}}
+{"type":"message-metadata","messageMetadata":{"pydantic_ai":{"timestamp":"2026-10-30T17:06:43.473370Z"}}}
+{"type":"finish-step"}
+{"type":"finish"}

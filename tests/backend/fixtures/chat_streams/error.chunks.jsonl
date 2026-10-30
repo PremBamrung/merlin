@@ -1,0 +1,8 @@
+{"type":"start","messageId":"msg-error"}
+{"type":"start-step"}
+{"type":"text-start","id":"106796e4-6c20-41fe-b6c8-f3f249bc49d1"}
+{"type":"text-delta","delta":"Partial ","id":"106796e4-6c20-41fe-b6c8-f3f249bc49d1"}
+{"type":"text-delta","delta":"answer","id":"106796e4-6c20-41fe-b6c8-f3f249bc49d1"}
+{"type":"error","errorText":"upstream exploded"}
+{"type":"finish-step"}
+{"type":"finish","finishReason":"error"}

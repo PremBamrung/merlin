@@ -1,0 +1,14 @@
+{
+  "id": "msg-plain",
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "text",
+      "text": "Hello there",
+      "state": "streaming"
+    }
+  ]
+}

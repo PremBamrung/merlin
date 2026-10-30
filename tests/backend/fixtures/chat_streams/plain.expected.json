@@ -1,0 +1,37 @@
+{
+  "id": "msg-plain",
+  "metadata": {
+    "pydantic_ai": {
+      "timestamp": "2026-10-30T17:06:43.462179Z"
+    }
+  },
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "text",
+      "text": "Hello there, friend.",
+      "state": "done"
+    },
+    {
+      "type": "data-usage",
+      "data": {
+        "input_tokens": 10,
+        "cost_usd": null
+      }
+    },
+    {
+      "type": "data-citations",
+      "data": {
+        "items": [
+          {
+            "item_id": "a1b2c3d4",
+            "title": "Moats"
+          }
+        ]
+      }
+    }
+  ]
+}

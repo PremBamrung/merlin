@@ -1,0 +1,14 @@
+{
+  "id": "msg-error",
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "text",
+      "text": "Partial answer",
+      "state": "streaming"
+    }
+  ]
+}

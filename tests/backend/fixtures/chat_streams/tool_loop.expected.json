@@ -1,0 +1,74 @@
+{
+  "id": "msg-tool_loop",
+  "metadata": {
+    "pydantic_ai": {
+      "timestamp": "2026-10-30T17:06:43.469118Z"
+    }
+  },
+  "role": "assistant",
+  "parts": [
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "tool-search_library",
+      "toolCallId": "call-1",
+      "state": "output-available",
+      "input": {
+        "query": "moats"
+      },
+      "output": "[#a1b2c3d4] Result for moats"
+    },
+    {
+      "type": "tool-read_item",
+      "toolCallId": "call-2",
+      "state": "output-error",
+      "input": {
+        "item_id": "bad"
+      },
+      "errorText": "No item with that id.\n\nFix the errors and try again."
+    },
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "tool-read_item",
+      "toolCallId": "call-3",
+      "state": "output-available",
+      "input": {
+        "item_id": "a1b2c3d4"
+      },
+      "output": {
+        "item_id": "a1b2c3d4",
+        "title": "Moats",
+        "summary": "Durable."
+      }
+    },
+    {
+      "type": "step-start"
+    },
+    {
+      "type": "text",
+      "text": "Moats are durable [#a1b2c3d4].",
+      "state": "done"
+    },
+    {
+      "type": "data-usage",
+      "data": {
+        "input_tokens": 10,
+        "cost_usd": null
+      }
+    },
+    {
+      "type": "data-citations",
+      "data": {
+        "items": [
+          {
+            "item_id": "a1b2c3d4",
+            "title": "Moats"
+          }
+        ]
+      }
+    }
+  ]
+}
