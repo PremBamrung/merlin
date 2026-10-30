@@ -23,7 +23,9 @@ import {
   saveChatThread,
   useChatThread,
   useChatThreads,
+  type ChatThreadDetail,
   type ChatThreadSummary,
+  type StoredMessage,
 } from "@/hooks/useChatThreads";
 import { useUi } from "@/store/ui";
 import { Button } from "@/components/ui/button";
@@ -223,6 +225,17 @@ function ChatConversation({
   const persist = useCallback(
     (msgs: UIMessage[]) => {
       if (!msgs.length) return;
+      // Mirror the list into this thread's cache entry too: it's what seeds the
+      // pane on reopen (staleTime: Infinity), so without this, switching away
+      // and back reopens a stale snapshot — and the next save would overwrite
+      // the server copy with it.
+      qc.setQueryData<ChatThreadDetail>(keys.chatThread(threadId), (prev) => ({
+        id: threadId,
+        title: prev?.title ?? null,
+        created_at: prev?.created_at ?? null,
+        updated_at: prev?.updated_at ?? null,
+        messages: msgs as unknown as StoredMessage[],
+      }));
       saveChatThread(threadId, msgs)
         .then(() => qc.invalidateQueries({ queryKey: keys.chatThreads() }))
         .catch(() => {});
