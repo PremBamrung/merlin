@@ -547,3 +547,255 @@ def test_item_instructions_missing_raises():
     with pytest.raises(ValueError, match="not found"):
         # No monkeypatch → real lookup against the (empty) temp DB.
         chat_service.item_instructions("does-not-exist")
+
+
+def test_library_chat_stamps_send_times_from_browser_body(
+    client, monkeypatch, make_item
+):
+    """The browser's real request shape — `tz`, `sent_at`, and an earlier turn
+    carrying its `data-message-time` / usage / citation parts — streams an answer,
+    and the model sees each user prompt prefixed with its send time."""
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+    make_item(title="Moat economics", summary="Durable advantage.")
+    seen: list[list[str]] = []
+
+    async def stream_fn(messages, info):
+        seen.append(
+            [
+                p.content
+                for m in messages
+                if isinstance(m, ModelRequest)
+                for p in m.parts
+                if isinstance(p, UserPromptPart)
+            ]
+        )
+        yield "Here is the answer."
+
+    from pydantic_ai.models.function import FunctionModel
+
+    _patch_model(monkeypatch, FunctionModel(stream_function=stream_fn))
+    t1 = 1_791_851_280_000  # 2026-10-13 00:28 UTC
+    body = {
+        "id": "conv-1",
+        "trigger": "submit-message",
+        "messages": [
+            {
+                "id": "u1",
+                "role": "user",
+                "parts": [
+                    {"type": "text", "text": "first question"},
+                    {"type": "data-message-time", "data": {"ms": t1}},
+                ],
+            },
+            {
+                "id": "a1",
+                "role": "assistant",
+                "parts": [
+                    {"type": "step-start"},
+                    {"type": "text", "text": "first answer", "state": "done"},
+                    {"type": "data-usage", "data": {"input_tokens": 1}},
+                    {"type": "data-citations", "data": {"items": []}},
+                    {"type": "data-work-timing", "data": {"seconds": 3}},
+                    {"type": "data-message-time", "data": {"ms": t1 + 5000}},
+                ],
+            },
+            {
+                "id": "u2",
+                "role": "user",
+                "parts": [{"type": "text", "text": "and now?"}],
+            },
+        ],
+        "filters": {"source_types": None, "tags": None, "thinking": "medium"},
+        "tz": "America/Toronto",
+        "sent_at": t1 + 3 * 86_400_000,
+    }
+
+    resp = client.post("/api/chat", json=body)
+    assert resp.status_code == 200
+    assert "Here is the answer." in resp.text
+    assert '"type":"error"' not in resp.text.replace(" ", "")
+    assert seen and seen[-1] == [
+        "[sent Mon 2026-10-12 20:28 EDT]\nfirst question",
+        "[sent Thu 2026-10-15 20:28 EDT]\nand now?",
+    ]
+
+
+# --------------------------------------------------------------------------- #
+# Background turns — the server runs and saves the answer (chat_turns)
+# --------------------------------------------------------------------------- #
+
+
+def _slow_model(first: str, release):
+    """Streams `first`, then waits on `release` (a threading.Event) before
+    finishing — long enough to Stop or reconnect mid-answer."""
+    import asyncio
+
+    from pydantic_ai.models.function import FunctionModel
+
+    async def stream_fn(messages, info):
+        yield first
+        while not release.is_set():
+            await asyncio.sleep(0.01)
+        yield " and the rest."
+
+    return FunctionModel(stream_function=stream_fn)
+
+
+def _start_in_thread(client, body):
+    """POST a chat turn from a worker thread (TestClient blocks until the stream
+    ends); returns the thread and a dict that receives the response."""
+    import threading
+
+    out: dict = {}
+    t = threading.Thread(
+        target=lambda: out.update(resp=client.post("/api/chat", json=body))
+    )
+    t.start()
+    return t, out
+
+
+def _wait_for_frame(thread_id: str, needle: str, timeout: float = 5.0) -> None:
+    import time
+
+    from merlin.services import chat_turns
+
+    deadline = time.monotonic() + timeout
+    while True:
+        turn = chat_turns.registry.get(thread_id)
+        if turn is not None and any(needle in f for f in turn.frames):
+            return
+        assert time.monotonic() < deadline, f"no frame with {needle!r}"
+        time.sleep(0.01)
+
+
+def test_library_turn_is_saved_by_the_server(client, monkeypatch, make_item):
+    """No client PUT: the thread holds the question (stamped with `sent_at`)
+    and the answer, built from the stream, with the turn's closing parts."""
+    _patch_model(monkeypatch, _text_model("Moats are durable."))
+    body = {**_chat_body("moats?"), "sent_at": 1_791_851_280_000}
+
+    resp = client.post("/api/chat", json=body)
+    assert resp.status_code == 200
+    assert resp.headers["x-vercel-ai-ui-message-stream"] == "v1"
+    types = _sse_types(resp.text)
+    assert types[-2:] == ["data-message-time", "finish"]
+    assert resp.text.rstrip().endswith("data: [DONE]")
+
+    thread = client.get("/api/chat/threads/conv-1").json()
+    user, answer = thread["messages"]
+    assert {"type": "data-message-time", "data": {"ms": 1_791_851_280_000}} in user[
+        "parts"
+    ]
+    texts = [p for p in answer["parts"] if p["type"] == "text"]
+    assert texts == [{"type": "text", "text": "Moats are durable.", "state": "done"}]
+    assert any(p["type"] == "data-usage" for p in answer["parts"])
+
+
+def test_resume_stream_204_without_a_turn(client):
+    assert client.get("/api/chat/nope/stream").status_code == 204
+
+
+def test_resume_stream_replays_a_just_finished_turn(client, monkeypatch):
+    _patch_model(monkeypatch, _text_model("Replayed answer."))
+    live = client.post("/api/chat", json=_chat_body("q"))
+
+    # A client seeded before the save (1 message) gets the whole stream again…
+    resumed = client.get("/api/chat/conv-1/stream?have=1")
+    assert resumed.status_code == 200
+    assert resumed.text == live.text
+    # …one that already holds the answer (2 messages) gets nothing.
+    assert client.get("/api/chat/conv-1/stream?have=2").status_code == 204
+
+
+def test_resume_stream_follows_a_running_turn(client, monkeypatch):
+    import threading
+
+    release = threading.Event()
+    _patch_model(monkeypatch, _slow_model("Partial", release))
+    t, out = _start_in_thread(client, _chat_body("q"))
+    _wait_for_frame("conv-1", "Partial")
+
+    # The list marks the thread as answering while it runs.
+    [row] = client.get("/api/chat/threads").json()
+    assert row["active"] is True
+
+    resumer: dict = {}
+    r = threading.Thread(
+        target=lambda: resumer.update(resp=client.get("/api/chat/conv-1/stream"))
+    )
+    r.start()
+    release.set()
+    r.join(5)
+    t.join(5)
+    assert "Partial" in resumer["resp"].text
+    assert "and the rest." in resumer["resp"].text
+    assert resumer["resp"].text == out["resp"].text
+
+
+def test_send_while_answering_is_409(client, monkeypatch):
+    import threading
+
+    release = threading.Event()
+    _patch_model(monkeypatch, _slow_model("Partial", release))
+    t, _ = _start_in_thread(client, _chat_body("q"))
+    _wait_for_frame("conv-1", "Partial")
+
+    second = client.post("/api/chat", json=_chat_body("another"))
+    assert second.status_code == 409
+    assert second.json()["error"]["code"] == "conflict"
+    release.set()
+    t.join(5)
+
+
+def test_stop_cancels_and_saves_the_partial_answer(client, monkeypatch):
+    import threading
+
+    release = threading.Event()  # never set: only Stop ends this turn
+    _patch_model(monkeypatch, _slow_model("Partial", release))
+    t, out = _start_in_thread(client, _chat_body("q"))
+    _wait_for_frame("conv-1", "Partial")
+
+    assert client.post("/api/chat/conv-1/stop").status_code == 204
+    t.join(5)
+    assert not t.is_alive()
+    assert "data-error" in _sse_types(out["resp"].text)
+
+    _, answer = client.get("/api/chat/threads/conv-1").json()["messages"]
+    texts = [p for p in answer["parts"] if p["type"] == "text"]
+    assert texts == [{"type": "text", "text": "Partial", "state": "done"}]
+    [marker] = [p for p in answer["parts"] if p["type"] == "data-error"]
+    assert marker["data"]["reason"] == "stopped"
+    # Stop with nothing running is still fine.
+    assert client.post("/api/chat/conv-1/stop").status_code == 204
+
+
+def test_errored_turn_is_saved_with_error_marker(client, monkeypatch):
+    from pydantic_ai.models.function import FunctionModel
+
+    async def stream_fn(messages, info):
+        yield "Half an answer"
+        raise RuntimeError("upstream exploded")
+
+    _patch_model(monkeypatch, FunctionModel(stream_function=stream_fn))
+    resp = client.post("/api/chat", json=_chat_body("q"))
+    assert "error" in _sse_types(resp.text)
+
+    _, answer = client.get("/api/chat/threads/conv-1").json()["messages"]
+    assert any(p.get("text") == "Half an answer" for p in answer["parts"])
+    [marker] = [p for p in answer["parts"] if p["type"] == "data-error"]
+    assert marker["data"] == {"reason": "error", "message": "upstream exploded"}
+
+
+def test_deleting_a_thread_stops_its_turn(client, monkeypatch):
+    import threading
+
+    release = threading.Event()
+    _patch_model(monkeypatch, _slow_model("Partial", release))
+    t, _ = _start_in_thread(client, _chat_body("q"))
+    _wait_for_frame("conv-1", "Partial")
+
+    assert client.delete("/api/chat/threads/conv-1").status_code == 204
+    t.join(5)
+    # The stopped turn's save didn't bring the thread back.
+    assert client.get("/api/chat/threads/conv-1").status_code == 404

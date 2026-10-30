@@ -355,6 +355,8 @@ class ChatThreadSummary(BaseModel):
     message_count: int = 0
     # First user message, shown when `title` is still NULL.
     preview: str | None = None
+    # An answer is still running in the background.
+    active: bool = False
 
 
 class HomeThread(ChatThreadSummary):

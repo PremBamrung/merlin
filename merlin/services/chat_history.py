@@ -1,17 +1,17 @@
 """Chat-history service — persistence for continuable library-wide chats.
 
-The React `/chat` tab saves each turn here so a thread can be reopened and kept
+Each library-chat turn is saved here so a thread can be reopened and kept
 going with full context. A turn is stored as its **Vercel AI SDK `UIMessage`
 parts** (JSON in `chat_messages.parts`) — text, reasoning, tool calls/results,
 and our citation data-parts — so a reopened thread renders exactly as it did
 live and replays cleanly as agent history (the adapter's `load_messages` skips
 the custom data-parts and reconstructs tool-call/result pairs).
 
-Persistence is **client-driven**: the browser PUTs the full message list at the
-end of each turn (it holds the exact rendered parts, citations included), and
-`save_thread` upserts the thread + replaces its messages. Titles are generated
-here, lazily, on the first turn — by then the answer has already streamed, so
-the (cheap) LLM call blocks nothing the user is waiting on.
+The server saves each turn itself (`chat_turns`: the question when the turn
+starts, the reduced answer when it ends); `save_thread` upserts the thread +
+replaces its messages. The PUT endpoint still calls it for renames and older
+clients. Titles are generated here, lazily, from the first question, out of
+band (`generate_and_store_title`), so the LLM call blocks nothing.
 
 Framework-agnostic: returns plain dicts, opens short-lived sessions, never holds
 a `Session`. The Reader per-item chat is ephemeral and never calls this module.
@@ -174,9 +174,13 @@ def generate_and_store_title(thread_id: str) -> None:
 
 def list_threads() -> list[dict]:
     """All threads newest-first: `{id, title, created_at, updated_at,
-    message_count, preview}`. Reads the denormalized `message_count`/`preview`
-    straight off each thread row — no per-thread message load (the sidebar is
-    refetched on every turn, so this stays a single cheap query)."""
+    message_count, preview, active}`. Reads the denormalized `message_count`/
+    `preview` straight off each thread row — no per-thread message load (the
+    sidebar is refetched on every turn, so this stays a single cheap query).
+    `active` is true while an answer is running in the background."""
+    from merlin.services.chat_turns import registry  # imports this module
+
+    running = registry.running_ids()
     with get_db() as db:
         threads = (
             db.execute(select(ChatThread).order_by(ChatThread.updated_at.desc()))
@@ -191,6 +195,7 @@ def list_threads() -> list[dict]:
                 "updated_at": t.updated_at.isoformat() if t.updated_at else None,
                 "message_count": t.message_count or 0,
                 "preview": t.preview,
+                "active": t.id in running,
             }
             for t in threads
         ]

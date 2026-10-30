@@ -184,3 +184,45 @@ def make_task():
         return task_id
 
     return _make
+
+
+@pytest.fixture(autouse=True)
+def _offline_titles(monkeypatch):
+    """Every library-chat turn generates a thread title in the background; keep
+    that LLM call offline (`generate_title` swallows the error → no title).
+    Tests that want a title patch `chat_history.generate_title`."""
+    from merlin.rag.agent import title_agent
+
+    def _offline(*_a, **_kw):
+        raise RuntimeError("no title model in tests")
+
+    monkeypatch.setattr(title_agent, "run_sync", _offline)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_turn_registry(monkeypatch):
+    """A clean background-chat-turn registry per test (it's process-global)."""
+    from merlin.services import chat_turns
+
+    monkeypatch.setattr(chat_turns, "registry", chat_turns.TurnRegistry())
+
+
+@pytest.fixture
+def wait_for_turns():
+    """Block until every background chat turn has finished, including its
+    after-work (usage capture), which runs once the stream has closed."""
+    import time
+
+    from merlin.services import chat_turns
+
+    def _wait(timeout: float = 5.0) -> None:
+        deadline = time.monotonic() + timeout
+        while any(
+            t.task is not None and not t.task.done()
+            for t in list(chat_turns.registry._turns.values())
+        ):
+            if time.monotonic() > deadline:
+                raise AssertionError("chat turn still running")
+            time.sleep(0.01)
+
+    return _wait

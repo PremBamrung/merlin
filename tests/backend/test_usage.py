@@ -249,12 +249,12 @@ def _text_model(answer: str):
     return FunctionModel(stream_function=stream_fn)
 
 
-def test_chat_turn_records_usage_row(client, monkeypatch, make_item):
+def test_chat_turn_records_usage_row(client, monkeypatch, make_item, wait_for_turns):
     """A completed /api/chat turn writes one surface='chat' llm_usage row.
 
     No generation id (FunctionModel) → the OpenRouter cost lookup short-circuits,
-    so cost is NULL but the row + token counts + requests still land. The
-    TestClient runs the FastAPI background task synchronously after the response.
+    so cost is NULL but the row + token counts + requests still land. A library
+    turn records usage after its answer is saved, so wait for it to settle.
     """
     make_item(title="A video about moats", summary="moats and edges")
     monkeypatch.setattr(
@@ -265,6 +265,7 @@ def test_chat_turn_records_usage_row(client, monkeypatch, make_item):
 
     resp = client.post("/api/chat", json=_chat_body("what about moats?"))
     assert resp.status_code == 200
+    wait_for_turns()
 
     chat_rows = [r for r in _rows() if r.surface == "chat"]
     assert len(chat_rows) == 1

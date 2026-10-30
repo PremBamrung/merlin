@@ -7,17 +7,26 @@ field, which the request model tolerates) and drives a Pydantic AI agent through
 as SSE. When `filters.item_id` is set the request is the Reader's single-item
 chat: a tool-less agent grounded in that item's transcript (§3a).
 
-The adapter handles framing, tool-delta assembly, the done sentinel, and
-abort/disconnect; we own the proxy-buffering headers, the loop cap
-(`UsageLimits`), and emitting the consolidated citations data-part.
+The adapter handles framing and tool-delta assembly; we own the proxy-buffering
+headers, the loop cap (`UsageLimits`), and emitting the consolidated citations
+data-part.
+
+A library turn runs in the background (`merlin.services.chat_turns`): the POST
+only tails it, so a closed tab or a reload doesn't cancel the answer, the
+server saves it, and `GET /api/chat/{id}/stream` picks a running answer back
+up. The Reader chat is ephemeral and still streams straight from the request.
 """
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Callable
+from functools import partial
 import re
+import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Request, Response
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import StreamingResponse
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_ai.ui.vercel_ai.response_types import DataChunk
 from pydantic_ai.usage import UsageLimits
@@ -27,11 +36,12 @@ from merlin.config import settings
 from merlin.services import (
     chat as chat_service,
     chat_history,
+    chat_turns,
     library,
     usage as usage_service,
 )
 
-from ..errors import not_found
+from ..errors import APIError, not_found
 from ..schemas import (
     ChatThreadDetail,
     ChatThreadSummary,
@@ -57,6 +67,9 @@ _NO_BUFFER_HEADERS = {
     "X-Accel-Buffering": "no",
     "Connection": "keep-alive",
 }
+
+# The AI SDK checks this header to recognise its UI-message stream protocol.
+_STREAM_HEADERS = {**_NO_BUFFER_HEADERS, "x-vercel-ai-ui-message-stream": "v1"}
 
 
 # Inline citation markers the model emits, e.g. `[#a1b2c3d4]` — but models often
@@ -174,13 +187,17 @@ def _turn_usage(result) -> dict:
     }
 
 
-def _queue_chat_usage(background_tasks, result, *, item_id: str | None) -> None:
-    """Enqueue cost/token capture for a finished turn as a background task.
+def _queue_chat_usage(
+    schedule: Callable[..., object], result, *, item_id: str | None
+) -> None:
+    """Enqueue cost/token capture for a finished turn via `schedule(fn, **kw)`.
 
-    Runs after the response is sent so the OpenRouter cost lookup never delays
-    the streamed answer. Reader (per-item) chat is tagged in `meta` but not
-    attributed to the item's `knowledge_item_id` — per-item cost means *ingest*
-    cost, not what you spent chatting about the item.
+    Runs after the answer is out so the OpenRouter cost lookup never delays the
+    streamed answer — after the response (`BackgroundTasks.add_task`) for the
+    Reader, after the saved turn for a background library turn. Reader
+    (per-item) chat is tagged in `meta` but not attributed to the item's
+    `knowledge_item_id` — per-item cost means *ingest* cost, not what you spent
+    chatting about the item.
     """
     u, gen_ids, model_name = _usage_and_generation_ids(result)
     if u is None:
@@ -192,7 +209,7 @@ def _queue_chat_usage(background_tasks, result, *, item_id: str | None) -> None:
     }
     if item_id:
         meta["item_id"] = item_id
-    background_tasks.add_task(
+    schedule(
         usage_service.record_chat_turn,
         model=model_name or settings.chat_model_name,
         generation_ids=gen_ids,
@@ -207,7 +224,7 @@ def _queue_chat_usage(background_tasks, result, *, item_id: str | None) -> None:
 
 def _make_on_complete(
     deps: chat_service.ChatDeps,
-    background_tasks: BackgroundTasks,
+    schedule: Callable[..., object],
     *,
     item_id: str | None = None,
 ):
@@ -223,7 +240,7 @@ def _make_on_complete(
     """
 
     async def on_complete(result):
-        _queue_chat_usage(background_tasks, result, item_id=item_id)
+        _queue_chat_usage(schedule, result, item_id=item_id)
         # Live per-turn tokens / est. cost / context-window usage. Emitted first
         # (before the citations split) so *both* the library and Reader paths get
         # it — the Reader's on_complete returns early below (no viewed items).
@@ -307,38 +324,104 @@ async def chat(request: Request, background_tasks: BackgroundTasks) -> Response:
             # No tools → a single model request; keep a tiny margin.
             usage_limits=UsageLimits(request_limit=2),
             on_complete=_make_on_complete(
-                chat_service.ChatDeps(), background_tasks, item_id=item_id
+                chat_service.ChatDeps(), background_tasks.add_task, item_id=item_id
             ),
             sdk_version=_SDK_VERSION,
         )
         return _apply_stream_headers(response)
 
-    # Library-wide agentic chat. Once the agent spends its `chat_max_requests`
-    # search budget the tools start refusing and the agent is told to answer from
-    # what it has (see merlin.rag.agent), so a long search ends with a graceful
-    # answer. `request_limit` sits a few steps above the budget: a hard backstop
-    # that also gives the model room to produce that final answer.
+    # Library-wide agentic chat: one background turn per thread (the AI SDK's
+    # chat id is the thread id).
+    thread_id = (body or {}).get("id")
+    if not thread_id:
+        raise APIError(400, "invalid_input", "A chat needs a thread id.")
+    if chat_turns.registry.running(thread_id):
+        raise _busy()
+    # Once the agent spends its `chat_max_requests` search budget the tools start
+    # refusing and the agent is told to answer from what it has (see
+    # merlin.rag.agent), so a long search ends with a graceful answer.
+    # `request_limit` sits a few steps above the budget: a hard backstop that
+    # also gives the model room to produce that final answer.
     deps = chat_service.deps_from_request(body)
-    response = await VercelAIAdapter.dispatch_request(
+    adapter = await VercelAIAdapter.from_request(
         request,
         agent=chat_service.agent,
+        sdk_version=_SDK_VERSION,
+        server_message_id=uuid.uuid4().hex,
+    )
+    # Usage capture runs once the turn is saved — not via BackgroundTasks, which
+    # die with a disconnected response.
+    after: list[Callable[[], object]] = []
+    chunks = adapter.run_stream(
         deps=deps,
         model=model,
         model_settings=model_settings,
         usage_limits=UsageLimits(
             request_limit=settings.chat_max_requests + _BUDGET_GRACE
         ),
-        on_complete=_make_on_complete(deps, background_tasks),
-        sdk_version=_SDK_VERSION,
+        on_complete=_make_on_complete(
+            deps, lambda fn, **kw: after.append(partial(fn, **kw))
+        ),
     )
-    return _apply_stream_headers(response)
+    try:
+        turn = await chat_turns.start_turn(
+            thread_id,
+            body.get("messages") or [],
+            _payloads(chunks),
+            sent_at=body.get("sent_at"),
+            after=after,
+        )
+    except chat_turns.TurnBusy:
+        raise _busy() from None
+    return _tail_response(turn)
+
+
+async def _payloads(chunks) -> AsyncIterator[str]:
+    """The adapter's chunks as JSON strings, minus the `[DONE]` sentinel (the
+    turn writes its own once it has added its closing parts)."""
+    async for chunk in chunks:
+        payload = chunk.encode(_SDK_VERSION)
+        if payload != "[DONE]":
+            yield payload
+
+
+def _busy() -> APIError:
+    return APIError(
+        409, "conflict", "This conversation is still answering. Stop it or wait."
+    )
+
+
+def _tail_response(turn: chat_turns.Turn) -> StreamingResponse:
+    # A disconnect cancels only this reader; the turn keeps running.
+    return StreamingResponse(
+        turn.tail(), media_type="text/event-stream", headers=_STREAM_HEADERS
+    )
+
+
+@router.get("/chat/{thread_id}/stream")
+async def resume_chat_stream(thread_id: str, have: int | None = None) -> Response:
+    """The AI SDK's resume call (`useChat` reconnecting on mount): replay the
+    thread's running (or just-finished) turn from its first frame, then follow
+    it. 204 when there's nothing to resume — no turn, or the client already
+    holds `have` messages, which includes the answer."""
+    turn = chat_turns.registry.get(thread_id)
+    if turn is None or (have is not None and have >= turn.message_count):
+        return Response(status_code=204)
+    return _tail_response(turn)
+
+
+@router.post("/chat/{thread_id}/stop", status_code=204)
+async def stop_chat(thread_id: str) -> Response:
+    """Cancel the thread's running turn. Returns once its partial answer is
+    saved, so a refetch right after sees it. 204 either way."""
+    await chat_turns.stop_turn(thread_id)
+    return Response(status_code=204)
 
 
 # --------------------------------------------------------------------------- #
 # Chat history — continuable threads (library-wide chat only). The Reader's
-# per-item chat is ephemeral and never hits these. Persistence is client-driven:
-# the browser PUTs the full message list at the end of each turn (it holds the
-# exact rendered parts, citations included). See services/chat_history.py.
+# per-item chat is ephemeral and never hits these. The server saves each turn
+# (services/chat_turns.py); the PUT stays for renames and older clients.
 # --------------------------------------------------------------------------- #
 
 
@@ -379,7 +462,9 @@ def rename_chat_thread(thread_id: str, body: RenameThreadRequest):
 
 
 @router.delete("/chat/threads/{thread_id}", status_code=204)
-def delete_chat_thread(thread_id: str):
-    if not chat_history.delete_thread(thread_id):
+async def delete_chat_thread(thread_id: str):
+    # Stop a running answer first, or its save would bring the thread back.
+    await chat_turns.stop_turn(thread_id)
+    if not await run_in_threadpool(chat_history.delete_thread, thread_id):
         raise not_found("Conversation not found.")
     return Response(status_code=204)
