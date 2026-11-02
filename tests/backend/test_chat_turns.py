@@ -68,7 +68,12 @@ async def _until(predicate, timeout: float = 2.0) -> None:
             await asyncio.sleep(0.005)
 
 
-_OWN_PARTS = {"data-work-timing", "data-message-time", "data-error"}
+_OWN_PARTS = {
+    "data-work-timing",
+    "data-turn-timeline",
+    "data-message-time",
+    "data-error",
+}
 
 
 async def test_answer_is_saved_after_the_reader_leaves():
@@ -91,6 +96,13 @@ async def test_answer_is_saved_after_the_reader_leaves():
         _expected_parts("tool_loop")
     )
     assert _part(answer["parts"], "data-work-timing")["data"] == {"seconds": 0}
+    # The per-step breakdown: two tool steps, then the answer step.
+    timeline = _part(answer["parts"], "data-turn-timeline")["data"]
+    assert [[t["name"] for t in s["tools"]] for s in timeline["steps"]] == [
+        ["search_library", "read_item"],
+        ["read_item"],
+        [],
+    ]
     assert _part(answer["parts"], "data-message-time") is not None
     assert _part(answer["parts"], "data-error") is None
 
@@ -103,7 +115,12 @@ async def test_closing_parts_stream_before_finish_and_replay():
     assert frames == turn.frames
     assert frames[-1] == "data: [DONE]\n\n"
     types = [json.loads(f[6:])["type"] for f in frames[:-1]]
-    assert types[-3:] == ["finish-step", "data-message-time", "finish"]
+    assert types[-4:] == [
+        "finish-step",
+        "data-turn-timeline",
+        "data-message-time",
+        "finish",
+    ]
     # No tool or reasoning work → no work timing.
     assert "data-work-timing" not in types
 

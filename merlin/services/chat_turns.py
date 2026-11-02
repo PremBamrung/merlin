@@ -12,8 +12,9 @@ starts (so the question survives anything) and the reduced assistant message is
 saved when it ends (`chat_stream_reducer` builds exactly what the browser
 builds). Just before the stream's `finish` the turn adds its own data-parts,
 which reach the live client and the saved copy alike:
-`data-work-timing` (send → first answer text), `data-message-time` (finish
-time) and, for an errored or stopped turn, `data-error`.
+`data-work-timing` (send → first answer text), `data-turn-timeline` (the
+per-step breakdown — see `chat_timeline`), `data-message-time` (finish time)
+and, for an errored or stopped turn, `data-error`.
 
 The registry is in-memory: the app runs one process. A restart mid-turn loses
 the turn; the thread keeps the question with no answer, and Retry covers it.
@@ -34,11 +35,13 @@ import time
 from merlin.services import chat_history
 from merlin.services.chat import MESSAGE_TIME_PART
 from merlin.services.chat_stream_reducer import ChunkReducer
+from merlin.services.chat_timeline import TIMELINE_PART, TurnTimeline, describe
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "ERROR_PART",
+    "TIMELINE_PART",
     "Turn",
     "TurnBusy",
     "WORK_TIMING_PART",
@@ -257,12 +260,17 @@ async def _drive(
 ) -> None:
     reducer = ChunkReducer()
     started = time.monotonic()
+    timeline = TurnTimeline(started)
     work_seconds: float | None = None
     finished = False
 
     def closing_parts() -> list[dict]:
         """The turn's own data-parts, added just before `finish`."""
         parts: list[dict] = []
+        timing = timeline.to_dict()
+        if timing["steps"]:
+            parts.append({"type": TIMELINE_PART, "data": timing})
+            logger.info("chat turn %s: %s", turn.thread_id, describe(timing))
         if turn.stop_requested:
             parts.append(
                 {
@@ -295,6 +303,7 @@ async def _drive(
         async for payload in payloads:
             chunk = json.loads(payload)
             kind = chunk.get("type")
+            timeline.add(chunk, time.monotonic())
             if kind == "finish" and not finished:
                 for part in closing_parts():
                     emit(part)
