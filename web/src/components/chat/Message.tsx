@@ -190,6 +190,8 @@ export const Message = memo(function Message({
   const hasVisible = parts.some(
     (p) => (p.type === "text" && p.text) || p.type === "reasoning" || isToolPart(p),
   );
+  // Before the first token: the "Thinking…" placeholder + the bobbing hat.
+  const pending = isThisStreaming && !hasVisible;
   const showFollowups = isLast && !isThisStreaming && !!textContent;
   const segments = groupParts(parts);
   // Persisted work-phase duration (set on finish; present after a reload). Shown
@@ -205,7 +207,8 @@ export const Message = memo(function Message({
       className={cn("msg-ai group/msg", compact && "compact", citations.length > 0 && "with-side")}
     >
       {!compact && (
-        <div className="ai-av" title={timeLabel || undefined}>
+        // While nothing has streamed yet, the avatar itself does the thinking bob.
+        <div className={cn("ai-av", pending && "hat-think")} title={timeLabel || undefined}>
           <Mark size={22} decorative />
         </div>
       )}
@@ -251,9 +254,11 @@ export const Message = memo(function Message({
         )}
 
         {/* Joy — thinking: before anything streams in, the hat bobs. */}
-        {isThisStreaming && !hasVisible && (
+        {pending && (
           <div className="flex h-[30px] items-center gap-2.5 text-[14px] text-fg-muted">
-            <span className="hat-think inline-grid">
+            {/* Its own hat only where the avatar column is hidden (mobile, the
+                Reader's compact chat) — otherwise there'd be two. */}
+            <span className={cn("hat-think inline-grid", !compact && "md:hidden")}>
               <Mark size={20} decorative />
             </span>
             Thinking…

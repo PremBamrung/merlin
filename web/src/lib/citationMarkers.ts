@@ -32,18 +32,51 @@ const WRAPPED_MARKER_RE = new RegExp(`\\(\\s*(?:${GROUP}\\s*)+\\)`, "g");
 const PARTIAL_MARKER_RE = /\[[\s#,;0-9a-fA-F-]*$/;
 const ID_RE = new RegExp(ID, "g");
 
-function tidy(text: string): string {
-  return text
-    .replace(PARTIAL_MARKER_RE, "")
-    .replace(/ +([.,;:!?])/g, "$1") // drop space stranded before punctuation
-    .replace(/[ \t]{2,}/g, " "); // collapse double spaces left behind
+const isBlank = (ch: string | undefined) => ch === " " || ch === "\t";
+
+/**
+ * Replace each `re` match with `render(match)`. When a marker renders to
+ * nothing, the spaces right before it go too ("temps [#a]." → "temps."), except
+ * a line's leading indentation.
+ *
+ * Whitespace is only ever touched next to a marker: answers carry nested lists
+ * and code blocks whose indentation is meaningful (a global "collapse double
+ * spaces" pass used to flatten `  * sub-item` into a sibling bullet). A plain
+ * scan rather than a `[ \t]*` regex prefix, which would go quadratic on long
+ * runs of spaces.
+ */
+function replaceMarkers(text: string, re: RegExp, render: (marker: string) => string): string {
+  let out = "";
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    const start = m.index ?? 0;
+    const replacement = render(m[0]);
+    let cut = start;
+    if (!replacement) {
+      while (cut > last && isBlank(text[cut - 1])) cut--;
+      if (cut === 0 || text[cut - 1] === "\n") cut = start; // keep indentation
+    }
+    out += text.slice(last, cut) + replacement;
+    last = start + m[0].length;
+  }
+  return out + text.slice(last);
 }
 
-/** Remove citation markers from answer text, tidying leftover whitespace. Used
- * for the copy action and anywhere markers mean nothing (Home previews). */
+/** Drop a half-streamed marker at the very end, and the spaces before it. */
+function dropPartial(text: string): string {
+  const m = PARTIAL_MARKER_RE.exec(text);
+  if (!m) return text;
+  let end = m.index;
+  while (end > 0 && isBlank(text[end - 1])) end--;
+  return text.slice(0, end);
+}
+
+/** Remove citation markers from answer text. Used for the copy action and
+ * anywhere markers mean nothing (Home previews). */
 export function stripCitationMarkers(text: string): string {
   // Marker-only parens first, before the bare markers inside them.
-  return tidy(text.replace(WRAPPED_MARKER_RE, "").replace(MARKER_RE, ""));
+  const noWrapped = replaceMarkers(text, WRAPPED_MARKER_RE, () => "");
+  return dropPartial(replaceMarkers(noWrapped, MARKER_RE, () => ""));
 }
 
 /** Resolve a marker id (often a UUID prefix) to its index in `citations`. */
@@ -75,13 +108,12 @@ export function linkifyCitationMarkers(
   messageId: string,
 ): string {
   if (!citations.length) return stripCitationMarkers(text);
-  return tidy(
-    text.replace(MARKER_RE, (group) => {
-      const ids = group.match(ID_RE) ?? [];
-      return [...new Set(ids.map((id) => citationIndex(id, citations)))]
-        .filter((idx) => idx >= 0)
-        .map((idx) => `[${idx + 1}](#${citeAnchorId(messageId, citations[idx].item_id)})`)
-        .join("");
-    }),
-  );
+  const linked = replaceMarkers(text, MARKER_RE, (group) => {
+    const ids = group.match(ID_RE) ?? [];
+    return [...new Set(ids.map((id) => citationIndex(id, citations)))]
+      .filter((idx) => idx >= 0)
+      .map((idx) => `[${idx + 1}](#${citeAnchorId(messageId, citations[idx].item_id)})`)
+      .join("");
+  });
+  return dropPartial(linked);
 }

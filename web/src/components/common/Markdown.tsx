@@ -106,8 +106,16 @@ export function Markdown({
         "[&_h1]:mt-8 [&_h1]:mb-3 [&_h1]:font-display [&_h1]:text-[22px] [&_h1]:font-semibold [&_h1]:text-fg",
         "[&_h2]:mt-7 [&_h2]:mb-2 [&_h2]:font-display [&_h2]:text-[18px] [&_h2]:font-semibold [&_h2]:text-fg",
         "[&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:font-display [&_h3]:text-[16px] [&_h3]:font-semibold [&_h3]:text-fg",
+        // h4–h6: below h3 in weight, not just bold text — answers use `####` for
+        // sub-sections (one per pick, per option…).
+        "[&_h4]:mt-5 [&_h4]:mb-1.5 [&_h4]:text-[15px] [&_h4]:font-semibold [&_h4]:text-fg",
+        "[&_h5]:mt-4 [&_h5]:mb-1 [&_h5]:text-[14px] [&_h5]:font-semibold [&_h5]:text-fg-muted",
+        "[&_h6]:mt-4 [&_h6]:mb-1 [&_h6]:text-[13px] [&_h6]:font-semibold [&_h6]:uppercase [&_h6]:tracking-wide [&_h6]:text-fg-muted",
         "[&_p]:my-3 [&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1",
         "[&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5",
+        // Nested lists: a different bullet per level and tight spacing, so the
+        // hierarchy reads at a glance (and a sub-list hugs its parent item).
+        "[&_ul_ul]:list-[circle] [&_ul_ul_ul]:list-[square] [&_li>ul]:my-1 [&_li>ol]:my-1",
         "[&_strong]:font-semibold [&_strong]:text-fg",
         "[&_a]:text-ui-link [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-fg",
         "[&_blockquote]:border-l-2 [&_blockquote]:border-ui-tint-border [&_blockquote]:pl-4 [&_blockquote]:text-fg-muted [&_blockquote]:italic",
