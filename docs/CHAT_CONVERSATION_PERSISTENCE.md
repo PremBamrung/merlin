@@ -27,6 +27,29 @@
 > §6 wire additions and §5 Phase-2 parallel `asyncio` title task were therefore
 > **not needed**. Everything else below reflects what shipped.
 >
+> **Update (2026-10-30): persistence is now server-side after all.** Client-driven
+> saving tied the answer to the tab: Starlette cancels a streaming response on
+> disconnect, so closing the tab killed the run and nothing saved it. A library
+> turn now runs in its own `asyncio` task (`merlin/services/chat_turns.py`) and
+> the `POST /api/chat` only tails it:
+> - The server saves the question when the turn starts and the answer when it
+>   ends. The answer is built by `merlin/services/chat_stream_reducer.py`, a port
+>   of the AI SDK's `processUIMessageStream` pinned by golden tests
+>   (`tests/backend/fixtures/chat_streams/`), so citations and every custom
+>   `data-` part are kept — the reason the original plan's `on_complete`
+>   reconstruction was dropped no longer applies.
+> - Just before `finish` the turn streams its own parts — `data-work-timing`,
+>   `data-message-time`, and `data-error` for an errored or stopped turn — so the
+>   live answer and the saved copy match.
+> - `GET /api/chat/{id}/stream?have=<n>` lets `useChat` resume a running answer
+>   on mount (204 when nothing is running or the client already has it);
+>   `POST /api/chat/{id}/stop` cancels the run and returns once the partial
+>   answer is saved; a send while answering gets 409; list rows carry `active`.
+> - The browser no longer PUTs threads (`PUT /api/chat/threads/{id}` stays for
+>   compatibility); the title is generated from the question when the turn
+>   starts. The registry is in-memory (one process): a restart mid-answer leaves
+>   the question unanswered and Retry covers it.
+>
 > ---
 >
 > Original plan (kept for context):

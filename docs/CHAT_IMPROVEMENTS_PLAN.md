@@ -3,12 +3,16 @@
 Status: **planning only, no code yet.** Scope confirmed = the three named
 features below. The rest is a backlog kept here for later.
 
+> Note (2026-10-30): threads are now saved by the server, not the browser — see
+> the update in `CHAT_CONVERSATION_PERSISTENCE.md`. Where this plan says a part
+> "persists via `saveChatThread`", the server's saved copy now carries it.
+
 Surfaces involved:
 - `web/src/routes/chat.tsx` — the Chat tab (thread sidebar + conversation pane).
 - `web/src/components/chat/Message.tsx` — one rendered turn (shared with Reader).
 - `web/src/components/chat/ItemChat.tsx` — Reader per-item chat (ephemeral).
 - `web/src/hooks/useAgentChat.ts` — `useChat` wrapper, persisted data-parts.
-- `web/src/hooks/useChatThreads.ts` — thread list/detail/save/rename/delete.
+- `web/src/hooks/useChatThreads.ts` — thread list/detail/stop/rename/delete.
 - `web/src/lib/format.ts` — `relDate()` helper (already exists).
 - Backend (reference only — **not touched** for the chosen scope):
   `api/routers/chat.py`, `merlin/services/chat_history.py`,
