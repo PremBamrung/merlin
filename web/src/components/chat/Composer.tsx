@@ -270,19 +270,29 @@ function LibraryScope({
 const THINKING: { level: ThinkingLevel; label: string; hint: string }[] = [
   { level: "minimal", label: "Minimal", hint: "Fastest, thinks only when it must" },
   { level: "low", label: "Low", hint: "A little reasoning first" },
-  { level: "medium", label: "Medium", hint: "Balanced (default)" },
+  { level: "medium", label: "Medium", hint: "Balanced" },
   { level: "high", label: "High", hint: "Deepest reasoning, slowest" },
 ];
 
 /**
- * How hard the model thinks before answering — one stored preference sent with
- * every chat message (the Reader's chat uses it too). Hidden unless the backend
- * reports it can honour it (`/api/health` → `chat_thinking`, LiteLLM only).
+ * How hard the model thinks before answering — a stored preference per surface
+ * (`surface="reader"` for the Reader's item chat, else the library chat), sent
+ * with every message. Hidden unless the backend reports it can honour it
+ * (`/api/health` → `chat_thinking`, LiteLLM only). `compact` is the Reader's
+ * smaller chip.
  */
-function ThinkingPicker() {
+export function ThinkingPicker({
+  surface = "chat",
+  compact,
+}: {
+  surface?: "chat" | "reader";
+  compact?: boolean;
+}) {
   const health = useHealth();
-  const thinking = useUi((s) => s.thinking);
-  const setThinking = useUi((s) => s.setThinking);
+  const thinking = useUi((s) => (surface === "reader" ? s.readerThinking : s.chatThinking));
+  const setThinking = useUi((s) =>
+    surface === "reader" ? s.setReaderThinking : s.setChatThinking,
+  );
   const [open, setOpen] = useState(false);
   if (!health.data?.chat_thinking) return null;
   const current = THINKING.find((t) => t.level === thinking) ?? THINKING[2];
@@ -291,11 +301,14 @@ function ThinkingPicker() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
-          className="inline-flex h-[30px] items-center gap-1.5 rounded-full border border-border px-2.5 text-[13px] text-fg-muted transition-colors hover:border-border-strong hover:text-fg"
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full border border-border text-fg-muted transition-colors hover:border-border-strong hover:text-fg",
+            compact ? "h-[26px] px-2 text-[12px]" : "h-[30px] px-2.5 text-[13px]",
+          )}
           title="Thinking level"
           aria-label={`Thinking: ${current.label}`}
         >
-          <Brain className="size-[15px]" strokeWidth={1.75} />
+          <Brain className={compact ? "size-[13px]" : "size-[15px]"} strokeWidth={1.75} />
           {current.label}
         </button>
       </PopoverTrigger>

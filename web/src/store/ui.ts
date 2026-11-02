@@ -47,9 +47,13 @@ type UiState = {
   // to a "Pinned" group at the top of the conversation sidebar.
   pinnedThreads: string[];
   togglePin: (id: string) => void;
-  // Chat thinking level (persisted) — shared by the chat page and Reader chat.
-  thinking: ThinkingLevel;
-  setThinking: (t: ThinkingLevel) => void;
+  // Thinking levels (persisted), one per surface: the library chat's tool loop
+  // earns its medium default; the Reader answers from a transcript already in
+  // context, so it starts at low (each step at medium costs ~4s on Gemini Flash).
+  chatThinking: ThinkingLevel;
+  setChatThinking: (t: ThinkingLevel) => void;
+  readerThinking: ThinkingLevel;
+  setReaderThinking: (t: ThinkingLevel) => void;
   // Per-thread composer drafts (session-only, NOT persisted). The chat pane is
   // keyed by thread id and remounts on switch, which would otherwise drop
   // typed-but-unsent input; this map carries it across switches.
@@ -97,8 +101,10 @@ export const useUi = create<UiState>()(
             : [...s.pinnedThreads, id],
         })),
 
-      thinking: "medium",
-      setThinking: (thinking) => set({ thinking }),
+      chatThinking: "medium",
+      setChatThinking: (chatThinking) => set({ chatThinking }),
+      readerThinking: "low",
+      setReaderThinking: (readerThinking) => set({ readerThinking }),
 
       chatDrafts: {},
       setChatDraft: (id, text) =>
@@ -119,8 +125,20 @@ export const useUi = create<UiState>()(
         view: s.view,
         pinnedThreads: s.pinnedThreads,
         panelPref: s.panelPref,
-        thinking: s.thinking,
+        chatThinking: s.chatThinking,
+        readerThinking: s.readerThinking,
       }),
+      // v1 split the shared `thinking` level: the old choice stays with the
+      // library chat, and the Reader starts at its own default.
+      version: 1,
+      migrate: (persisted, version) => {
+        const old = persisted as Record<string, unknown> | undefined;
+        if (version < 1 && old && typeof old.thinking === "string") {
+          const { thinking, ...rest } = old;
+          return { ...rest, chatThinking: thinking };
+        }
+        return old;
+      },
     },
   ),
 );

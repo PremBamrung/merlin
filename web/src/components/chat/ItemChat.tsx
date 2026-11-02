@@ -5,6 +5,7 @@ import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { Button } from "@/components/ui/button";
 import { Message } from "@/components/chat/Message";
 import { ContextMeter } from "@/components/chat/UsageFooter";
+import { ThinkingPicker } from "@/components/chat/Composer";
 import { AutoGrowTextarea } from "@/components/common/AutoGrowTextarea";
 import { cn } from "@/lib/utils";
 
@@ -138,11 +139,11 @@ export function ItemChat({
             <ArrowDown className="size-4" />
           </button>
         )}
-        {!isIdle && (
-          <div className="mb-1.5 flex justify-end px-1">
-            <ContextMeter usage={latestUsage(messages)} />
-          </div>
-        )}
+        {/* The Reader's own thinking level (defaults to low) + the context meter. */}
+        <div className="mb-1.5 flex items-center justify-between gap-2 px-1 empty:hidden">
+          <ThinkingPicker surface="reader" compact />
+          {!isIdle && <ContextMeter usage={latestUsage(messages)} />}
+        </div>
         <div className="flex items-end gap-2">
           <AutoGrowTextarea
             ref={composerRef}

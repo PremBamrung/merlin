@@ -18,13 +18,20 @@ export type ChatFilters = {
 };
 
 /** The request body for a send: the caller's filters plus the stored thinking
- * level, read at send time so a picker change applies to the next message.
+ * level for its surface (the Reader's when `item_id` scopes it to one item, the
+ * library chat's otherwise), read at send time so a picker change applies to
+ * the next message.
  * `tz` and `sent_at` let the agent see when each message was written: `sent_at`
  * is the same epoch ms the user message is stamped with at end-of-turn, so the
  * model sees an identical stamp on later turns (prompt-cache stable). */
+function thinkingFor(filters: ChatFilters | undefined): ThinkingLevel {
+  const s = useUi.getState();
+  return filters?.item_id ? s.readerThinking : s.chatThinking;
+}
+
 function requestBody(filters: ChatFilters | undefined, sentAt: number) {
   return {
-    filters: { ...filters, thinking: useUi.getState().thinking },
+    filters: { ...filters, thinking: thinkingFor(filters) },
     tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
     sent_at: sentAt,
   };
