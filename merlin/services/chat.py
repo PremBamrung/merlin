@@ -45,6 +45,7 @@ def deps_from_filters(filters: dict | None) -> ChatDeps:
     return ChatDeps(
         source_types=filters.get("source_types") or None,
         tags=filters.get("tags") or None,
+        thinking=filters.get("thinking") or None,
     )
 
 

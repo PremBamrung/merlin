@@ -18,13 +18,19 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, tzinfo
 
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.capabilities import ProcessHistory
+from pydantic_ai.capabilities import AbstractCapability, ProcessHistory
 from pydantic_ai.messages import ModelMessage, ModelRequest, UserPromptPart
+from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolDefinition
 
 from merlin.config import settings
 from merlin.core.logging import logger
 from merlin.db.engine import get_db
+from merlin.rag.model import (
+    SEARCH_STEP_THINKING,
+    capped_thinking,
+    thinking_model_settings,
+)
 from merlin.rag.prompts import AGENT_SYSTEM_PROMPT, WEB_SEARCH_GUIDANCE
 from merlin.rag.retriever import HybridRetriever, RetrievedChunk
 from merlin.services import comments, library, topics
@@ -65,10 +71,14 @@ class ChatDeps:
     `tz` is the user's timezone (None → the server's) and `user_times` the send
     time of each user message in the conversation, oldest first (None where a
     message predates time stamping) — see `_stamp_user_messages`.
+
+    `thinking` is the composer's thinking level (None → the model's default);
+    `StepThinking` applies it per step of the tool loop.
     """
 
     source_types: list[str] | None = None
     tags: list[str] | None = None
+    thinking: str | None = None
     tz: tzinfo | None = None
     user_times: list[datetime | None] = field(default_factory=list)
     cited: dict[str, dict] = field(default_factory=dict)
@@ -155,10 +165,46 @@ def _stamp_user_messages(
     return out
 
 
+# --------------------------------------------------------------------------- #
+# Thinking per step. Which step writes the answer isn't known in advance, so the
+# rule keys off what the step has in hand: the turn's first request (the user's
+# prompt, no tool results yet) is almost always the model choosing what to
+# search, and runs at no more than SEARCH_STEP_THINKING; every later request has
+# tool results to judge and may write the answer, so it gets the full level.
+# --------------------------------------------------------------------------- #
+
+
+def is_search_planning_step(messages: list[ModelMessage]) -> bool:
+    """True when the request about to be sent carries the user's prompt."""
+    last = messages[-1] if messages else None
+    return isinstance(last, ModelRequest) and any(
+        isinstance(p, UserPromptPart) for p in last.parts
+    )
+
+
+def _step_thinking(ctx: RunContext[ChatDeps]) -> ModelSettings:
+    level = ctx.deps.thinking
+    if is_search_planning_step(ctx.messages):
+        level = capped_thinking(level, SEARCH_STEP_THINKING)
+    return thinking_model_settings(level) or ModelSettings()
+
+
+@dataclass
+class StepThinking(AbstractCapability[ChatDeps]):
+    """Sets each model request's thinking level (see `_step_thinking`)."""
+
+    def get_model_settings(self):
+        return _step_thinking
+
+    @classmethod
+    def get_serialization_name(cls) -> str | None:
+        return None
+
+
 agent = Agent(
     deps_type=ChatDeps,
     system_prompt=AGENT_SYSTEM_PROMPT,
-    capabilities=[ProcessHistory(_stamp_user_messages)],
+    capabilities=[ProcessHistory(_stamp_user_messages), StepThinking()],
 )
 
 # The Reader's single-item chat: no tools (the transcript is supplied directly

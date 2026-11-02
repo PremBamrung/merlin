@@ -144,6 +144,80 @@ def test_library_chat_sends_thinking_level(client, monkeypatch, litellm):
     assert captured["model_settings"].get("openai_reasoning_effort") == "low"
 
 
+def _search_then_answer_recording(efforts: list):
+    """Streaming model: search_library once, then answer — recording each
+    request's reasoning effort (None when no effort is sent)."""
+    import json
+
+    from pydantic_ai.messages import ModelRequest, ToolReturnPart
+    from pydantic_ai.models.function import DeltaToolCall, FunctionModel
+
+    async def stream_fn(messages, info):
+        efforts.append((info.model_settings or {}).get("openai_reasoning_effort"))
+        last = messages[-1]
+        if isinstance(last, ModelRequest) and any(
+            isinstance(p, ToolReturnPart) for p in last.parts
+        ):
+            yield "answer"
+        else:
+            yield {
+                0: DeltaToolCall(
+                    name="search_library",
+                    json_args=json.dumps({"query": "moats"}),
+                    tool_call_id="call-1",
+                )
+            }
+
+    return FunctionModel(stream_function=stream_fn)
+
+
+@pytest.mark.parametrize(
+    "level,expected",
+    [
+        # The search-planning step is capped at low; the answer gets the level.
+        ("medium", ["low", "medium"]),
+        ("high", ["low", "high"]),
+        # Never raised: a level at or below the cap is used for every step.
+        ("low", ["low", "low"]),
+        ("minimal", ["minimal", "minimal"]),
+    ],
+)
+def test_library_chat_thinking_per_step(client, monkeypatch, litellm, level, expected):
+    efforts: list = []
+    _patch_model(monkeypatch, _search_then_answer_recording(efforts))
+
+    resp = client.post("/api/chat", json=_chat_body("moats?", {"thinking": level}))
+    assert resp.status_code == 200
+    assert efforts == expected
+
+
+def test_library_chat_no_thinking_without_level_or_on_openrouter(
+    client, monkeypatch, litellm
+):
+    efforts: list = []
+    _patch_model(monkeypatch, _search_then_answer_recording(efforts))
+    assert client.post("/api/chat", json=_chat_body("moats?")).status_code == 200
+    assert efforts == [None, None]
+
+    efforts.clear()
+    monkeypatch.setattr("merlin.config.settings.llm_provider", "openrouter")
+    body = _chat_body("moats?", {"thinking": "high"})
+    body["id"] = "conv-2"
+    assert client.post("/api/chat", json=body).status_code == 200
+    assert efforts == [None, None]
+
+
+def test_capped_thinking():
+    from merlin.rag.model import capped_thinking
+
+    assert capped_thinking("high", "low") == "low"
+    assert capped_thinking("Medium", "low") == "low"
+    assert capped_thinking("low", "low") == "low"
+    assert capped_thinking("minimal", "low") == "minimal"
+    assert capped_thinking("max", "low") is None
+    assert capped_thinking(None, "low") is None
+
+
 def test_item_chat_sends_thinking_level(client, monkeypatch, litellm):
     monkeypatch.setattr(
         "merlin.services.library.get_item",

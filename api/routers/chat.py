@@ -307,8 +307,6 @@ async def chat(request: Request, background_tasks: BackgroundTasks) -> Response:
     item_id = filters.get("item_id")
 
     model = chat_service.build_chat_model()
-    # The composer's thinking level (LiteLLM only; None → model default).
-    model_settings = chat_service.model_settings_from_filters(filters)
 
     if item_id:
         # Reader single-item chat: tool-less agent, transcript as instructions.
@@ -319,7 +317,8 @@ async def chat(request: Request, background_tasks: BackgroundTasks) -> Response:
             agent=chat_service.item_agent,
             deps=chat_service.ChatDeps(),
             model=model,
-            model_settings=model_settings,
+            # The Reader composer's thinking level (LiteLLM only; None → default).
+            model_settings=chat_service.model_settings_from_filters(filters),
             instructions=instructions,
             # No tools → a single model request; keep a tiny margin.
             usage_limits=UsageLimits(request_limit=2),
@@ -352,10 +351,11 @@ async def chat(request: Request, background_tasks: BackgroundTasks) -> Response:
     # Usage capture runs once the turn is saved — not via BackgroundTasks, which
     # die with a disconnected response.
     after: list[Callable[[], object]] = []
+    # No model_settings here: the thinking level rides on `deps.thinking` and the
+    # agent's StepThinking capability applies it per step of the tool loop.
     chunks = adapter.run_stream(
         deps=deps,
         model=model,
-        model_settings=model_settings,
         usage_limits=UsageLimits(
             request_limit=settings.chat_max_requests + _BUDGET_GRACE
         ),

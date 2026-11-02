@@ -31,6 +31,23 @@ THINKING_EFFORT = {
 }
 
 
+# Library chat's first step of each turn — deciding what to search — runs at no
+# more than this level; only the steps that already have tool results (judging
+# them, writing the answer) use the composer's level. Each Gemini Flash step at
+# medium costs ~4s more than at low (measured 2026-11-02 via the proxy: median
+# first text 1.6s at low vs 5.7s at medium), and the tool loop pays it per step.
+SEARCH_STEP_THINKING = "low"
+
+
+def capped_thinking(level: str | None, ceiling: str) -> str | None:
+    """`level`, lowered to `ceiling` if it's above it; None if unknown."""
+    order = list(THINKING_EFFORT)
+    lvl = (level or "").strip().lower()
+    if lvl not in THINKING_EFFORT:
+        return None
+    return lvl if order.index(lvl) <= order.index(ceiling) else ceiling
+
+
 def thinking_supported() -> bool:
     """Whether per-message thinking control is available (LiteLLM only)."""
     return settings.is_litellm
