@@ -64,8 +64,14 @@ def _run_structured(schema, system: str, user: str, *, surface: str):
 
     from merlin.rag.model import build_ingest_model
 
+    level = {
+        "classify": settings.classify_thinking_level,
+        "discover": settings.discover_thinking_level,
+    }.get(surface)
     agent = Agent(
-        build_ingest_model(), output_type=_output_type(schema), system_prompt=system
+        build_ingest_model(level),
+        output_type=_output_type(schema),
+        system_prompt=system,
     )
     result = agent.run_sync(user)
     _record_usage(result, surface=surface)

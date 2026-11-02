@@ -160,7 +160,7 @@ def test_classify_item_uses_prompted_structured_output(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "merlin.rag.model.build_ingest_model", lambda: FunctionModel(fn)
+        "merlin.rag.model.build_ingest_model", lambda _level=None: FunctionModel(fn)
     )
     monkeypatch.setattr("merlin.services.usage.record", lambda **k: None)
 

@@ -81,7 +81,40 @@ def test_litellm_models_use_proxy_and_alias(litellm):
 
     ingest = build_ingest_model()
     assert ingest.model_name == "gemini-3.8-flash"
-    assert ingest.settings["openai_reasoning_effort"] == "medium"
+    assert ingest.settings["openai_reasoning_effort"] == "low"
+    # Classify/discover pass their own level.
+    assert build_ingest_model("minimal").settings["openai_reasoning_effort"] == (
+        "minimal"
+    )
+
+
+@pytest.mark.parametrize(
+    "surface,effort", [("classify", "minimal"), ("discover", "medium")]
+)
+def test_structured_calls_use_their_surface_level(monkeypatch, surface, effort):
+    from pydantic import BaseModel
+    from pydantic_ai.messages import ModelResponse, TextPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from merlin.services import classify
+
+    class Out(BaseModel):
+        ok: bool
+
+    seen: dict = {}
+
+    def fn(messages, info):
+        seen["effort"] = (info.model_settings or {}).get("openai_reasoning_effort")
+        return ModelResponse(parts=[TextPart('{"ok": true}')])
+
+    def fake_build(level=None):
+        return FunctionModel(fn, settings={"openai_reasoning_effort": level})
+
+    monkeypatch.setattr("merlin.rag.model.build_ingest_model", fake_build)
+    monkeypatch.setattr("merlin.services.usage.record", lambda **k: None)
+
+    assert classify._run_structured(Out, "sys", "user", surface=surface).ok
+    assert seen["effort"] == effort
 
 
 def test_litellm_requires_base_url(litellm, monkeypatch):

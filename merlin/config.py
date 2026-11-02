@@ -44,9 +44,15 @@ class Settings(BaseSettings):
     # A proxy alias with Google Search grounding, used by the chat agent's
     # `web_search` tool (library chat only, LiteLLM only).
     litellm_web_search_model: str = "gemini-web-search"
-    # Reasoning effort for ingest LLM work (summarise + classify) on LiteLLM:
-    # minimal | low | medium | high. Chat picks its own per message.
-    ingest_thinking_level: str = "medium"
+    # Reasoning effort for ingest LLM work on LiteLLM: minimal | low | medium |
+    # high (chat picks its own per message). An 8-item eval (2026-11-02) found
+    # summaries at low on par with medium at ~2.5× the speed, and classify at
+    # minimal kept every primary topic (secondary topics and tags drifted a bit).
+    ingest_thinking_level: str = "low"  # summarise
+    classify_thinking_level: str = "minimal"  # per-item tags + topics
+    # Topic discovery (clustering the library into proposed topics) — not part
+    # of that eval, so it keeps the previous level.
+    discover_thinking_level: str = "medium"
 
     # Agentic chat (Pydantic AI). The chat agent runs independently of the
     # ingest model (summarise/classify). `chat_model` is an optional override;

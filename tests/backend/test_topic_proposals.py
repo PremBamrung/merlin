@@ -253,7 +253,7 @@ def test_propose_clusters_consolidates_labels(monkeypatch):
         return ModelResponse(parts=[TextPart(json.dumps(payload))])
 
     monkeypatch.setattr(
-        "merlin.rag.model.build_ingest_model", lambda: FunctionModel(fn)
+        "merlin.rag.model.build_ingest_model", lambda _level=None: FunctionModel(fn)
     )
     monkeypatch.setattr("merlin.services.usage.record", lambda **k: None)
     out = classify_mod.propose_clusters(items)

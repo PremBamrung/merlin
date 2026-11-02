@@ -125,12 +125,14 @@ def build_chat_model() -> Model:
     return _build_openrouter_model(settings.chat_model_name)
 
 
-@lru_cache(maxsize=1)
-def build_ingest_model() -> Model:
-    """The model for ingest LLM work — summarise + classify (cached)."""
+@lru_cache(maxsize=4)
+def build_ingest_model(thinking: str | None = None) -> Model:
+    """The model for ingest LLM work — summarise, classify, discover (cached
+    per level). `thinking` overrides `ingest_thinking_level` (the summariser's)
+    on LiteLLM; OpenRouter ignores it."""
     if settings.is_litellm:
+        level = settings.ingest_thinking_level if thinking is None else thinking
         return _build_litellm_model(
-            settings.ingest_model_name,
-            reasoning_effort=settings.ingest_thinking_level or None,
+            settings.ingest_model_name, reasoning_effort=level or None
         )
     return _build_openrouter_model(settings.ingest_model_name)
