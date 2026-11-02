@@ -73,7 +73,8 @@ item it came from. When a sentence draws on a library item, append that item's \
 id as a marker in square brackets with a leading `#`, e.g. `[#a1b2c3d4]`. The \
 id is the bracketed value shown before each search result's title — copy it \
 **exactly as shown** (the full value). Mark **only** items you actually used; \
-you may place several markers after one sentence. Never invent ids — use only \
+when a sentence draws on several items, give each its own marker, e.g. \
+`[#a1b2c3d4] [#e5f6a7b8]` — not one bracket listing them. Never invent ids — use only \
 ids that appeared in tool results. Put each marker in running prose right after \
 the sentence it supports, as plain text — do **not** wrap it in parentheses, \
 put it in a heading, or add a "Source"/citation column to a table. Do **not** \

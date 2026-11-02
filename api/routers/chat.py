@@ -74,9 +74,24 @@ _STREAM_HEADERS = {**_NO_BUFFER_HEADERS, "x-vercel-ai-ui-message-stream": "v1"}
 
 # Inline citation markers the model emits, e.g. `[#a1b2c3d4]` — but models often
 # drop the `#` and mirror the bracketed id shown in tool output (`[a1b2c3d4]`),
-# so the `#` is optional. Require 8+ hex/dash chars (a UUID or its prefix) so
-# ordinary prose brackets (`[1]`, footnotes) never match.
-_MARKER_RE = re.compile(r"\[#?([0-9a-fA-F-]{8,})\]")
+# so the `#` is optional — and a sentence drawing on several items may get one
+# bracket listing them all (`[#a, #b]`, `[#a; #b]`, `[#a #b]`). Require 8+
+# hex/dash chars per id (a UUID or its prefix) so ordinary prose brackets (`[1]`,
+# footnotes) never match. Same shapes as web/src/lib/citationMarkers.ts.
+_MARKER_ID = r"[0-9a-fA-F-]{8,}"
+_MARKER_GROUP_RE = re.compile(
+    rf"\[\s*#?{_MARKER_ID}(?:(?:\s*[,;]\s*|\s+)#?{_MARKER_ID}|#{_MARKER_ID})*\s*\]"
+)
+_MARKER_ID_RE = re.compile(_MARKER_ID)
+
+
+def _marker_ids(text: str) -> list[str]:
+    """Every id inside the answer's citation markers, single or grouped."""
+    return [
+        marker_id
+        for group in _MARKER_GROUP_RE.findall(text)
+        for marker_id in _MARKER_ID_RE.findall(group)
+    ]
 
 
 def _resolve_marker(marker: str, viewed: dict[str, dict]) -> str | None:
@@ -256,7 +271,7 @@ def _make_on_complete(
         # actually surfaced (drops hallucinated ids, tolerates abbreviation).
         used_ids = {
             resolved
-            for m in _MARKER_RE.findall(text)
+            for m in _marker_ids(text)
             if (resolved := _resolve_marker(m, viewed))
         }
 

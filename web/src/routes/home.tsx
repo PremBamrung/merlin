@@ -22,6 +22,7 @@ import { useHome } from "@/hooks/useHome";
 import { useLibraryCount } from "@/hooks/useMeta";
 import { useUi } from "@/store/ui";
 import { useItemHref } from "@/hooks/useItemHref";
+import { stripCitationMarkers } from "@/lib/citationMarkers";
 import type { ChatFilters } from "@/hooks/useAgentChat";
 import type { HomeDigest, ListItem } from "@/lib/api/endpoints";
 import { formatDuration, relDate, thumbnailUrl, thousands } from "@/lib/format";
@@ -307,7 +308,7 @@ function ContinueCard({ thread }: { thread: NonNullable<HomeDigest["continue_thr
         {thread.title || thread.preview || "Conversation"}
       </p>
       {thread.last_reply && (
-        <p className="mt-1.5 line-clamp-2 text-[13.5px] leading-5">{stripMarkers(thread.last_reply)}</p>
+        <p className="mt-1.5 line-clamp-2 text-[13.5px] leading-5">{stripCitationMarkers(thread.last_reply)}</p>
       )}
       <p className="mt-3 flex items-center gap-2 font-mono text-[11px] leading-none text-fg-subtle">
         <Mark size={14} decorative />
@@ -375,11 +376,6 @@ function IngestCard({ className }: { className?: string }) {
       )}
     </div>
   );
-}
-
-/** Answer text keeps the agent's `[#id]` markers; they mean nothing here. */
-function stripMarkers(s: string): string {
-  return s.replace(/\(?\s*\[#?[0-9a-fA-F-]{8,}\]\s*\)?/g, "").replace(/\s+([.,;:!?])/g, "$1");
 }
 
 function StripCard({

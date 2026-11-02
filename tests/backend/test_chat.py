@@ -336,6 +336,46 @@ def test_marker_without_hash_is_matched(client, monkeypatch, make_item):
     assert _ids(_data_part(resp.text, "data-sources-viewed")) == {_ID2, _ID3}
 
 
+@pytest.mark.parametrize(
+    "marker",
+    [
+        f"[#{_ID1}, #{_ID2}]",
+        f"[#{_ID1}; #{_ID2}]",
+        f"[#{_ID1} #{_ID2}]",
+        f"[#{_ID1},#{_ID2}]",
+        f"[#{_ID1}#{_ID2}]",
+        "[11111111, 22222222]",  # abbreviated, no `#`
+        f"[ #{_ID1} , #{_ID2} ]",
+    ],
+)
+def test_grouped_marker_cites_every_listed_item(client, monkeypatch, make_item, marker):
+    """One bracket listing several ids (`[#a, #b]`) cites each of them — the
+    model writes this when a sentence draws on more than one item."""
+    _three_moat_items(make_item)
+    _patch_model(
+        monkeypatch,
+        _search_then_answer_model("moat", f"Moats matter {marker}."),
+    )
+
+    resp = client.post("/api/chat", json=_chat_body("moats?"))
+    assert _ids(_data_part(resp.text, "data-citations")) == {_ID1, _ID2}
+    assert _ids(_data_part(resp.text, "data-sources-viewed")) == {_ID3}
+
+
+def test_marker_ids_parsing():
+    """Grouped and single markers parse; prose brackets and dates don't count
+    as separators, and an unclosed group yields nothing."""
+    from api.routers.chat import _marker_ids
+
+    a, b = "aaaaaaaa", "bbbbbbbb"
+    assert _marker_ids(f"x [#{a}] y [#{a}, #{b}].") == [a, a, b]
+    assert _marker_ids("see [1] and [note]") == []
+    assert _marker_ids(f"[#{a}, #{b}") == []
+    assert _marker_ids(f"[#{a}, see #{b}]") == []
+    # A long unclosed run must not hang (no catastrophic backtracking).
+    assert _marker_ids("[" + " ".join([a] * 2000)) == []
+
+
 def test_no_markers_falls_back_to_title_match(client, monkeypatch, make_item):
     """No markers → an item whose title appears verbatim is treated as used."""
     _three_moat_items(make_item)
