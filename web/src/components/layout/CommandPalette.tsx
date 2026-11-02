@@ -11,7 +11,7 @@ import { useChatThreads } from "@/hooks/useChatThreads";
 import { useItemHref } from "@/hooks/useItemHref";
 import { formatDuration, relDate, stripMarkdown, thumbnailUrl } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { PLACES } from "./places";
+import { ALL_PLACES } from "./places";
 import { Kbd } from "./PanelParts";
 
 /**
@@ -190,7 +190,7 @@ export function CommandPalette() {
             </span>
             <Kbd>A</Kbd>
           </Row>
-          {PLACES.filter((p) => !q || p.label.toLowerCase().includes(q.toLowerCase())).map((p) => (
+          {ALL_PLACES.filter((p) => !q || p.label.toLowerCase().includes(q.toLowerCase())).map((p) => (
             <Row key={p.to} value={`goto ${p.label}`} onSelect={() => go(() => navigate(p.to))}>
               <PlainIcon>
                 <p.icon className="size-[18px]" />

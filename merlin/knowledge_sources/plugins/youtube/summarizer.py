@@ -257,11 +257,14 @@ Subtitles: {subtitles}
 
     @property
     def model(self):
-        if self._model is None:
-            from merlin.rag.model import build_ingest_model
+        """The injected model, else the current ingest model — resolved on every
+        call (not kept), so a model/level change on the Settings page applies to
+        the next summary without a restart (`build_ingest_model` caches)."""
+        if self._model is not None:
+            return self._model
+        from merlin.rag.model import build_ingest_model
 
-            self._model = build_ingest_model()
-        return self._model
+        return build_ingest_model()
 
     def extract_topics_and_timestamps(
         self, summary_text: str, summary_length: str = "short"

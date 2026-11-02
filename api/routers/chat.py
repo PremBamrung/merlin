@@ -32,8 +32,8 @@ from pydantic_ai.ui.vercel_ai.response_types import DataChunk
 from pydantic_ai.usage import UsageLimits
 
 from merlin import llm_pricing
-from merlin.config import settings
 from merlin.services import (
+    app_settings,
     chat as chat_service,
     chat_history,
     chat_turns,
@@ -162,7 +162,7 @@ def _turn_usage(result) -> dict:
     degrades to tokens-only rather than showing a fake denominator.
     """
     u, _gen_ids, model_name = _usage_and_generation_ids(result)
-    model = model_name or settings.chat_model_name
+    model = model_name or app_settings.effective("chat_model")
     input_tokens = getattr(u, "input_tokens", None) if u is not None else None
     output_tokens = getattr(u, "output_tokens", None) if u is not None else None
     cache_read = getattr(u, "cache_read_tokens", None) if u is not None else None
@@ -183,7 +183,7 @@ def _turn_usage(result) -> dict:
         "cost_usd": cost,
         "cost_estimated": cost is not None,
         "context_used": context_used,
-        "context_limit": settings.chat_context_window or None,
+        "context_limit": app_settings.effective("chat_context_window") or None,
     }
 
 
@@ -211,7 +211,7 @@ def _queue_chat_usage(
         meta["item_id"] = item_id
     schedule(
         usage_service.record_chat_turn,
-        model=model_name or settings.chat_model_name,
+        model=model_name or app_settings.effective("chat_model"),
         generation_ids=gen_ids,
         input_tokens=getattr(u, "input_tokens", None),
         output_tokens=getattr(u, "output_tokens", None),
@@ -357,7 +357,7 @@ async def chat(request: Request, background_tasks: BackgroundTasks) -> Response:
         deps=deps,
         model=model,
         usage_limits=UsageLimits(
-            request_limit=settings.chat_max_requests + _BUDGET_GRACE
+            request_limit=app_settings.effective("chat_max_requests") + _BUDGET_GRACE
         ),
         on_complete=_make_on_complete(
             deps, lambda fn, **kw: after.append(partial(fn, **kw))

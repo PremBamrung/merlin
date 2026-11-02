@@ -227,3 +227,19 @@ export const getUsage = () => client.get<Usage>("/api/insights/usage");
 
 // --- Meta ------------------------------------------------------------------
 export const getHealth = () => client.get<Health>("/api/health");
+
+// --------------------------------------------------------------------------- //
+// Settings — runtime-tunable knobs (env defaults + saved overrides)
+// --------------------------------------------------------------------------- //
+
+export type AppSettings = components["schemas"]["SettingsResponse"];
+export type SettingItem = components["schemas"]["SettingItem"];
+export type ModelOption = components["schemas"]["ModelOption"];
+export type ModelsList = components["schemas"]["ModelsResponse"];
+/** A partial update: a value overrides that knob, `null` resets it to its env default. */
+export type SettingsPatch = Record<string, string | number | null>;
+
+export const getSettings = () => client.get<AppSettings>("/api/settings");
+export const updateSettings = (patch: SettingsPatch) =>
+  client.patch<AppSettings>("/api/settings", patch);
+export const getSettingsModels = () => client.get<ModelsList>("/api/settings/models");

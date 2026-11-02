@@ -14,6 +14,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from merlin.config import settings
+from merlin.core import tunables
 
 if TYPE_CHECKING:
     from pydantic_ai.models import Model
@@ -29,14 +30,6 @@ THINKING_EFFORT = {
     "medium": "medium",
     "high": "high",
 }
-
-
-# Library chat's first step of each turn — deciding what to search — runs at no
-# more than this level; only the steps that already have tool results (judging
-# them, writing the answer) use the composer's level. Each Gemini Flash step at
-# medium costs ~4s more than at low (measured 2026-11-02 via the proxy: median
-# first text 1.6s at low vs 5.7s at medium), and the tool loop pays it per step.
-SEARCH_STEP_THINKING = "low"
 
 
 def capped_thinking(level: str | None, ceiling: str) -> str | None:
@@ -117,22 +110,36 @@ def _build_litellm_model(
     return OpenAIChatModel(model_name, provider=provider, settings=model_settings)
 
 
-@lru_cache(maxsize=1)
+# Models are cached per (provider, name, level): the Settings page can switch
+# the model or level at runtime (merlin.core.tunables), and each combination is
+# built once.
+@lru_cache(maxsize=8)
+def _cached_model(litellm: bool, name: str, reasoning_effort: str | None) -> Model:
+    if litellm:
+        return _build_litellm_model(name, reasoning_effort=reasoning_effort)
+    return _build_openrouter_model(name)
+
+
+def clear_model_cache() -> None:
+    """Forget every built model (tests that flip the provider/base URL)."""
+    _cached_model.cache_clear()
+
+
 def build_chat_model() -> Model:
-    """The model for the agentic chat agent (cached after first use)."""
-    if settings.is_litellm:
-        return _build_litellm_model(settings.chat_model_name)
-    return _build_openrouter_model(settings.chat_model_name)
+    """The model for the agentic chat agent — the effective `chat_model`.
+
+    No default reasoning effort: the composer picks one per message.
+    """
+    return _cached_model(settings.is_litellm, tunables.get("chat_model"), None)
 
 
-@lru_cache(maxsize=4)
 def build_ingest_model(thinking: str | None = None) -> Model:
-    """The model for ingest LLM work — summarise, classify, discover (cached
-    per level). `thinking` overrides `ingest_thinking_level` (the summariser's)
-    on LiteLLM; OpenRouter ignores it."""
-    if settings.is_litellm:
-        level = settings.ingest_thinking_level if thinking is None else thinking
-        return _build_litellm_model(
-            settings.ingest_model_name, reasoning_effort=level or None
-        )
-    return _build_openrouter_model(settings.ingest_model_name)
+    """The model for ingest LLM work — summarise, classify, discover — the
+    effective `ingest_model`. `thinking` overrides the summariser's level
+    (`summarize_thinking`); classify/discover pass their own. LiteLLM only —
+    OpenRouter ignores the level."""
+    level = tunables.get("summarize_thinking") if thinking is None else thinking
+    litellm = settings.is_litellm
+    return _cached_model(
+        litellm, tunables.get("ingest_model"), (level or None) if litellm else None
+    )

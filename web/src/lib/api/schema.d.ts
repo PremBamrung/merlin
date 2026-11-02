@@ -906,6 +906,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_api_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Settings */
+        patch: operations["update_settings_api_settings_patch"];
+        trace?: never;
+    };
+    "/api/settings/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Models */
+        get: operations["list_models_api_settings_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -1428,6 +1463,20 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** ModelOption */
+        ModelOption: {
+            /** Id */
+            id: string;
+            /** Context Window */
+            context_window?: number | null;
+        };
+        /** ModelsResponse */
+        ModelsResponse: {
+            /** Available */
+            available: boolean;
+            /** Models */
+            models?: components["schemas"]["ModelOption"][];
+        };
         /** NameCount */
         NameCount: {
             /** Name */
@@ -1614,6 +1663,50 @@ export interface components {
             topic_ids?: string[];
             /** Primary Id */
             primary_id?: string | null;
+        };
+        /** SettingItem */
+        SettingItem: {
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "thinking" | "int" | "model";
+            /** Value */
+            value?: string | number | null;
+            /** Default */
+            default?: string | number | null;
+            /**
+             * Overridden
+             * @default false
+             */
+            overridden: boolean;
+            /** Min */
+            min?: number | null;
+            /** Max */
+            max?: number | null;
+            /** Options */
+            options?: string[] | null;
+        };
+        /** SettingsResponse */
+        SettingsResponse: {
+            /** Provider */
+            provider: string;
+            /** Thinking Supported */
+            thinking_supported: boolean;
+            /** Sections */
+            sections: components["schemas"]["SettingsSection"][];
+        };
+        /** SettingsSection */
+        SettingsSection: {
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "thinking" | "chat" | "models";
+            /** Settings */
+            settings: components["schemas"]["SettingItem"][];
         };
         /** Task */
         Task: {
@@ -3579,6 +3672,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+        };
+    };
+    update_settings_api_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: string | number | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_models_api_settings_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelsResponse"];
                 };
             };
         };

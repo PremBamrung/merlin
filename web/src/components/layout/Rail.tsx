@@ -3,7 +3,7 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 import { PanelLeft, Plus, Search } from "lucide-react";
 import { Mark } from "@/components/brand/Mark";
 import { IngestRing } from "./IngestRing";
-import { PLACES, isCurrent, placeFor } from "./places";
+import { PLACES, SETTINGS_PLACE, isCurrent, placeFor, type Place } from "./places";
 import { useIngestActivity } from "@/hooks/useTaskProgress";
 import { useUnreadCount } from "@/hooks/useFeed";
 import { useUi } from "@/store/ui";
@@ -50,6 +50,43 @@ export function Rail({ panelOpen, onTogglePanel }: { panelOpen: boolean; onToggl
     prevUnread.current = unreadQ;
   }, [unreadQ]);
 
+  const tile = (p: Place) => {
+    const on = isCurrent(p, pathname);
+    return (
+      <NavLink
+        key={p.id}
+        to={p.to}
+        viewTransition
+        ref={(el) => {
+          if (el) items.current.set(p.id, el);
+          else items.current.delete(p.id);
+        }}
+        aria-current={on ? "page" : undefined}
+        className={() =>
+          cn(
+            "group relative z-[1] flex w-[54px] flex-col items-center gap-1 rounded-[11px] pb-[7px] pt-2 text-[10.5px] font-medium leading-3 transition-colors",
+            on ? "text-fg" : "text-fg-subtle hover:bg-surface hover:text-fg",
+          )
+        }
+      >
+        <p.icon className={cn("size-5", on && "text-ui-current-fg")} strokeWidth={1.75} />
+        {p.label}
+        {p.id === "feed" && unread > 0 && (
+          <span
+            key={pulse}
+            className={cn(
+              "absolute right-[5px] top-[3px] h-[17px] min-w-[17px] overflow-hidden rounded-full bg-signal px-1 text-center font-mono text-[10px] font-semibold leading-[17px] text-bg shadow-[0_0_0_2px_var(--color-ui-rail-bg)]",
+              pulse > 0 && "m-pulse",
+            )}
+            aria-label={`${unread} unread`}
+          >
+            <span className={cn(pulse > 0 && "m-tick")}>{unread > 99 ? "99+" : unread}</span>
+          </span>
+        )}
+      </NavLink>
+    );
+  };
+
   return (
     <nav
       aria-label="Places"
@@ -76,45 +113,11 @@ export function Rail({ panelOpen, onTogglePanel }: { panelOpen: boolean; onToggl
         />
       )}
 
-      {PLACES.map((p) => {
-        const on = isCurrent(p, pathname);
-        return (
-          <NavLink
-            key={p.id}
-            to={p.to}
-            viewTransition
-            ref={(el) => {
-              if (el) items.current.set(p.id, el);
-              else items.current.delete(p.id);
-            }}
-            aria-current={on ? "page" : undefined}
-            className={() =>
-              cn(
-                "group relative z-[1] flex w-[54px] flex-col items-center gap-1 rounded-[11px] pb-[7px] pt-2 text-[10.5px] font-medium leading-3 transition-colors",
-                on ? "text-fg" : "text-fg-subtle hover:bg-surface hover:text-fg",
-              )
-            }
-          >
-            <p.icon className={cn("size-5", on && "text-ui-current-fg")} strokeWidth={1.75} />
-            {p.label}
-            {p.id === "feed" && unread > 0 && (
-              <span
-                key={pulse}
-                className={cn(
-                  "absolute right-[5px] top-[3px] h-[17px] min-w-[17px] overflow-hidden rounded-full bg-signal px-1 text-center font-mono text-[10px] font-semibold leading-[17px] text-bg shadow-[0_0_0_2px_var(--color-ui-rail-bg)]",
-                  pulse > 0 && "m-pulse",
-                )}
-                aria-label={`${unread} unread`}
-              >
-                <span className={cn(pulse > 0 && "m-tick")}>{unread > 99 ? "99+" : unread}</span>
-              </span>
-            )}
-          </NavLink>
-        );
-      })}
+      {PLACES.map(tile)}
 
       <div className="flex-1" />
 
+      {tile(SETTINGS_PLACE)}
       <RailTool label={`Search (${isMac ? "⌘" : "Ctrl"}K)`} onClick={() => setPaletteOpen(true)}>
         <Search className="size-[18px]" />
       </RailTool>

@@ -12,6 +12,7 @@ const InsightsRoute = lazy(() => import("@/routes/insights"));
 // Chat pulls in the Vercel AI SDK — lazy-load so it stays in its own chunk.
 const ChatRoute = lazy(() => import("@/routes/chat"));
 const TopicsRoute = lazy(() => import("@/routes/topics"));
+const SettingsRoute = lazy(() => import("@/routes/settings"));
 const TopicDetailRoute = lazy(() =>
   import("@/routes/topics").then((m) => ({ default: m.TopicDetailRoute })),
 );
@@ -78,6 +79,14 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<ReaderSkeleton />}>
             <InsightsRoute />
+          </Suspense>
+        ),
+      },
+      {
+        path: "settings",
+        element: (
+          <Suspense fallback={<ReaderSkeleton />}>
+            <SettingsRoute />
           </Suspense>
         ),
       },

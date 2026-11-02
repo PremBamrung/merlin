@@ -12,6 +12,7 @@ import json
 import uuid
 
 from merlin.config import settings
+from merlin.core import tunables
 from merlin.core.logging import logger
 from merlin.core.task_queue import task_queue
 from merlin.db.engine import SessionFactory
@@ -359,7 +360,7 @@ def resummarize(
             item.summary = summary
             item.summary_length = length
             item.sections = json.dumps(sections)
-            item.llm_model = summ_usage.get("model") or settings.ingest_model_name
+            item.llm_model = summ_usage.get("model") or tunables.get("ingest_model")
             item.status = "completed"
             item.error_message = None
             item.surfaced_at = datetime.now(UTC)  # bump to top of "Newest"
@@ -386,7 +387,7 @@ def resummarize(
             usage.record(
                 surface="summarize",
                 provider=settings.llm_provider_name,
-                model=summ_usage.get("model") or settings.ingest_model_name,
+                model=summ_usage.get("model") or tunables.get("ingest_model"),
                 input_tokens=summ_usage.get("input_tokens"),
                 output_tokens=summ_usage.get("output_tokens"),
                 cache_read_tokens=summ_usage.get("cache_read_tokens"),

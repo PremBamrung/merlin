@@ -27,11 +27,11 @@ def test_agent_module_imports_without_api_key(monkeypatch):
 def test_build_chat_model_requires_key(monkeypatch):
     from merlin.rag import model as model_mod
 
-    model_mod.build_chat_model.cache_clear()
+    model_mod.clear_model_cache()
     monkeypatch.setattr("merlin.config.settings.openrouter_api_key", "", raising=False)
     with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
         model_mod.build_chat_model()
-    model_mod.build_chat_model.cache_clear()
+    model_mod.clear_model_cache()
 
 
 def test_search_library_tool_accumulates_citations(make_item):

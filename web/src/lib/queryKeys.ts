@@ -30,4 +30,7 @@ export const keys = {
   // Chat history (continuable threads): the sidebar list + one opened thread.
   chatThreads: () => ["chat-threads"] as const,
   chatThread: (id: string) => ["chat-thread", id] as const,
+  // Settings page: the knobs, and the model aliases the LiteLLM proxy serves.
+  settings: () => ["settings"] as const,
+  settingsModels: () => ["settings", "models"] as const,
 };

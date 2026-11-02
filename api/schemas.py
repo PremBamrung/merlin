@@ -491,3 +491,43 @@ class RetryFailedResponse(BaseModel):
 
 class ClearFailedResponse(BaseModel):
     cleared: int
+
+
+# --------------------------------------------------------------------------- #
+# Settings page — runtime-tunable knobs (env defaults + saved overrides)
+# --------------------------------------------------------------------------- #
+
+
+class SettingItem(BaseModel):
+    key: str
+    kind: Literal["thinking", "int", "model"]
+    value: str | int | None = None
+    # The env value the knob falls back to on reset.
+    default: str | int | None = None
+    overridden: bool = False
+    min: int | None = None
+    max: int | None = None
+    options: list[str] | None = None
+
+
+class SettingsSection(BaseModel):
+    id: Literal["thinking", "chat", "models"]
+    settings: list[SettingItem]
+
+
+class SettingsResponse(BaseModel):
+    provider: str
+    # Thinking levels only apply on LiteLLM; the page disables them otherwise.
+    thinking_supported: bool
+    sections: list[SettingsSection]
+
+
+class ModelOption(BaseModel):
+    id: str
+    context_window: int | None = None
+
+
+class ModelsResponse(BaseModel):
+    # False when the provider isn't LiteLLM or the proxy couldn't be reached.
+    available: bool
+    models: list[ModelOption] = Field(default_factory=list)

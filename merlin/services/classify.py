@@ -23,6 +23,7 @@ import json
 from pydantic import BaseModel, Field
 
 from merlin.config import settings
+from merlin.core import tunables
 from merlin.core.logging import logger
 from merlin.db.engine import SessionFactory
 from merlin.db.repositories.knowledge import KnowledgeItemRepository
@@ -65,8 +66,8 @@ def _run_structured(schema, system: str, user: str, *, surface: str):
     from merlin.rag.model import build_ingest_model
 
     level = {
-        "classify": settings.classify_thinking_level,
-        "discover": settings.discover_thinking_level,
+        "classify": tunables.get("classify_thinking"),
+        "discover": tunables.get("discover_thinking"),
     }.get(surface)
     agent = Agent(
         build_ingest_model(level),
@@ -161,7 +162,7 @@ def _record_usage(result, *, surface: str = "classify") -> None:
         usage.record(
             surface=surface,
             provider=settings.llm_provider_name,
-            model=model or settings.ingest_model_name,
+            model=model or tunables.get("ingest_model"),
             input_tokens=getattr(u, "input_tokens", None),
             output_tokens=getattr(u, "output_tokens", None),
             cache_read_tokens=getattr(u, "cache_read_tokens", None),

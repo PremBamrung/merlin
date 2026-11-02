@@ -24,13 +24,10 @@ from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolDefinition
 
 from merlin.config import settings
+from merlin.core import tunables
 from merlin.core.logging import logger
 from merlin.db.engine import get_db
-from merlin.rag.model import (
-    SEARCH_STEP_THINKING,
-    capped_thinking,
-    thinking_model_settings,
-)
+from merlin.rag.model import capped_thinking, thinking_model_settings
 from merlin.rag.prompts import AGENT_SYSTEM_PROMPT, WEB_SEARCH_GUIDANCE
 from merlin.rag.retriever import HybridRetriever, RetrievedChunk
 from merlin.services import comments, library, topics
@@ -169,8 +166,9 @@ def _stamp_user_messages(
 # Thinking per step. Which step writes the answer isn't known in advance, so the
 # rule keys off what the step has in hand: the turn's first request (the user's
 # prompt, no tool results yet) is almost always the model choosing what to
-# search, and runs at no more than SEARCH_STEP_THINKING; every later request has
-# tool results to judge and may write the answer, so it gets the full level.
+# search, and runs at no more than `search_step_thinking` (a Settings-page knob,
+# default low); every later request has tool results to judge and may write the
+# answer, so it gets the full level.
 # --------------------------------------------------------------------------- #
 
 
@@ -185,7 +183,7 @@ def is_search_planning_step(messages: list[ModelMessage]) -> bool:
 def _step_thinking(ctx: RunContext[ChatDeps]) -> ModelSettings:
     level = ctx.deps.thinking
     if is_search_planning_step(ctx.messages):
-        level = capped_thinking(level, SEARCH_STEP_THINKING)
+        level = capped_thinking(level, tunables.get("search_step_thinking"))
     return thinking_model_settings(level) or ModelSettings()
 
 
@@ -249,7 +247,7 @@ _BUDGET_REFUSAL = (
 def _over_budget(ctx: RunContext[ChatDeps]) -> bool:
     # `run_step` is always present on a real RunContext; default 0 keeps the tools
     # callable from unit tests that pass a minimal ctx stand-in.
-    return getattr(ctx, "run_step", 0) > settings.chat_max_requests
+    return getattr(ctx, "run_step", 0) > tunables.get("chat_max_requests")
 
 
 @agent.instructions

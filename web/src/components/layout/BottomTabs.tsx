@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from "react-router-dom";
 import { Menu } from "lucide-react";
-import { PLACES, isCurrent } from "./places";
+import { PLACES, SETTINGS_PLACE, isCurrent } from "./places";
 import { useUnreadCount } from "@/hooks/useFeed";
 import {
   DropdownMenu,
@@ -10,9 +10,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
-/** Phone navigation (mockup `.tabs`): the first four places + More. */
+/** Phone navigation (mockup `.tabs`): the first four places + More (the rest,
+ *  then Settings). */
 const TABBED = PLACES.slice(0, 4);
-const MORE = PLACES.slice(4);
+const MORE = [...PLACES.slice(4), SETTINGS_PLACE];
 
 const tabClass = (on: boolean) =>
   cn(

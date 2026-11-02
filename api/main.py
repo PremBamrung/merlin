@@ -28,7 +28,17 @@ from merlin.rag.embeddings import get_embedder
 from merlin.services.chat import thinking_supported
 
 from .errors import install_error_handlers, not_found
-from .routers import chat, home, inbox, ingest, insights, items, search, topics
+from .routers import (
+    chat,
+    home,
+    inbox,
+    ingest,
+    insights,
+    items,
+    search,
+    settings as settings_router,
+    topics,
+)
 from .schemas import HealthResponse
 
 # Dev origins for the Vite dev server. Override/extend with a comma-separated
@@ -119,6 +129,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(insights.router)
     app.include_router(inbox.router)
+    app.include_router(settings_router.router)
 
     @app.get("/api/health", response_model=HealthResponse, tags=["meta"])
     def health():

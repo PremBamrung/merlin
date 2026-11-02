@@ -25,11 +25,9 @@ def litellm(monkeypatch):
     monkeypatch.setattr("merlin.config.settings.litellm_base_url", "http://omv:4000/v1")
     monkeypatch.setattr("merlin.config.settings.litellm_api_key", "sk-merlin")
     monkeypatch.setattr("merlin.config.settings.chat_model", "")
-    model_mod.build_chat_model.cache_clear()
-    model_mod.build_ingest_model.cache_clear()
+    model_mod.clear_model_cache()
     yield
-    model_mod.build_chat_model.cache_clear()
-    model_mod.build_ingest_model.cache_clear()
+    model_mod.clear_model_cache()
 
 
 def _chat_body(text: str, filters: dict | None = None) -> dict:
