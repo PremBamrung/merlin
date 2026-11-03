@@ -33,6 +33,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -41,6 +43,7 @@ import { Composer } from "@/components/chat/Composer";
 import { Message } from "@/components/chat/Message";
 import { ThreadList } from "@/components/chat/ThreadList";
 import { PanelSlot } from "@/components/layout/panel";
+import { HeaderActions, HeaderTitle } from "@/components/layout/headerSlot";
 import { ContextMeter } from "@/components/chat/UsageFooter";
 import { toast } from "@/components/ui/toaster";
 import { keys } from "@/lib/queryKeys";
@@ -366,41 +369,70 @@ function ChatConversation({
     (m.parts ?? []).some((p) => (p as { type: string }).type === CITATIONS_PART),
   );
 
+  const usage = latestUsage(messages);
+  const headTitle = isIdle ? (
+    "New chat"
+  ) : (
+    <span className={cn(typed.typing && "m-typing")}>{typed.shown || "Conversation"}</span>
+  );
+  // `phone`: the copy that lives in the top bar, which also carries the
+  // context meter (the composer row has no room for it on a phone).
+  const actions = (phone: boolean) => (
+    <>
+      {!isIdle && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Conversation actions"
+              className={cn(phone && "size-10 rounded-[11px] text-fg-muted")}
+            >
+              <MoreHorizontal className={phone ? "size-[19px]" : "size-4"} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => exportConversation(messages)}>
+              <Download className="size-3.5" /> Export as Markdown
+            </DropdownMenuItem>
+            {phone && usage?.context_used && usage.context_limit ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="space-y-1.5 py-2">
+                  <span className="eyebrow block">Context</span>
+                  <ContextMeter usage={usage} />
+                </DropdownMenuLabel>
+              </>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={onNew}
+        aria-label="New chat"
+        title="New chat (⌘⇧O)"
+        className={cn(phone && "size-10 rounded-[11px] text-fg-muted")}
+      >
+        <Plus className={phone ? "size-5" : "size-[18px]"} />
+      </Button>
+    </>
+  );
+
   return (
     <div className="flex min-w-0 flex-1 flex-col">
+      {/* Phones: the thread's title and actions go up into the top bar
+          instead of a second 56px header under it (headerSlot.tsx). */}
+      <HeaderTitle>{headTitle}</HeaderTitle>
+      <HeaderActions>{actions(true)}</HeaderActions>
       {/* Header: the thread's title and its actions. Navigation is the rail
           (tabs on phones) and the thread list is the context panel. */}
-      <div className="flex h-14 shrink-0 items-center gap-2 pl-4 pr-2 md:pl-4 md:pr-3">
+      <div className="hidden h-14 shrink-0 items-center gap-2 pl-4 pr-3 md:flex">
         <h1 className="min-w-0 flex-1 truncate font-display text-[15px] font-semibold leading-5 tracking-[-0.01em]">
-          {isIdle ? (
-            "New chat"
-          ) : (
-            <span className={cn(typed.typing && "m-typing")}>{typed.shown || "Conversation"}</span>
-          )}
+          {headTitle}
         </h1>
-        {!isIdle && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label="Conversation actions">
-                <MoreHorizontal className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => exportConversation(messages)}>
-                <Download className="size-3.5" /> Export as Markdown
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onNew}
-          aria-label="New chat"
-          title="New chat (⌘⇧O)"
-        >
-          <Plus className="size-[18px]" />
-        </Button>
+        {actions(false)}
       </div>
 
       {/* Messages */}
@@ -465,7 +497,8 @@ function ChatConversation({
               placeholder={isIdle ? "Ask your library…" : "Reply to Merlin…"}
               filters={filters}
               setFilters={setFilters}
-              meter={!isIdle ? <ContextMeter usage={latestUsage(messages)} /> : undefined}
+              // Desktop only: on phones the meter is in the top bar's ⋯ menu.
+              meter={!isIdle ? <ContextMeter usage={usage} className="hidden md:flex" /> : undefined}
             />
             <p className="mt-2 hidden text-center font-mono text-[11px] leading-4 text-fg-subtle md:block">
               Merlin can be wrong. Library answers cite their sources.

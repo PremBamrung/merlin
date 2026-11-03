@@ -67,7 +67,7 @@ export function ContextPanel({
                   : "w-0 border-transparent",
               )
             : cn(
-                "fixed inset-y-0 left-0 z-50 w-[min(310px,86vw)] border-r border-border-strong transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.2,0,0,1)]",
+                "fixed inset-y-0 left-0 z-50 w-[min(310px,86vw)] border-r border-border-strong pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pt-[env(safe-area-inset-top)] transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.2,0,0,1)]",
                 // The shadow only while open: parked off-screen, its 84px blur
                 // would still bleed into the viewport's left edge.
                 open ? "translate-x-0 shadow-[24px_0_60px_rgb(0_0_0/0.5)]" : "-translate-x-[102%]",

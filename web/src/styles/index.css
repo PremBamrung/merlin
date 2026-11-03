@@ -199,6 +199,14 @@
   }
   html {
     color-scheme: dark;
+    /* What the phone shell adds on top of its 56px header + 62px tabs in the
+       Home Screen web app: the status-bar inset above the header, and the part
+       of the home-indicator inset that exceeds the tabs' own 8px bottom pad
+       (MobileHeader, BottomTabs). 0 in Safari. Pages that size themselves to
+       the viewport minus the chrome subtract this too. */
+    --m-safe-chrome: calc(
+      env(safe-area-inset-top) + max(0px, env(safe-area-inset-bottom) - 0.5rem)
+    );
   }
   body {
     margin: 0;

@@ -31,7 +31,9 @@ export function BottomTabs() {
   return (
     <nav
       aria-label="Places"
-      className="sticky bottom-0 z-30 flex h-[62px] shrink-0 gap-0.5 border-t border-border bg-ui-rail-bg/95 px-1.5 pb-2 pt-1.5 backdrop-blur-md"
+      // Bottom padding = the home-indicator inset in the Home Screen web app
+      // (0 in Safari, which keeps the old 8px).
+      className="sticky bottom-0 z-30 flex h-[calc(54px+max(0.5rem,env(safe-area-inset-bottom)))] shrink-0 gap-0.5 border-t border-border bg-ui-rail-bg/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.375rem,env(safe-area-inset-left))] pr-[max(0.375rem,env(safe-area-inset-right))] pt-1.5 backdrop-blur-md"
     >
       {TABBED.map((p) => (
         <NavLink

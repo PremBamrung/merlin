@@ -53,7 +53,7 @@ export function ItemDrawer() {
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[rgb(12_13_15/0.5)] backdrop-blur-[3px] duration-[240ms] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
-          className="fixed inset-y-0 right-0 z-50 flex w-[min(560px,100vw)] flex-col border-l border-border-strong bg-surface shadow-[-24px_0_60px_rgb(0_0_0/0.45)] outline-none duration-[400ms] ease-[cubic-bezier(0.16,1,0.3,1)] data-[state=closed]:animate-out data-[state=closed]:duration-200 data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:slide-in-from-right min-[2200px]:w-[640px]"
+          className="fixed inset-y-0 right-0 z-50 flex w-[min(560px,100vw)] flex-col border-l border-border-strong bg-surface pb-[env(safe-area-inset-bottom)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)] shadow-[-24px_0_60px_rgb(0_0_0/0.45)] outline-none duration-[400ms] ease-[cubic-bezier(0.16,1,0.3,1)] data-[state=closed]:animate-out data-[state=closed]:duration-200 data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:slide-in-from-right min-[2200px]:w-[640px]"
         >
           {shown && <DrawerItem id={shown} />}
         </DialogPrimitive.Content>

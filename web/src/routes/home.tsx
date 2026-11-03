@@ -71,7 +71,7 @@ export default function HomeRoute() {
   };
 
   return (
-    <div className="flex min-h-[calc(100dvh-182px)] flex-col md:min-h-[calc(100dvh-64px)]">
+    <div className="flex min-h-[calc(100dvh-182px-var(--m-safe-chrome))] flex-col md:min-h-[calc(100dvh-64px)]">
       <PanelSlot title="Chats" sub={n != null ? `${n} conversation${n === 1 ? "" : "s"}` : undefined}>
         <ThreadList
           activeId=""

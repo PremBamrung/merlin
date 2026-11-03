@@ -90,8 +90,10 @@ export const Composer = forwardRef<
         placeholder={online ? placeholder : "Offline: reconnect to send"}
         aria-label="Message"
         className={cn(
-          "block max-h-60 w-full resize-none bg-transparent px-[18px] pb-1.5 pt-4 text-[16px] leading-6 text-fg outline-none placeholder:text-fg-subtle",
-          big ? "min-h-[92px]" : "min-h-16",
+          // Phones start at one line (it still grows): the dock competes
+          // with the header, the tabs and Safari's bars for ~874px.
+          "block max-h-60 w-full resize-none bg-transparent px-[18px] pb-1.5 pt-3 text-[16px] leading-6 text-fg outline-none placeholder:text-fg-subtle md:pt-4",
+          big ? "min-h-[92px]" : "min-h-11 md:min-h-16",
         )}
       />
       <div className="flex items-center gap-1.5 px-2.5 pb-2.5 pt-2">

@@ -575,11 +575,12 @@ function Count({ n }: { n: number }) {
 /** Centered reading frame that fills the viewport height; wide on desktop so
  *  the two-column card uses the space instead of a narrow centered column.
  *  Height = the viewport minus the shell's chrome and the content padding:
- *  phones lose the 56px header + 62px tabs + py-6 (py-8 from sm); from `md`
+ *  phones lose the 56px header + 62px tabs + py-6 (py-8 from sm), plus the
+ *  safe-area insets in the Home Screen web app (`--m-safe-chrome`); from `md`
  *  there is no chrome above the content, only py-8. */
 function FeedFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto h-[calc(100dvh-166px)] max-w-[720px] sm:h-[calc(100dvh-182px)] md:h-[calc(100dvh-64px)] lg:max-w-[1400px]">
+    <div className="mx-auto h-[calc(100dvh-166px-var(--m-safe-chrome))] max-w-[720px] sm:h-[calc(100dvh-182px-var(--m-safe-chrome))] md:h-[calc(100dvh-64px)] lg:max-w-[1400px]">
       {children}
     </div>
   );

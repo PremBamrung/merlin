@@ -16,7 +16,7 @@ export function OfflineNotice() {
   return (
     <div
       role="status"
-      className="fixed left-1/2 top-3 z-[60] flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-xl border border-fail/45 bg-surface-raised py-2 pl-2.5 pr-2 shadow-[0_16px_40px_rgb(0_0_0/0.5),inset_3px_0_0_var(--color-fail)]"
+      className="fixed left-1/2 top-[calc(0.75rem+env(safe-area-inset-top))] z-[60] flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-xl border border-fail/45 bg-surface-raised py-2 pl-2.5 pr-2 shadow-[0_16px_40px_rgb(0_0_0/0.5),inset_3px_0_0_var(--color-fail)]"
     >
       <span className="rounded-[5px] border border-fail/60 px-1.5 py-0.5 font-mono text-[10.5px] font-medium tracking-[0.08em] text-fail">
         OFFLINE

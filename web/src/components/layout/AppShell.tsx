@@ -6,6 +6,7 @@ import { ContextPanel } from "./ContextPanel";
 import { MobileHeader } from "./MobileHeader";
 import { BottomTabs } from "./BottomTabs";
 import { PanelTargetsContext } from "./panelTargets";
+import { HeaderTargetsContext } from "./headerTargets";
 import { placeFor } from "./places";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { CommandPalette } from "./CommandPalette";
@@ -80,6 +81,10 @@ export function AppShell() {
   const [head, setHead] = useState<HTMLElement | null>(null);
   const [body, setBody] = useState<HTMLElement | null>(null);
   const targets = useMemo(() => ({ head, body }), [head, body]);
+  // The phone header's route-owned title + actions (headerSlot.tsx).
+  const [hTitle, setHTitle] = useState<HTMLElement | null>(null);
+  const [hActions, setHActions] = useState<HTMLElement | null>(null);
+  const headerTargets = useMemo(() => ({ title: hTitle, actions: hActions }), [hTitle, hActions]);
 
   useEffect(() => {
     const el = mainRef.current;
@@ -124,6 +129,7 @@ export function AppShell() {
   return (
     <TooltipProvider delayDuration={300}>
       <PanelTargetsContext.Provider value={targets}>
+      <HeaderTargetsContext.Provider value={headerTargets}>
         <div
           data-app="merlin"
           className={cn("flex h-dvh overflow-hidden bg-bg text-fg", !desktop && "flex-col")}
@@ -140,6 +146,10 @@ export function AppShell() {
             <MobileHeader
               // Home shows the wordmark; every other screen names its place.
               title={pathname === "/" ? <Wordmark fontSize="1.16rem" /> : (placeFor(pathname)?.label ?? "Merlin")}
+              // Chat puts the thread's title, ⋯ and New chat up here itself.
+              slotted={isChat}
+              titleRef={setHTitle}
+              actionsRef={setHActions}
             />
           )}
           <main
@@ -165,6 +175,7 @@ export function AppShell() {
           </main>
           {!desktop && <BottomTabs />}
         </div>
+      </HeaderTargetsContext.Provider>
       </PanelTargetsContext.Provider>
       <CommandPalette />
       <AddSourceDialog />
