@@ -6,6 +6,7 @@ or a detached instance. Serialization is done while the session is open.
 """
 
 from datetime import datetime
+import difflib
 import json
 import re
 
@@ -201,6 +202,38 @@ def update_item(
 
 _TERM_RE = re.compile(r"\w{3,}", re.UNICODE)
 
+# Fuzzy fallback for transcript search: auto-generated transcripts mangle names
+# ("Exaphanes" → "Exaiphanes", "Mualani" → "Milani"). Same difflib cutoff as the
+# Library box's title fallback; only terms/words of 4+ chars, so "ai"-style
+# noise can't match. It can't catch heavier mishearings ("Chasca" → "Chosa"
+# scores 0.55) — the agent's tool text tells the model to retry for those.
+_FUZZY_MIN_LEN = 4
+_FUZZY_THRESHOLD = 0.72
+_WORD_RE = re.compile(rf"\w{{{_FUZZY_MIN_LEN},}}", re.UNICODE)
+
+
+def _fuzzy_variants(terms: list[str], text: str) -> dict[str, list[str]]:
+    """``{term: [transcript words similar to it]}`` for each fuzzy-eligible term
+    with at least one match, best match first. Words are already lowercase."""
+    words = set(_WORD_RE.findall(text))
+    out: dict[str, list[str]] = {}
+    for term in terms:
+        if len(term) < _FUZZY_MIN_LEN:
+            continue
+        scored = []
+        for word in words:
+            m = difflib.SequenceMatcher(None, term, word)
+            # quick_ratio is an upper bound on ratio — skip the costly pass.
+            if m.quick_ratio() < _FUZZY_THRESHOLD:
+                continue
+            score = m.ratio()
+            if score >= _FUZZY_THRESHOLD:
+                scored.append((score, word))
+        if scored:
+            scored.sort(key=lambda s: (-s[0], s[1]))
+            out[term] = [w for _, w in scored]
+    return out
+
 
 def search_transcript(
     item_id: str, query: str, max_hits: int = 4, window: int = 1200
@@ -213,8 +246,13 @@ def search_transcript(
     ``max_hits`` non-overlapping windows come back in transcript order, each
     with its char offset (usable as ``get_item``'s transcript offset).
 
+    When no term occurs verbatim, a fuzzy pass retries with transcript words
+    similar to the terms (misheard names), reported as ``"fuzzy": {term:
+    [words]}`` so the caller can say what was substituted.
+
     Returns None when the item doesn't exist, else
-    ``{"title", "source_type", "length", "hits": [{"offset", "text"}]}``.
+    ``{"title", "source_type", "length", "hits": [{"offset", "text"}]}``
+    (+ ``"fuzzy"`` when the fallback produced the hits).
     """
     item = get_item(item_id)
     if item is None:
@@ -233,6 +271,17 @@ def search_transcript(
     positions = sorted(
         m.start() for t in terms for m in re.finditer(re.escape(t), lower)
     )
+    fuzzy: dict[str, list[str]] = {}
+    if not positions:
+        fuzzy = _fuzzy_variants(terms, lower)
+        if not fuzzy:
+            return {**out, "hits": []}
+        # Score windows on the matched words instead of the original terms;
+        # whole-word matches so "chaza" doesn't also hit inside "chazan".
+        terms = list(dict.fromkeys(w for ws in fuzzy.values() for w in ws))
+        positions = sorted(
+            m.start() for t in terms for m in re.finditer(rf"\b{re.escape(t)}\b", lower)
+        )
     half = window // 2
     scored = []
     for pos in positions:
@@ -253,6 +302,8 @@ def search_transcript(
         {"offset": start, "text": transcript[start : start + window]}
         for start in sorted(picked)
     ]
+    if fuzzy:
+        return {**out, "hits": hits, "fuzzy": fuzzy}
     return {**out, "hits": hits}
 
 

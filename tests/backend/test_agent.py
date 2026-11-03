@@ -361,6 +361,47 @@ def test_search_transcript_finds_passages(make_item):
     assert "no transcript" in search_transcript(_Ctx(), empty, "x")  # type: ignore[arg-type]
 
 
+def test_search_transcript_fuzzy_fallback_for_misheard_names(make_item):
+    from merlin.rag.agent import search_transcript
+
+    filler = "lorem ipsum dolor sit amet " * 200
+    transcript = (
+        filler
+        + "you get the exaiphanes blade early in the quest. "
+        + filler
+        + "then milani shines in the team. "
+        + filler
+    )
+    iid = make_item(title="Weapon guide", raw_content=transcript)
+    ctx = _Ctx()
+
+    out = search_transcript(ctx, iid, "Exaphanes Blade")  # type: ignore[arg-type]
+    # "blade" matches exactly, so no fuzzy pass and no substitution note.
+    assert "No exact match" not in out
+    assert "exaiphanes blade" in out
+
+    out = search_transcript(ctx, iid, "Exaphanes")  # type: ignore[arg-type]
+    assert "No exact match" in out and "'exaphanes' ~ 'exaiphanes'" in out
+    assert "exaiphanes blade early" in out
+    assert iid in ctx.deps.cited
+
+    out = search_transcript(_Ctx(), iid, "Mualani")  # type: ignore[arg-type]
+    assert "'mualani' ~ 'milani'" in out and "milani shines" in out
+
+
+def test_search_transcript_fuzzy_skips_short_terms_and_hints_on_miss(make_item):
+    from merlin.rag.agent import search_transcript
+    from merlin.services.library import search_transcript as svc_search
+
+    iid = make_item(title="Short", raw_content="the bow user is strong " * 50)
+
+    # "bwo" (3 chars) would be close to "bow" but is too short to fuzz.
+    assert svc_search(iid, "bwo")["hits"] == []
+
+    out = search_transcript(_Ctx(), iid, "Chasca")  # type: ignore[arg-type]
+    assert "No passage" in out and "sound-alike" in out
+
+
 def test_search_library_include_summaries(make_item):
     from merlin.rag.agent import search_library
 

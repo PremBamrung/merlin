@@ -432,6 +432,11 @@ def search_transcript(ctx: RunContext[ChatDeps], item_id: str, query: str) -> st
     instead of paging through the transcript window by window. Returns the
     best-matching passages with their transcript offsets; call
     `get_item(item_id, transcript_offset=...)` to read on from one.
+
+    Transcripts are auto-generated from speech, so names and jargon are often
+    misheard ("Chasca" → "Chosa", "Xilonen" → "Shilanin"). Close spellings are
+    matched automatically; for anything else, retry with sound-alike spellings
+    or describe it in plain words (its role, weapon, element, what it does).
     """
     if _over_budget(ctx):
         return _BUDGET_REFUSAL
@@ -442,7 +447,13 @@ def search_transcript(ctx: RunContext[ChatDeps], item_id: str, query: str) -> st
         if not result["length"]:
             return f"{result['title']!r} has no transcript to search."
         if not result["hits"]:
-            return f"No passage in {result['title']!r}'s transcript mentions {query!r}."
+            return (
+                f"No passage in {result['title']!r}'s transcript mentions "
+                f"{query!r}, even with close spellings. The transcript is "
+                "auto-generated from speech, so names are often misheard — "
+                "retry with sound-alike spellings or describe it in plain "
+                "words instead."
+            )
         ctx.deps.cite_item(
             {
                 "id": item_id,
@@ -848,10 +859,20 @@ def _format_item_summary(item: dict) -> str:
 
 def _format_transcript_hits(item_id: str, result: dict) -> str:
     hits = result["hits"]
-    parts = [
+    parts = []
+    if result.get("fuzzy"):
+        subs = "; ".join(
+            f"{term!r} ~ " + ", ".join(repr(w) for w in words)
+            for term, words in result["fuzzy"].items()
+        )
+        parts.append(
+            f"No exact match — showing passages with similar words ({subs}). "
+            "Check each passage is really about what you asked."
+        )
+    parts.append(
         f"{len(hits)} passage(s) from {result['title']!r} "
         f"(transcript: {result['length']:,} chars):"
-    ]
+    )
     for h in hits:
         parts.append(f"@offset {h['offset']:,}:\n…{h['text']}…")
     parts.append(
