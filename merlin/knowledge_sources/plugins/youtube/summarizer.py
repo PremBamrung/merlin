@@ -45,6 +45,9 @@ Rules:
 - Keep the section headers ("## Overview", "## Main Key Points") in English even when the body is written in another language
 - Begin the response directly with the "## Overview" header - do not write any introductory sentence, preamble, or sign-off; output only the summary itself
 - If a video description is provided below, use it for supporting context (names, links, chapters, claims the creator makes), but treat the subtitles as the ground truth and ignore promotional or sponsor boilerplate in the description
+- Faithfulness: state only what the speaker actually says. Do not add details, examples, superlatives, rankings or interpretations they did not give, and keep their hedges ("maybe", "roughly", "probably")
+- Attribute opinions, predictions and contested claims to whoever makes them (e.g. "X argues...", "selon X...") instead of stating them as fact
+- Keep every number, name, product and place tied to what it was said about; when the video compares several items, double-check which fact belongs to which
 
 Two examples of the expected output (note how each begins directly with "## Overview", keeps English headers, and numbers the key points):
 
@@ -81,7 +84,7 @@ Video titled "{title}" from the channel "{channel}"
 {description_block}
 Subtitles: {subtitles}
 {comments_block}
-# Answer (begin directly with "## Overview"; use the English headers "## Overview" and "## Main Key Points"; number the key points; do not number the headers themselves): """
+# Answer (begin directly with "## Overview"; use the English headers "## Overview" and "## Main Key Points"; number the key points; do not number the headers themselves; at most 10 points, each 1-2 lines after its bold lead): """
 
         TEMPLATE_LONG = """Given the subtitles of a Youtube video, create a comprehensive, in-depth summary that includes:
 
