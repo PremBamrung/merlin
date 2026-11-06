@@ -90,6 +90,7 @@ export function Rail({ panelOpen, onTogglePanel }: { panelOpen: boolean; onToggl
   return (
     <nav
       aria-label="Places"
+      data-chrome="rail"
       className="relative z-20 flex w-[68px] shrink-0 flex-col items-center gap-1 border-r border-border bg-ui-rail-bg py-3"
     >
       <Link

@@ -56,6 +56,7 @@ export function ContextPanel({
       )}
       <aside
         ref={asideRef}
+        data-chrome="panel"
         aria-label="Context panel"
         className={cn(
           "flex min-w-0 flex-col overflow-hidden bg-ui-panel-bg",
