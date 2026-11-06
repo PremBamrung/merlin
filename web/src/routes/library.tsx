@@ -14,7 +14,8 @@ import {
   CornerDownLeft,
   Library as LibraryIcon,
 } from "lucide-react";
-import { useItems, useLibrarySearch } from "@/hooks/useItems";
+import { useInfiniteItems, useLibrarySearch } from "@/hooks/useItems";
+import { useLoadMoreSentinel } from "@/hooks/useLoadMoreSentinel";
 import { useTopics } from "@/hooks/useTopics";
 import { useUnreadCount } from "@/hooks/useFeed";
 import { ITEM_PARAM, useItemHref } from "@/hooks/useItemHref";
@@ -48,7 +49,9 @@ import {
 } from "@/lib/libraryView";
 import { cn } from "@/lib/utils";
 
-const PER_PAGE = 24;
+// Items fetched per scroll step. 48 divides evenly into 2/3/4/6 columns, so a
+// batch never ends on a ragged row.
+const PER_PAGE = 48;
 const SORTS = [
   { value: "relevance", label: "Relevance" },
   { value: "newest", label: "Newest" },
@@ -75,11 +78,10 @@ export default function LibraryRoute() {
   // Index of the card focused via j/k (−1 = none).
   const [focused, setFocused] = useState(-1);
 
-  // URL is the source of truth for filters/sort/page.
+  // URL is the source of truth for filters/sort. (No page: the list scrolls.)
   const search = params.get("search") ?? "";
   const sourceType = params.get("source_type") ?? "";
   const sort = params.get("sort") ?? "newest";
-  const page = Math.max(1, Number(params.get("page") ?? 1));
   const tags = params.getAll("tags");
   const topics = params.getAll("topics");
   const savedOnly = params.get("saved") === "true";
@@ -102,7 +104,6 @@ export default function LibraryRoute() {
     if (debouncedSearch === search) return;
     const next: Record<string, string | undefined> = {
       search: debouncedSearch || undefined,
-      page: undefined,
     };
     // Auto-rank by relevance when a query appears, and restore Newest when it's
     // cleared — but never override a sort the user picked explicitly.
@@ -141,7 +142,7 @@ export default function LibraryRoute() {
     );
   };
 
-  const query: ItemQuery = useMemo(
+  const query: Omit<ItemQuery, "page" | "per_page"> = useMemo(
     () => ({
       search: search || undefined,
       source_type: sourceType || undefined,
@@ -152,19 +153,17 @@ export default function LibraryRoute() {
       read: unreadOnly ? false : undefined,
       channel: channel || undefined,
       search_transcripts: searchTranscripts || undefined,
-      page,
-      per_page: PER_PAGE,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [search, sourceType, sort, page, tags.join(","), topics.join(","), savedOnly, unreadOnly, channel, searchTranscripts],
+    [search, sourceType, sort, tags.join(","), topics.join(","), savedOnly, unreadOnly, channel, searchTranscripts],
   );
 
   // A typed query goes through unified hybrid search (keyword + meaning,
   // decision O3): the 20 best matches by relevance, no paging, with the view's
-  // filters applied to them here. The transcript toggle stays on the paged
+  // filters applied to them here. The transcript toggle stays on the scrolling
   // keyword search, which is what can look inside transcripts.
   const hybrid = !!search && !searchTranscripts;
-  const list = useItems(query, !hybrid);
+  const list = useInfiniteItems(query, PER_PAGE, !hybrid);
   const found = useLibrarySearch(search, sourceType || undefined, hybrid);
   const q = hybrid ? found : list;
   const { data: topicList } = useTopics();
@@ -184,8 +183,15 @@ export default function LibraryRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [found.data, unreadOnly, savedOnly, channel, topics.join(","), tags.join(",")],
   );
-  const total = hybrid ? hybridItems.length : (list.data?.total ?? 0);
-  const totalPages = hybrid ? 1 : Math.max(1, Math.ceil(total / PER_PAGE));
+  // Pages can overlap when the list shifts between fetches (a new ingest pushes
+  // everything down one), so keep the first copy of each id.
+  const listItems = useMemo(() => {
+    const seen = new Set<string>();
+    return (list.data?.pages ?? []).flatMap((p) =>
+      p.items.filter((it) => !seen.has(it.id) && !!seen.add(it.id)),
+    );
+  }, [list.data]);
+  const total = hybrid ? hybridItems.length : (list.data?.pages[0]?.total ?? 0);
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "Newest";
 
   const libView = viewOf(params);
@@ -193,24 +199,26 @@ export default function LibraryRoute() {
   const hasFilters = !!(
     search || sourceType || tags.length || topics.length || savedOnly || unreadOnly || channel
   );
-  const items = hybrid ? hybridItems : (list.data?.items ?? []);
+  const items = hybrid ? hybridItems : listItems;
 
-  const goToPage = (p: number) => {
-    update({ page: p === 1 ? undefined : String(p) });
-    setFocused(-1);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = list;
+  const canLoadMore = !hybrid && !!hasNextPage && !isFetchingNextPage && !list.isError;
+  const loadMore = () => {
+    if (canLoadMore) void fetchNextPage();
   };
+  const sentinelRef = useLoadMoreSentinel(loadMore, canLoadMore);
 
   // Reset keyboard focus whenever the result set changes (render-time pattern,
   // matching the search box above — no effect, no cascading render).
-  const resultSig = `${search}|${sourceType}|${sort}|${page}|${tags.join(",")}|${topics.join(",")}|${savedOnly}|${unreadOnly}|${channel}|${searchTranscripts}`;
+  const resultSig = `${search}|${sourceType}|${sort}|${tags.join(",")}|${topics.join(",")}|${savedOnly}|${unreadOnly}|${channel}|${searchTranscripts}`;
   const [prevSig, setPrevSig] = useState(resultSig);
   if (resultSig !== prevSig) {
     setPrevSig(resultSig);
     setFocused(-1);
   }
 
-  // Grid keyboard nav: j/k move, Enter opens, ←/→ page. Suppressed while typing.
+  // Grid keyboard nav: j/k move, Enter opens. Suppressed while typing. j near
+  // the end of what's loaded pulls in the next batch, so it never dead-ends.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || inEditable(e.target)) return;
@@ -219,24 +227,19 @@ export default function LibraryRoute() {
       if (e.key === "j") {
         e.preventDefault();
         setFocused((f) => Math.min(f + 1, items.length - 1));
+        if (focused >= items.length - 6) loadMore();
       } else if (e.key === "k") {
         e.preventDefault();
         setFocused((f) => Math.max((f < 0 ? items.length : f) - 1, 0));
       } else if (e.key === "Enter" && focused >= 0 && items[focused]) {
         const { to, state } = itemHref(items[focused].id);
         navigate(to, { state });
-      } else if (e.key === "ArrowRight" && page < totalPages) {
-        e.preventDefault();
-        goToPage(page + 1);
-      } else if (e.key === "ArrowLeft" && page > 1) {
-        e.preventDefault();
-        goToPage(page - 1);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, focused, page, totalPages, params, itemHref]);
+  }, [items, focused, params, itemHref, canLoadMore]);
 
   return (
     <div className="space-y-5">
@@ -304,7 +307,7 @@ export default function LibraryRoute() {
               {SORTS.map((s) => (
                 <DropdownMenuItem
                   key={s.value}
-                  onSelect={() => update({ sort: s.value, page: undefined })}
+                  onSelect={() => update({ sort: s.value })}
                   className={cn(sort === s.value && "font-semibold text-ui-current-fg")}
                 >
                   {s.label}
@@ -367,7 +370,6 @@ export default function LibraryRoute() {
               onClick={() =>
                 update({
                   search_transcripts: searchTranscripts ? undefined : "true",
-                  page: undefined,
                 })
               }
               aria-pressed={searchTranscripts}
@@ -386,7 +388,7 @@ export default function LibraryRoute() {
             <button
               key={t}
               onClick={() =>
-                update({ tags: tags.filter((x) => x !== t), page: undefined })
+                update({ tags: tags.filter((x) => x !== t) })
               }
               className="inline-flex items-center gap-1 rounded-full border border-ui-toggle-on-border bg-ui-toggle-on-bg px-2.5 py-1 font-mono text-[11px] text-ui-toggle-on-fg"
             >
@@ -414,7 +416,8 @@ export default function LibraryRoute() {
       {/* Body */}
       {q.isLoading ? (
         <CardGridSkeleton count={12} />
-      ) : q.isError ? (
+      ) : q.isError && !q.data ? (
+        // A failed *next* page keeps what's loaded; ListEnd offers the retry.
         <ErrorState error={q.error} onRetry={() => q.refetch()} />
       ) : total === 0 ? (
         hasFilters ? (
@@ -449,8 +452,16 @@ export default function LibraryRoute() {
             highlight={search}
             focusedId={focused >= 0 ? items[focused]?.id : undefined}
           />
-          {totalPages > 1 && (
-            <Pager page={page} totalPages={totalPages} onPage={goToPage} />
+          {!hybrid && (
+            <ListEnd
+              sentinelRef={sentinelRef}
+              loading={isFetchingNextPage}
+              more={!!hasNextPage}
+              failed={list.isFetchNextPageError}
+              shown={items.length}
+              total={total}
+              onMore={() => void fetchNextPage()}
+            />
           )}
         </>
       )}
@@ -526,66 +537,41 @@ function MobileViewChips({
   );
 }
 
-/** Compact numbered pager with ellipses. */
-function Pager({
-  page,
-  totalPages,
-  onPage,
+/**
+ * The foot of the endless list: an invisible tripwire that loads the next batch
+ * well before you reach it, a spinner while it's coming, a button if it failed
+ * (or for anyone who'd rather click), and a quiet "that's everything" at the end.
+ */
+function ListEnd({
+  sentinelRef,
+  loading,
+  more,
+  failed,
+  shown,
+  total,
+  onMore,
 }: {
-  page: number;
-  totalPages: number;
-  onPage: (p: number) => void;
+  sentinelRef: (el: HTMLElement | null) => void;
+  loading: boolean;
+  more: boolean;
+  failed: boolean;
+  shown: number;
+  total: number;
+  onMore: () => void;
 }) {
-  const pages: (number | "…")[] = [];
-  const push = (p: number) => pages.push(p);
-  push(1);
-  const lo = Math.max(2, page - 1);
-  const hi = Math.min(totalPages - 1, page + 1);
-  if (lo > 2) pages.push("…");
-  for (let p = lo; p <= hi; p++) push(p);
-  if (hi < totalPages - 1) pages.push("…");
-  if (totalPages > 1) push(totalPages);
-
   return (
-    <div className="flex items-center justify-center gap-1 pt-2">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        disabled={page <= 1}
-        onClick={() => onPage(page - 1)}
-        aria-label="Previous page"
-      >
-        ‹
-      </Button>
-      {pages.map((p, i) =>
-        p === "…" ? (
-          <span key={`e${i}`} className="px-1.5 text-fg-subtle">
-            …
-          </span>
-        ) : (
-          <button
-            key={p}
-            onClick={() => onPage(p)}
-            className={cn(
-              "flex h-8 min-w-8 items-center justify-center rounded-md px-2 font-mono text-[12px] tabular-nums transition-colors",
-              p === page
-                ? "bg-ui-current-bg text-ui-current-fg"
-                : "text-fg-muted hover:bg-surface-2 hover:text-fg",
-            )}
-          >
-            {p}
-          </button>
-        ),
-      )}
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        disabled={page >= totalPages}
-        onClick={() => onPage(page + 1)}
-        aria-label="Next page"
-      >
-        ›
-      </Button>
+    <div ref={sentinelRef} className="flex min-h-12 items-center justify-center pt-2">
+      {loading ? (
+        <span className="inline-flex items-center gap-2 font-mono text-[12px] text-fg-subtle" role="status">
+          <Loader2 className="size-3.5 animate-spin" /> Loading more…
+        </span>
+      ) : more ? (
+        <Button variant="ghost" size="sm" onClick={onMore} className="font-mono text-[12px] text-fg-muted">
+          {failed ? "Couldn't load more — retry" : `Show more · ${thousands(shown)} of ${thousands(total)}`}
+        </Button>
+      ) : shown > PER_PAGE ? (
+        <span className="font-mono text-[12px] text-fg-subtle">All {thousands(total)} shown</span>
+      ) : null}
     </div>
   );
 }

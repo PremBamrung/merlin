@@ -1,8 +1,10 @@
 import {
   useQuery,
+  useInfiniteQuery,
   useMutation,
   useQueryClient,
   keepPreviousData,
+  type InfiniteData,
 } from "@tanstack/react-query";
 import {
   getItems,
@@ -26,6 +28,35 @@ export function useItems(query: ItemQuery, enabled = true) {
     queryKey: keys.items(query),
     queryFn: () => getItems(query),
     placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+/**
+ * The Library's endless list: pages of `perPage` loaded as you scroll. `query`
+ * carries the filters/sort only; paging is owned here.
+ *
+ * gcTime is long on purpose: the Reader doesn't observe this query, so with the
+ * default 5 minutes a long read would drop every loaded page, and Back would
+ * land on page 1 with nowhere to restore the scroll to.
+ */
+export function useInfiniteItems(
+  query: Omit<ItemQuery, "page" | "per_page">,
+  perPage: number,
+  enabled = true,
+) {
+  return useInfiniteQuery({
+    queryKey: keys.itemsInfinite({ ...query, per_page: perPage }),
+    queryFn: ({ pageParam }) => getItems({ ...query, page: pageParam, per_page: perPage }),
+    initialPageParam: 1,
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.reduce((n, p) => n + p.items.length, 0);
+      // An empty page means the list shrank under us (deletes, mark-read on an
+      // Unread view) — stop rather than ask for pages that no longer exist.
+      return last.items.length > 0 && loaded < last.total ? pages.length + 1 : undefined;
+    },
+    placeholderData: keepPreviousData,
+    gcTime: 30 * 60_000,
     enabled,
   });
 }
@@ -65,18 +96,22 @@ export function usePrefetchItem() {
 }
 
 /**
- * Prev/next neighbours of an item, read from whichever Library list page is
- * already cached (the grid the user came from). No extra request: if the item
- * isn't in a cached page, both are null and the Reader simply hides the arrows.
+ * Prev/next neighbours of an item, read from whichever Library list is already
+ * cached (the grid the user came from) — a plain page, or every page the
+ * infinite list has loaded so far. No extra request: if the item isn't in a
+ * cached list, both are null and the Reader simply hides the arrows.
  */
 export function useAdjacentItems(id: string): {
   prev: ListItem | null;
   next: ListItem | null;
 } {
   const qc = useQueryClient();
-  const lists = qc.getQueriesData<ItemList>({ queryKey: keys.items() });
+  const lists = qc.getQueriesData<ItemList | InfiniteData<ItemList>>({
+    queryKey: keys.items(),
+  });
   for (const [, data] of lists) {
-    const items = data?.items;
+    if (!data) continue;
+    const items = "pages" in data ? data.pages.flatMap((p) => p.items ?? []) : data.items;
     if (!items) continue;
     const idx = items.findIndex((it) => it.id === id);
     if (idx === -1) continue;

@@ -5,6 +5,9 @@ const hasFeedFilter = (f?: FeedFilter) => !!(f?.topics?.length || f?.tags?.lengt
 /** Central query-key factory so invalidation targets the narrowest scope (§3). */
 export const keys = {
   items: (q?: ItemQuery) => (q ? (["items", q] as const) : (["items"] as const)),
+  // The Library's infinite scroll. Under "items" so every items invalidation
+  // (ingest, read, save, edit, delete) refreshes it too.
+  itemsInfinite: (q: ItemQuery) => ["items", "infinite", q] as const,
   item: (id: string) => ["item", id] as const,
   comments: (id: string) => ["comments", id] as const,
   tags: () => ["tags"] as const,
