@@ -14,6 +14,7 @@ import yt_dlp
 
 from merlin.config import settings
 from merlin.core.logging import logger
+from merlin.core.telemetry import bind_context
 from merlin.knowledge_sources.plugins.youtube.cookies import ytdlp_cookie_copy
 
 GROQ_API_KEY = settings.groq_api_key
@@ -288,7 +289,12 @@ class AudioTranscriber:
             logger.info(f"Transcribing {len(chunk_paths)} audio chunks")
             report(42, f"Transcribing audio in {len(chunk_paths)} chunks…")
             with ThreadPoolExecutor(max_workers=_CHUNK_CONCURRENCY) as pool:
-                results = list(pool.map(AudioTranscriber._post_audio, chunk_paths))
+                # bind_context per chunk, so the Groq calls nest under the ingest.
+                futures = [
+                    pool.submit(bind_context(AudioTranscriber._post_audio), path)
+                    for path in chunk_paths
+                ]
+                results = [f.result() for f in futures]
 
             all_subtitles: List[Dict] = []
             language: Optional[str] = None

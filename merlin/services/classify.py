@@ -73,6 +73,7 @@ def _run_structured(schema, system: str, user: str, *, surface: str):
         build_ingest_model(level),
         output_type=_output_type(schema),
         system_prompt=system,
+        name=surface,  # "classify" | "discover" in traces
     )
     result = agent.run_sync(user)
     _record_usage(result, surface=surface)

@@ -429,7 +429,7 @@ Subtitles: {subtitles}
 
         self.last_usage = None
         try:
-            result = Agent(self.model).run_sync(prompt)
+            result = Agent(self.model, name="summarize").run_sync(prompt)
             self.last_usage = self._extract_usage(result)
             summary = result.output
 

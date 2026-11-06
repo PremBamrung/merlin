@@ -248,3 +248,50 @@ def test_export_swallows_write_errors(tmp_path, tracing):
 
     assert exporter.export([span]) is SpanExportResult.FAILURE
     exporter.housekeep()  # not a dir: nothing to do, no error
+
+
+# --------------------------------------------------------------------------- #
+# Thread pools
+# --------------------------------------------------------------------------- #
+
+
+def test_bind_context_nests_pool_work_under_the_caller(tracing):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+
+    out = tracing()
+    barrier = threading.Barrier(2, timeout=5)
+
+    def work(i: int) -> int:
+        barrier.wait()  # both tasks run at once: each needs its own context copy
+        with telemetry.tracer().start_as_current_span(f"work {i}"):
+            return i
+
+    def unbound(i: int) -> None:
+        with telemetry.tracer().start_as_current_span("unbound"):
+            pass
+
+    with telemetry.root_span("ingest.task") as root:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(telemetry.bind_context(work), i) for i in (1, 2)]
+            assert [f.result() for f in futures] == [1, 2]
+            pool.submit(unbound, 0).result()
+        root_id = f"{root.get_span_context().span_id:016x}"
+
+    spans = {s["name"]: s for s in read_spans(out)}
+    assert spans["work 1"]["parent_id"] == root_id
+    assert spans["work 2"]["parent_id"] == root_id
+    assert spans["work 1"]["trace_id"] == spans["ingest.task"]["trace_id"]
+    # Without it, the pool thread starts a trace of its own.
+    assert spans["unbound"]["parent_id"] is None
+
+
+def test_bind_context_passes_arguments_and_errors_through():
+    def fn(a, *, b):
+        if b is None:
+            raise ValueError("no b")
+        return a + b
+
+    assert telemetry.bind_context(fn)(1, b=2) == 3
+    with pytest.raises(ValueError, match="no b"):
+        telemetry.bind_context(fn)(1, b=None)

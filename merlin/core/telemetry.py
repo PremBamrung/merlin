@@ -30,8 +30,9 @@ from __future__ import annotations
 
 import atexit
 from collections import OrderedDict
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
+import contextvars
 from datetime import UTC, datetime, timedelta
 import gzip
 import json
@@ -41,7 +42,7 @@ from pathlib import Path
 import re
 import shutil
 import threading
-from typing import Any
+from typing import Any, ParamSpec, TypeVar
 
 from opentelemetry import context as otel_context, trace
 from opentelemetry.sdk.resources import Resource
@@ -59,6 +60,7 @@ logger = logging.getLogger("merlin.telemetry")
 
 __all__ = [
     "JsonlSpanExporter",
+    "bind_context",
     "enabled",
     "root_span",
     "set_outcome",
@@ -81,6 +83,9 @@ _FILE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.jsonl(\.gz)?$")
 _lock = threading.Lock()
 _provider: TracerProvider | None = None
 _NOOP_TRACER = trace.NoOpTracer()
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 # --------------------------------------------------------------------------- #
@@ -188,6 +193,22 @@ def tracer() -> trace.Tracer:
     """Tracer for manual spans; a no-op tracer when tracing is off."""
     provider = _provider
     return provider.get_tracer("merlin") if provider is not None else _NOOP_TRACER
+
+
+def bind_context(fn: Callable[P, R]) -> Callable[P, R]:  # noqa: UP047 (py3.11)
+    """Return ``fn`` bound to a copy of the current context, taken now.
+
+    Thread pools don't carry context, so a span opened in a pool worker would
+    start its own trace. Call this in the submitting thread, once per task
+    (``pool.submit(bind_context(fn), x)``): one copy can't be entered by two
+    threads at once. Cheap, and harmless when tracing is off.
+    """
+    ctx = contextvars.copy_context()
+
+    def run(*args: P.args, **kwargs: P.kwargs) -> R:
+        return ctx.run(fn, *args, **kwargs)
+
+    return run
 
 
 @contextmanager

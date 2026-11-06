@@ -709,8 +709,12 @@ def _web_sources(resp) -> list[tuple[str, str]]:
         return sources
     from concurrent.futures import ThreadPoolExecutor
 
+    from merlin.core.telemetry import bind_context
+
     with ThreadPoolExecutor(max_workers=len(sources)) as pool:
-        resolved = list(pool.map(_resolve_redirect, (u for _, u in sources)))
+        # bind_context per URL, so the lookups nest under the chat turn.
+        futures = [pool.submit(bind_context(_resolve_redirect), u) for _, u in sources]
+        resolved = [f.result() for f in futures]
     # Distinct redirect links can land on the same page — keep the first.
     out: list[tuple[str, str]] = []
     for (title, _), url in zip(sources, resolved, strict=True):

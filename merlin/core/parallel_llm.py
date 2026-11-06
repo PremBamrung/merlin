@@ -30,6 +30,7 @@ import time
 from typing import TypeVar
 
 from merlin.core.logging import logger
+from merlin.core.telemetry import bind_context
 from merlin.core.rate_limit import MinIntervalRateLimiter
 from merlin.core.task_queue import TaskCancelled
 
@@ -114,7 +115,11 @@ def parallel_map(
     with ThreadPoolExecutor(
         max_workers=concurrency, thread_name_prefix="merlin-llm"
     ) as executor:
-        futures = {executor.submit(worker, item): i for i, item in enumerate(items)}
+        # bind_context: each item's LLM call nests under the job's trace.
+        futures = {
+            executor.submit(bind_context(worker), item): i
+            for i, item in enumerate(items)
+        }
         try:
             for future in as_completed(futures):
                 idx = futures[future]
