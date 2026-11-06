@@ -32,6 +32,10 @@ dependencies = [
     "pytest>=9.0.0",
     "pytest-xdist>=3.8.0",
     "pydantic-ai>=1.107.0",
+    # Tracing to local JSONL files (merlin/core/telemetry.py). The API and the
+    # httpx instrumentor already come in via pydantic-ai -> logfire.
+    "opentelemetry-sdk>=1.39.1",
+    "opentelemetry-instrumentation-requests>=0.60b1",
 ]
 
 [tool.uv]

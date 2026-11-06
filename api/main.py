@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from merlin.bootstrap import register_plugins
 from merlin.config import settings
 from merlin.core.logging import logger
+from merlin.core.telemetry import setup_tracing
 from merlin.knowledge_sources.registry import registry
 from merlin.rag.embeddings import get_embedder
 from merlin.services.chat import thinking_supported
@@ -93,6 +94,10 @@ def _settle_interrupted_tasks() -> None:
 
 
 def create_app() -> FastAPI:
+    # First, so everything below runs instrumented. A no-op unless TRACES_DIR
+    # is set; never raises.
+    setup_tracing()
+
     app = FastAPI(
         title="Merlin API",
         version="3.0.0",

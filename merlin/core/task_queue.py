@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 import uuid
 
+from merlin.core import telemetry
 from merlin.core.logging import logger
 from merlin.db.engine import SessionFactory
 from merlin.db.repositories.tasks import BackgroundTaskRepository
@@ -140,7 +141,7 @@ class TaskQueue:
             )
             session.commit()
 
-        self._executor.submit(self._run_callable, task_id, work)
+        self._executor.submit(self._run_callable, task_id, work, task_type)
         return task_id
 
     def cancel(self, task_id: str) -> bool:
@@ -177,6 +178,20 @@ class TaskQueue:
         self,
         task_id: str,
         work: Callable[[str, Callable[[int, str], None]], None],
+        task_type: str = "",
+    ) -> None:
+        # The root span opens here, in the worker: tracing context does not
+        # cross into pool threads, and the job outlives the request anyway.
+        with telemetry.root_span(
+            "ingest.task", {"task_id": task_id, "task_type": task_type}
+        ) as span:
+            self._callable_body(span, task_id, work)
+
+    def _callable_body(
+        self,
+        span,
+        task_id: str,
+        work: Callable[[str, Callable[[int, str], None]], None],
     ) -> None:
         logger.info(f"Task {task_id} started — callable job")
 
@@ -199,10 +214,13 @@ class TaskQueue:
             self._check_cancelled(task_id)
             work(task_id, report)
             logger.info(f"Task {task_id} completed successfully")
+            telemetry.set_outcome(span, "completed")
         except TaskCancelled:
             self._mark_cancelled(task_id)
+            telemetry.set_outcome(span, "cancelled")
         except Exception as exc:
             logger.exception(f"Task {task_id} failed: {exc}")
+            telemetry.set_outcome(span, "failed", exc)
             with SessionFactory() as s:
                 BackgroundTaskRepository.set_failed(s, task_id, str(exc))
                 s.commit()
@@ -211,6 +229,27 @@ class TaskQueue:
 
     def _run_ingest(
         self,
+        task_id: str,
+        plugin,
+        raw_input: str,
+        options: dict,
+        on_complete: Callable,
+    ) -> None:
+        # Root span opened in the worker thread (see _run_callable).
+        with telemetry.root_span(
+            "ingest.task",
+            {
+                "task_id": task_id,
+                "task_type": f"ingest_{plugin.source_type}",
+                "source_type": plugin.source_type,
+                "raw_input": raw_input,
+            },
+        ) as span:
+            self._ingest_body(span, task_id, plugin, raw_input, options, on_complete)
+
+    def _ingest_body(
+        self,
+        span,
         task_id: str,
         plugin,
         raw_input: str,
@@ -257,11 +296,14 @@ class TaskQueue:
             # Call the on_complete hook (persists result to DB)
             on_complete(task_id, result)
             logger.info(f"Task {task_id} completed successfully")
+            telemetry.set_outcome(span, "completed")
 
         except TaskCancelled:
             self._mark_cancelled(task_id)
+            telemetry.set_outcome(span, "cancelled")
         except Exception as exc:
             logger.exception(f"Task {task_id} failed: {exc}")
+            telemetry.set_outcome(span, "failed", exc)
             with SessionFactory() as s:
                 BackgroundTaskRepository.set_failed(s, task_id, str(exc))
                 s.commit()

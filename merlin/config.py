@@ -147,6 +147,20 @@ class Settings(BaseSettings):
     app_password: str = ""
     log_level: str = "INFO"
 
+    # Tracing (merlin/core/telemetry.py): every agent run, model call, tool call
+    # and outbound HTTP call, one JSON line per span in <traces_dir>/YYYY-MM-DD
+    # .jsonl (UTC). Empty = off, the default (and always in tests). Docker sets
+    # it to /app/logs/traces. Read the files with scripts/traces.py.
+    traces_dir: str = ""
+    # Record prompts, outputs and tool arguments/results (not just timings).
+    traces_include_content: bool = True
+    # false = each model span keeps only the messages new at that step (the
+    # agent span holds the full conversation once). true = write spans as-is.
+    traces_verbatim: bool = False
+    # Delete trace files older than this many days at startup and at each UTC
+    # day rollover. 0 = keep forever. Past days are gzipped either way.
+    traces_retention_days: int = 90
+
     # YouTube subtitle fetching — minimum seconds between requests to
     # YouTube's transcript endpoint (across all ingest workers), to avoid
     # being temporarily IP-banned (HTTP 429) during bulk ingestion.

@@ -13,6 +13,10 @@ services:
       - ./logs:/app/logs
     env_file:
       - .env
+    environment:
+      # Trace files (merlin/core/telemetry.py), on the mounted ./logs volume.
+      # Set TRACES_DIR= (empty) in .env to turn tracing off.
+      - TRACES_DIR=${TRACES_DIR-/app/logs/traces}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]

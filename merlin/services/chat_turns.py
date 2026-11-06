@@ -32,6 +32,7 @@ import json
 import logging
 import time
 
+from merlin.core import telemetry
 from merlin.services import chat_history
 from merlin.services.chat import MESSAGE_TIME_PART
 from merlin.services.chat_stream_reducer import ChunkReducer
@@ -258,6 +259,20 @@ async def _drive(
     payloads: AsyncIterator[str],
     after: Iterable[Callable[[], object]],
 ) -> None:
+    # One trace per turn. The agent run happens while `payloads` is iterated
+    # here, so its spans (and the title/after-work threads) nest under it.
+    with telemetry.root_span("chat.turn", {"thread_id": turn.thread_id}) as span:
+        status = await _run_turn(turn, messages, payloads, after)
+        telemetry.set_outcome(span, status)
+
+
+async def _run_turn(
+    turn: Turn,
+    messages: list[dict],
+    payloads: AsyncIterator[str],
+    after: Iterable[Callable[[], object]],
+) -> str:
+    """Stream the turn, save it, run the after-work; return how it ended."""
     reducer = ChunkReducer()
     started = time.monotonic()
     timeline = TurnTimeline(started)
@@ -348,6 +363,10 @@ async def _drive(
             await asyncio.to_thread(fn)
         except Exception:  # never let bookkeeping surface
             logger.exception("chat turn %s: after-work failed", turn.thread_id)
+
+    if turn.stop_requested:
+        return "stopped"
+    return "error" if reducer.error_text is not None else "completed"
 
 
 async def _save_answer(turn: Turn, messages: list[dict], reducer: ChunkReducer) -> None:
