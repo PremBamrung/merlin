@@ -1,6 +1,5 @@
-<!-- The mark, `star` form (see src/components/brand/Mark.tsx). NOT the monogram:
-     at favicon sizes the drawn M is under 4px tall and turns to mush, which is
-     the documented blocker on using M1 here. Geometry is D2 — steeper cone, wide
+<!-- The mark (see src/components/brand/Mark.tsx), the only form since the
+     monogram (M in the cone) was dropped. Geometry is D2 — steeper cone, wide
      brim, and the brim separated from the cone by 0.9 units of ground. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
   <rect width="24" height="24" rx="5" fill="#1A1B1F"/>

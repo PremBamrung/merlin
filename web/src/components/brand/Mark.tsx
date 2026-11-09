@@ -1,38 +1,24 @@
 /**
- * THE MARK — locked in session 4.
+ * THE MARK — D2, the hat with the gold star in the cone.
  *
  * Shape **D2**: steeper cone (half-width 5.8, not 7.2), wide brim, and the
  * brim separated from the cone by 0.9 units of *ground* rather than by a
  * lighter colour — same read, no new value in the palette, and it lifts the
  * mark's lower edge against the ground from 1.84:1 to 2.89:1.
  *
- *   cone  #2B3C9E   brim  #4B5CB8   point  #FFB94A
+ *   cone  #2B3C9E   brim  #4B5CB8   star  #FFB94A
  *
- * Two locked forms, and a documented reason to switch between them:
- *
- * - `star`     — D2 with the gold star low in the cone body. Survives 16px.
- * - `monogram` — **M1**, the chosen app icon: the gold point caps the tip
- *                (moving it off the indigo and onto the ground, 5.48:1 →
- *                ~10:1, the strongest that point has ever been) and a white
- *                Archivo **M** fills the cone body. The cone had to shorten
- *                to make room (apex 2.4 → 5.6), which makes it squatter.
- *
- * The handoff records M1's one blocker verbatim: *"at 16px the M is under
- * 4px tall and turns to mush. If the favicon matters, this is the
- * blocker."* So `auto` (the default) renders M1 at ≥28px — app tiles, the
- * about screen, anywhere it stands alone — and falls back to the star form
- * at the sizes where the M cannot hold. The favicon uses `star`.
- *
- * The M is drawn as a path, not `<text>`: an icon must not depend on a
- * webfont having loaded. (v1's mockups silently fell back to Georgia and
- * the user rejected "the font" on that basis.)
+ * **One form at every size** (2026-11-09). There used to be a second,
+ * `monogram` form (M1: gold point capping the tip, a white M in the cone)
+ * drawn at >=28px, with this star form below that because the M turns to mush
+ * under ~4px tall. The switch meant the rail (26px) showed a different logo
+ * from the home greeting and the chat empty state (40px), and the user chose
+ * to drop the M rather than force it smaller. The favicon and the app icons
+ * were already this form. The monogram's geometry is in git history.
  */
-
-export type MarkVariant = "auto" | "star" | "monogram";
 
 interface MarkProps {
   size?: number;
-  variant?: MarkVariant;
   className?: string;
   /** Set when the mark sits next to the wordmark, which already names the app. */
   decorative?: boolean;
@@ -42,18 +28,7 @@ const CONE = "#2B3C9E";
 const BRIM = "#4B5CB8";
 const GOLD = "#FFB94A";
 
-/** Below this the monogram's M is under ~4px tall and turns to mush. */
-const MONOGRAM_FLOOR = 28;
-
-export function Mark({
-  size = 24,
-  variant = "auto",
-  className,
-  decorative = false,
-}: MarkProps) {
-  const form =
-    variant === "auto" ? (size >= MONOGRAM_FLOOR ? "monogram" : "star") : variant;
-
+export function Mark({ size = 24, className, decorative = false }: MarkProps) {
   return (
     <svg
       width={size}
@@ -64,33 +39,8 @@ export function Mark({
       aria-label={decorative ? undefined : "Merlin"}
       aria-hidden={decorative || undefined}
     >
-      {form === "monogram" ? (
-        <>
-          {/* Gold point CAPPING the tip — cy 3.6 / r 2.5, so the circle's
-              lower edge (6.1) sits *below* the apex (5.6) and overlaps it.
-              These are v8's numbers and the overlap is the whole point: an
-              earlier pass at cy 2.9 / r 2.35 left a 0.35 gap, and the mark
-              read as a ball hovering over a triangle rather than as a
-              capped cone. Verified by looking at the specimen. */}
-          <circle cx="12" cy="3.6" r="2.5" fill={GOLD} />
-          {/* Shortened cone: apex 5.6 instead of 2.4, to make room. */}
-          <path d="M12 5.6L17.8 17.6H6.2Z" fill={CONE} />
-          {/* The M, drawn. Sits low and wide, where the cone has room. */}
-          <path
-            d="M9.15 16.5L9.9 11.5L12 14.6L14.1 11.5L14.85 16.5"
-            fill="none"
-            stroke="#FFFFFF"
-            strokeWidth="1.45"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </>
-      ) : (
-        <>
-          <path d="M12 2.4L17.8 17.6H6.2Z" fill={CONE} />
-          <circle cx="12" cy="13.2" r="2.5" fill={GOLD} />
-        </>
-      )}
+      <path d="M12 2.4L17.8 17.6H6.2Z" fill={CONE} />
+      <circle cx="12" cy="13.2" r="2.5" fill={GOLD} />
       {/* Brim, separated from the cone by 0.9 units of ground. */}
       <rect x="4" y="18.5" width="16" height="2.6" rx="1.3" fill={BRIM} />
     </svg>
