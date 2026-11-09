@@ -11,8 +11,8 @@
 export const CHART = {
   series: "#3f97c9", // --color-ui-chart-1
   emphasis: "#6fb6de", // --color-ui-chart-2
-  grid: "#353b4d", // --color-border
-  axis: "#9196a7", // --color-fg-subtle
-  surface: "#292e3c", // --color-surface-2
-  border: "#464d65", // --color-border-strong
+  grid: "#393b41", // --color-border
+  axis: "#8e8e98", // --color-fg-subtle
+  surface: "#2c2e33", // --color-surface-2
+  border: "#4a4c54", // --color-border-strong
 };

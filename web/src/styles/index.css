@@ -16,32 +16,33 @@
  * Phase 1 is the translation layer. Do not tune these by eye — the ratios in
  * the comments are measured.
  *
- * **Palette: Midnight ink** (2026-11-06, mockups/colour/app-1.html, chosen
- * over "Blue chrome" and "Blue + gold forward"). It replaced Monochrome + gold:
- * the user found the greys monotonous and asked for more of the blue + gold.
- * The ground and surfaces carry a faint blue tint, the rail is a deep blue
- * band, and the primary action, "you are here", toggles and links are blue.
- * Gold, rust and the mark are unchanged.
+ * **Palette: Graphite + blue accents** (2026-11-09, mockups/colour/r3-4.html,
+ * round 3). It replaced Midnight ink (2026-11-06), which the user found "too
+ * much blue": a tinted ground, a navy rail AND blue controls all at once.
+ * The ground, surfaces and rail are back to Monochrome + gold's neutral
+ * greys; blue is kept only where colour carries information — the primary
+ * action, "you are here", on-state toggles and links. Glows and highlights
+ * are neutral white again. Gold, rust and the mark are unchanged.
  * ------------------------------------------------------------------ */
 @theme {
-  /* Ground and surfaces — a FAINT blue tint (OKLCH hue ~265, low chroma).
-     Kept faint on purpose: a saturated blue-black ground was rejected
-     before; this is a tinted graphite, not navy. */
-  --color-bg: #181b26;
-  --color-surface: #212531;
-  --color-surface-2: #292e3c;
-  --color-surface-raised: #323748; /* modals, popovers */
-  --color-border: #353b4d; /* `rule`     */
-  --color-border-strong: #464d65; /* `rule-lit` */
+  /* Ground and surfaces — neutral grey, LIFTED. No blue tint in the greys:
+     a blue-black ground was rejected, and Midnight ink's faint tint was
+     part of what read as "too much blue". */
+  --color-bg: #1a1b1f;
+  --color-surface: #232529;
+  --color-surface-2: #2c2e33;
+  --color-surface-raised: #35373d; /* modals, popovers */
+  --color-border: #393b41; /* `rule`     */
+  --color-border-strong: #4a4c54; /* `rule-lit` */
 
   /* Text */
-  --color-fg: #e7e9ef; /* body      — 14.1:1 on bg */
-  --color-fg-muted: #acb1be; /* secondary —  8.0:1 on bg, 7.1:1 on surface */
-  --color-fg-subtle: #9196a7; /* metadata  —  5.8:1 on bg, 5.2:1 on surface,
-                                 4.6:1 on surface-2 (the floor — don't darken). */
+  --color-fg: #e8e8eb; /* body      — 14.1:1 */
+  --color-fg-muted: #a6a6ad; /* secondary —  7.1:1 */
+  --color-fg-subtle: #8e8e98; /* metadata  —  5.3:1 on bg, 4.7:1 on surface.
+                                 Lifted from #84848e *because* the ground rose. */
 
   /* Legacy indigo interface tokens. **Retired from the UI** — the `ui-*`
-     layer below replaced every use (Midnight ink reuses some of these
+     layer below replaced every use (the blue accents reuse some of these
      values); they stay defined (with their measured ratios) only so the
      brand/indigo values remain documented and a palette alternate can bring
      them back. Do not use `accent-*` in new code.
@@ -77,88 +78,89 @@
   --color-brand: #2b3c9e; /* the cone */
   --color-brim: #4b5cb8; /* the brim */
 
-  /* ── Semantic UI layer: Midnight ink ────────────────────────────────
+  /* ── Semantic UI layer: Graphite + blue accents ─────────────────────
      **Every screen uses these `ui-*` tokens, never `accent-*` or raw hexes**,
-     so a palette is one block. (The previous Monochrome + gold values are in
-     git history and mockups/redesign/direction/palettes.css.) Blue marks the
-     interface — where you are, what you can press; gold is still `signal`,
-     rust still `fail`. Measured on #181b26 / #212531 (mockups/colour/
-     palettes2.py + a scratch check for the pairs it didn't cover): */
-  /* rail: the deep blue band. Rail labels #a0aac8 7.8:1, gold badge 10.6:1.
-     The rail and the panel re-point a few base tokens for their subtree —
-     see [data-chrome] at the end of @layer base. */
-  --color-ui-rail-bg: #0d1433;
-  --color-ui-panel-bg: #141927; /* fg-muted 8.2:1, subtle 6.0:1 on it */
+     so a palette is one block. (Monochrome + gold and Midnight ink are in git
+     history and mockups/colour/r3-*.html.) Neutral greys carry the structure;
+     blue marks only where you are and what you can press; gold is still
+     `signal`, rust still `fail`. Measured on #1a1b1f / #232529
+     (mockups/colour/palettes3.py + a scratch check for the rest): */
+  /* rail + panel: neutral, a step below the ground. Rail labels
+     (fg-subtle) 5.6:1, fg-muted on the panel 7.3:1. */
+  --color-ui-rail-bg: #141518;
+  --color-ui-panel-bg: #17181b;
 
   /* the one primary action: white on #4a60d6 5.3:1, fill 3.2:1 vs ground.
-     Hover LIFTS to #5469dd (white 4.7:1, 3.6:1 vs ground) — the old
-     #5b70e0 put white text at 4.3:1 ✕. */
+     Hover LIFTS to #5469dd (white 4.7:1, 3.6:1 vs ground) — #5b70e0 put
+     white text at 4.3:1 ✕. */
   --color-ui-primary: #4a60d6;
   --color-ui-primary-hover: #5469dd;
   --color-ui-primary-fg: #ffffff;
 
-  /* "you are here": nav tile, tabs, segments — white on #283574 11.3:1;
-     the bar #9db3fe is 8.4:1 vs ground */
-  --color-ui-current-bg: #283574;
+  /* "you are here": nav tile, tabs, segments — white on #2a3771 11.2:1;
+     the bar #9db3fe is 8.4:1 vs ground, 5.5:1 on the tile */
+  --color-ui-current-bg: #2a3771;
   --color-ui-current-fg: #ffffff;
-  --color-ui-current-border: #4356a6;
+  --color-ui-current-border: #4557a1;
   --color-ui-current-bar: #9db3fe;
 
   /* selected rows (inset bar #6f84f0, 4.0:1 on surface-2) and selected
      cards (border + tint) */
-  --color-ui-selected-bg: #292e3c;
+  --color-ui-selected-bg: #2c2e33;
   --color-ui-selected-bar: #6f84f0;
-  --color-ui-selected-border: #464d65;
+  --color-ui-selected-border: #4a4c54;
   --color-ui-selected-tint: rgb(255 255 255 / 0.035);
 
-  /* on-state toggles and chips — white on #263161 12.4:1 */
-  --color-ui-toggle-on-bg: #263161;
-  --color-ui-toggle-on-border: #43549d;
+  /* on-state toggles and chips — white on #26325e 12.4:1 */
+  --color-ui-toggle-on-bg: #26325e;
+  --color-ui-toggle-on-border: #425295;
   --color-ui-toggle-on-fg: #ffffff;
-  --color-ui-toggle-on-icon: #e7e9ef;
-  --color-ui-switch-on: #6f84f0; /* 4.5:1 on surface, 5.1:1 on bg */
-  --color-ui-switch-knob: #181b26;
+  --color-ui-toggle-on-icon: #e8e8eb;
+  --color-ui-switch-on: #6f84f0; /* 4.6:1 on surface, 5.1:1 on bg */
+  --color-ui-switch-knob: #1a1b1f;
 
-  /* composer mode token ("Add to library"), palette mode tag */
-  --color-ui-token-bg: #263161;
-  --color-ui-token-border: #43549d;
-  --color-ui-token-fg: #e7e9ef;
+  /* composer mode token ("Library", "Add to library"), palette mode tag —
+     an on-state toggle, so the same blue */
+  --color-ui-token-bg: #26325e;
+  --color-ui-token-border: #425295;
+  --color-ui-token-fg: #e8e8eb;
   --color-ui-token-icon: #c6d2ff;
 
-  /* inline [n] chips — #b6bccb on #292e3c 7.1:1 — and thumbnail number badges */
-  --color-ui-cite-bg: #292e3c;
-  --color-ui-cite-border: #3e455a;
-  --color-ui-cite-fg: #b6bccb;
-  --color-ui-cite-hover-bg: #e7e9ef;
-  --color-ui-cite-hover-fg: #181b26;
-  --color-ui-cite-num-bg: rgb(14 17 28 / 0.82);
-  --color-ui-cite-num-fg: #f4f5f8;
+  /* inline [n] chips — #b4b4bb on #2c2e33 6.6:1 — and thumbnail number badges */
+  --color-ui-cite-bg: #2c2e33;
+  --color-ui-cite-border: #3f4147;
+  --color-ui-cite-fg: #b4b4bb;
+  --color-ui-cite-hover-bg: #ececef;
+  --color-ui-cite-hover-fg: #17181b;
+  --color-ui-cite-num-bg: rgb(16 17 19 / 0.82);
+  --color-ui-cite-num-fg: #f4f4f6;
 
-  /* tinted callouts: notes, quotes, traces, tag chips — #c9cdd8 on it 8.5:1 */
-  --color-ui-tint-bg: #292e3c;
-  --color-ui-tint-border: #464d65;
-  --color-ui-tint-fg: #c9cdd8;
+  /* tinted callouts: notes, quotes, traces, tag chips — #c9c9cf on it 8.8:1 */
+  --color-ui-tint-bg: #27292e;
+  --color-ui-tint-border: #3f4147;
+  --color-ui-tint-fg: #c9c9cf;
 
-  --color-ui-badge-new-bg: #292e3c;
-  --color-ui-badge-new-border: #464d65;
-  --color-ui-badge-new-fg: #e7e9ef;
+  --color-ui-badge-new-bg: #2c2e33;
+  --color-ui-badge-new-border: #4a4c54;
+  --color-ui-badge-new-fg: #e8e8eb;
 
   /* Link blue — 8.4 / 7.5:1 on bg / surface. Action text still underlines
      on hover (kept from mono, where it was the only affordance). */
   --color-ui-link: #9db3fe;
-  --color-ui-icon: #c4c9d6; /* accent icons inside neutral UI — 9.2:1 */
-  --color-ui-eyebrow: #acb1be; /* topic / section eyebrows — 8.0:1 */
-  --color-ui-hover-border: #464d65;
+  --color-ui-icon: #c4c4ca; /* accent icons inside neutral UI — 8.8:1 */
+  --color-ui-eyebrow: #a6a6ad; /* topic / section eyebrows — 7.1:1 */
+  --color-ui-hover-border: #4a4c54;
 
-  /* washes / flashes / highlights take the link blue at low alpha */
-  --color-ui-wash: rgb(157 179 254 / 0.05); /* ambient glow behind greetings */
-  --color-ui-wash-strong: rgb(157 179 254 / 0.075);
-  --color-ui-flash: rgb(157 179 254 / 0.1); /* an arriving / matched row */
-  --color-ui-hl: rgb(157 179 254 / 0.22); /* matched text */
+  /* washes / flashes / highlights — neutral white, not blue: large soft
+     areas are exactly where blue read as "too much" */
+  --color-ui-wash: rgb(255 255 255 / 0.03); /* ambient glow behind greetings */
+  --color-ui-wash-strong: rgb(255 255 255 / 0.045);
+  --color-ui-flash: rgb(255 255 255 / 0.07); /* an arriving / matched row */
+  --color-ui-hl: rgb(255 255 255 / 0.12); /* matched text */
 
   /* composer + input focus (the keyboard focus ring stays gold, below) */
-  --color-ui-focus-border: #5a6aa8;
-  --color-ui-focus-ring: rgb(157 179 254 / 0.1);
+  --color-ui-focus-border: #5a5c64;
+  --color-ui-focus-ring: rgb(255 255 255 / 0.05);
 
   --color-ui-caret: #f4f4f6;
   --color-ui-caret-dim: #c9c9cf;
@@ -171,13 +173,13 @@
      hexes — change both together. */
   --color-ui-chart-1: #3f97c9;
   --color-ui-chart-2: #6fb6de;
-  --color-ui-chart-track: #292e3c;
-  --color-ui-chart-track-border: #3e455a;
+  --color-ui-chart-track: #2c2e33;
+  --color-ui-chart-track-border: #3f4147;
 
-  --color-ui-avatar-a: #464d65;
-  --color-ui-avatar-b: #2d3346;
+  --color-ui-avatar-a: #4a4c54;
+  --color-ui-avatar-b: #303237;
 
-  --color-ui-selection: rgb(157 179 254 / 0.25);
+  --color-ui-selection: rgb(255 255 255 / 0.18);
 
   /* Status. Rust is the first error colour here that isn't the brand.
      NB: rust vs ok-green is ΔE 4.7 under deuteranopia, so every status must
@@ -260,19 +262,16 @@
     background: transparent;
   }
 
-  /* Chrome scopes (Midnight ink). The rail/tab bar and the context panel sit
-     on their own blue grounds, so inside them a few base tokens re-point:
-     their components keep using plain `bg-surface` / `text-fg-subtle` /
-     `border-border` and pick up the band's own values. Tailwind v4 utilities
-     read the variables at use, so this cascades with no component changes
-     beyond the data attribute. */
-  [data-chrome="rail"] {
-    --color-surface: #1a2348; /* hover: fg 12.6:1, labels 6.6:1 on it */
-    --color-fg-subtle: #a0aac8; /* rail labels/icons — 7.8:1 on #0d1433 */
-    --color-border: #212b51;
-  }
+  /* Chrome scope. The context panel's selected row reads `surface-2`; inside
+     the panel it re-points to a faint blue so it pairs with the blue
+     "you are here" tile in the rail beside it. Tailwind v4 utilities read the
+     variables at use, so this cascades with no component changes beyond the
+     data attribute. (The rail and tab bar also carry `data-chrome="rail"`;
+     they are neutral now, so nothing targets it.) */
   [data-chrome="panel"] {
-    --color-surface-2: #232d56; /* the selected row — fg 10.9:1, counts 4.5:1 */
+    --color-surface-2: #21283d; /* the selected row — fg 12.0:1, counts
+                                   (fg-subtle) 4.51:1. Don't lift it: the
+                                   mockup's #272f4a puts counts at 4.07 ✕. */
   }
 }
 
